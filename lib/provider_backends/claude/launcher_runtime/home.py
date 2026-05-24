@@ -479,6 +479,11 @@ def _macos_keychain_services() -> tuple[str, ...]:
     if os.environ.get('CLAUDE_CODE_CUSTOM_OAUTH_URL') and custom_service in services:
         services.remove(custom_service)
         services.insert(1, custom_service)
+    # Allow callers to bind a CCB stack to a specific keychain entry,
+    # e.g. when isolating multiple Claude accounts on one machine.
+    override = os.environ.get('CCB_KEYCHAIN_SERVICE_OVERRIDE')
+    if override:
+        services.insert(0, override)
     return tuple(services)
 
 
