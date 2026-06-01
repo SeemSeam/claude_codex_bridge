@@ -28,6 +28,7 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
         'gemini',
         'opencode',
         'droid',
+        'agy',
     }
     codex = catalog.resolve_completion_manifest('codex', RuntimeMode.PANE_BACKED)
     assert codex.completion_family is CompletionFamily.PROTOCOL_TURN
@@ -39,6 +40,9 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert fake_codex.completion_family is CompletionFamily.PROTOCOL_TURN
     fake_gemini = catalog.resolve_completion_manifest('fake-gemini', RuntimeMode.PANE_BACKED)
     assert fake_gemini.completion_family is CompletionFamily.ANCHORED_SESSION_STABILITY
+    assert catalog.get('agy').supports_resume is True
+    agy = catalog.resolve_completion_manifest('agy', RuntimeMode.PANE_BACKED)
+    assert agy.completion_family is CompletionFamily.TERMINAL_TEXT_QUIET
     fake_legacy = catalog.resolve_completion_manifest('fake-legacy', RuntimeMode.PANE_BACKED)
     assert fake_legacy.completion_family is CompletionFamily.TERMINAL_TEXT_QUIET
 
@@ -81,4 +85,4 @@ def test_provider_catalog_can_build_core_only_catalog() -> None:
     catalog = build_default_provider_catalog(include_optional=False, include_test_doubles=False)
     assert set(catalog.providers()) == set(CORE_PROVIDER_NAMES)
     assert set(CORE_PROVIDER_NAMES) == {'codex', 'claude', 'gemini'}
-    assert set(OPTIONAL_PROVIDER_NAMES) == {'opencode', 'droid'}
+    assert set(OPTIONAL_PROVIDER_NAMES) == {'opencode', 'droid', 'agy'}
