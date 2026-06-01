@@ -73,7 +73,7 @@ CCB is a project-level agent CLI workspace. It uses tmux to manage multiple real
 
 - **Real CLI sessions, not fake panels**: every agent pane runs the actual provider CLI.
 - **Visible collaboration**: the sidebar shows windows, agents, status, and communication; users can switch panes by mouse.
-- **Mixed providers**: one project can run Codex, Claude, Gemini, OpenCode, and Droid together.
+- **Mixed providers**: one project can run Codex, Claude, Gemini, OpenCode, Droid, and Antigravity (`agy`) together.
 - **Project config**: `.ccb/ccb.config` defines the team, layout, windows, worktrees, model, key, and url.
 - **Recoverable runtime**: CCB supervises agent panes and supports attach, restore, and project-scoped cleanup.
 - **Explicit collaboration channel**: agents can delegate through `/ask`, `$ask`, callback, and silence routes.

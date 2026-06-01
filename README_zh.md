@@ -73,7 +73,7 @@ CCB 是一个项目级 agent CLI 工作台。它用 tmux 管理多个真实 CLI 
 
 - **真实 CLI，不是模拟面板**：每个 agent pane 都运行对应 provider 的真实 CLI。
 - **可见协作**：sidebar 展示窗口、agent 状态和通信区；用户可以用鼠标直接切 pane。
-- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid。
+- **混合 provider**：一个项目里可以同时跑 Codex、Claude、Gemini、OpenCode、Droid 和 Antigravity（`agy`）。
 - **项目级配置**：`.ccb/ccb.config` 决定团队、布局、窗口、worktree、model、key、url。
 - **可恢复运行态**：CCB 后台守护 agent pane，支持 attach、恢复和项目级清理。
 - **显式协作通道**：agent 可以通过 `/ask`、`$ask`、callback 和 silence 进行委派与交接。
