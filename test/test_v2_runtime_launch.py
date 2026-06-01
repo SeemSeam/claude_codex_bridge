@@ -1442,10 +1442,12 @@ def test_provider_start_parts_respect_env_override(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv('GEMINI_START_CMD', '/tmp/stub-gemini --flag')
     monkeypatch.setenv('CLAUDE_START_CMD', '/tmp/stub-claude')
     monkeypatch.setenv('CODEX_START_CMD', '/tmp/stub-codex --profile test')
+    monkeypatch.setenv('AGY_START_CMD', '/tmp/stub-agy --sandbox')
 
     assert runtime_launch._provider_start_parts('gemini') == ['/tmp/stub-gemini', '--flag']
     assert runtime_launch._provider_start_parts('claude') == ['/tmp/stub-claude']
     assert runtime_launch._provider_start_parts('codex') == ['/tmp/stub-codex', '--profile', 'test']
+    assert runtime_launch._provider_start_parts('agy') == ['/tmp/stub-agy', '--sandbox']
     assert runtime_launch._provider_executable('codex') == '/tmp/stub-codex'
 
 
@@ -1453,10 +1455,40 @@ def test_provider_start_parts_fall_back_to_default_binary(monkeypatch: pytest.Mo
     monkeypatch.delenv('GEMINI_START_CMD', raising=False)
     monkeypatch.delenv('CLAUDE_START_CMD', raising=False)
     monkeypatch.delenv('CODEX_START_CMD', raising=False)
+    monkeypatch.delenv('AGY_START_CMD', raising=False)
 
     assert runtime_launch._provider_start_parts('gemini') == ['gemini']
     assert runtime_launch._provider_start_parts('claude') == ['claude']
     assert runtime_launch._provider_start_parts('codex') == ['codex']
+    assert runtime_launch._provider_start_parts('agy') == ['agy']
+
+
+def test_agy_start_cmd_defaults_to_yolo_permission(tmp_path: Path) -> None:
+    from provider_backends.agy import launcher as agy_launcher
+
+    spec = _spec('debugger', provider='agy')
+    cmd = agy_launcher.build_start_cmd(
+        ParsedStartCommand(project=None, agent_names=('debugger',), restore=False, auto_permission=True),
+        spec,
+        tmp_path / 'runtime',
+        'ccb-debugger-test',
+    )
+
+    assert 'agy --dangerously-skip-permissions' in cmd
+
+
+def test_agy_start_cmd_uses_continue_for_restore(tmp_path: Path) -> None:
+    from provider_backends.agy import launcher as agy_launcher
+
+    spec = _spec('debugger', provider='agy')
+    cmd = agy_launcher.build_start_cmd(
+        ParsedStartCommand(project=None, agent_names=('debugger',), restore=True, auto_permission=False),
+        spec,
+        tmp_path / 'runtime',
+        'ccb-debugger-test',
+    )
+
+    assert 'agy --continue' in cmd
 
 
 def test_ensure_agent_runtime_falls_back_when_created_pane_is_too_small(monkeypatch, tmp_path: Path) -> None:
