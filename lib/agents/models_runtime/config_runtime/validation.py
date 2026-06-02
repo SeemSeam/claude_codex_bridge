@@ -75,6 +75,7 @@ def _normalize_layout_tree(node: LayoutNode) -> LayoutNode:
                 name=_normalize_layout_leaf_name(node.leaf.name),
                 provider=node.leaf.provider,
                 workspace_mode=node.leaf.workspace_mode,
+                percent=node.leaf.percent,
             ),
         )
     assert node.left is not None

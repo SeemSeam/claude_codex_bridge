@@ -28,6 +28,23 @@ def test_parse_layout_spec_accepts_role_id_leaf_token() -> None:
     assert layout.render() == 'agent1:codex, agentroles.archi:codex'
 
 
+@pytest.mark.parametrize(
+    'spec, expected_percent',
+    [
+        ('debugger:agy@30', 30),
+        ('reviewer:claude@50', 50),
+        ('debugger:agy', None),
+    ],
+)
+def test_parse_layout_spec_percent_token(spec: str, expected_percent: int | None) -> None:
+    # @percent 令牌:显式指定 pane 分屏百分比,渲染往返保持
+    layout = parse_layout_spec(spec)
+    assert layout.kind == 'leaf'
+    assert layout.leaf is not None
+    assert layout.leaf.percent == expected_percent
+    assert layout.render() == spec
+
+
 def test_prune_layout_preserves_branch_shape_when_possible() -> None:
     layout = parse_layout_spec('cmd; (agent1:codex, agent2:claude)')
 

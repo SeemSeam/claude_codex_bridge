@@ -76,6 +76,16 @@ def prepare_tmux_start_layout(
     )
 
 
+def _get_specified_percent(node: Any) -> int | None:
+    if node.kind == 'leaf':
+        assert node.leaf is not None
+        return node.leaf.percent
+    for leaf in node.iter_leaves():
+        if getattr(leaf, 'percent', None) is not None:
+            return leaf.percent
+    return None
+
+
 def _materialize_layout(
     backend,
     *,
@@ -91,9 +101,18 @@ def _materialize_layout(
 
     assert node.left is not None
     assert node.right is not None
-    total = max(1, node.leaf_count)
-    right_count = max(1, node.right.leaf_count)
-    percent = max(1, min(99, round((right_count * 100) / total)))
+
+    right_pct = _get_specified_percent(node.right)
+    left_pct = _get_specified_percent(node.left)
+    if right_pct is not None:
+        percent = max(1, min(99, right_pct))
+    elif left_pct is not None:
+        percent = max(1, min(99, 100 - left_pct))
+    else:
+        total = max(1, node.leaf_count)
+        right_count = max(1, node.right.leaf_count)
+        percent = max(1, min(99, round((right_count * 100) / total)))
+
     direction = 'right' if node.kind == 'horizontal' else 'bottom'
     new_pane_id = backend.split_pane(
         parent_pane_id,

@@ -8,7 +8,8 @@ _LEAF_TOKEN_RE = re.compile(
     r'(?P<name>[A-Za-z][A-Za-z0-9_.-]{0,63})'
     r'(?:\s*:\s*(?P<provider>[A-Za-z0-9_-]+)'
     r'(?:\s*\(\s*(?P<workspace_mode>worktree)\s*\))?'
-    r')?$'
+    r')?'
+    r'(?:\s*@\s*(?P<percent>\d+))?$'
 )
 
 
@@ -64,12 +65,15 @@ class _LayoutParser:
             raise LayoutParseError(
                 f"invalid layout token {token!r}; expected 'cmd', 'agent', 'agent:provider', or 'agent:provider(worktree)'"
             )
+        pct_str = match.group('percent')
+        pct = int(pct_str) if pct_str is not None else None
         return LayoutNode(
             kind='leaf',
             leaf=LayoutLeaf(
                 name=match.group('name').strip(),
                 provider=(match.group('provider') or None),
                 workspace_mode=(match.group('workspace_mode') or None),
+                percent=pct,
             ),
         )
 
