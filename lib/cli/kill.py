@@ -47,7 +47,7 @@ def cmd_kill(
         yes = getattr(args, "yes", False)
         return kill_global_zombies(yes=yes, is_pid_alive=is_pid_alive)
 
-    providers = parse_providers(list(args.providers or ["codex", "gemini", "opencode", "claude", "droid"]))
+    providers = parse_providers(list(args.providers or ["codex", "gemini", "opencode", "claude", "droid", "agy"]))
     if not providers:
         return 2
 

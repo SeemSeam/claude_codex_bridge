@@ -24,6 +24,7 @@ def test_find_all_zombie_sessions_filters_dead_parents() -> None:
         list_tmux_sessions_fn=lambda: [
             'codex-123-worker',
             'claude-456-run',
+            'agy-789-debugger',
             'demo-other',
         ],
     )
@@ -33,7 +34,12 @@ def test_find_all_zombie_sessions_filters_dead_parents() -> None:
             'session': 'codex-123-worker',
             'provider': 'codex',
             'parent_pid': 123,
-        }
+        },
+        {
+            'session': 'agy-789-debugger',
+            'provider': 'agy',
+            'parent_pid': 789,
+        },
     ]
 
 
