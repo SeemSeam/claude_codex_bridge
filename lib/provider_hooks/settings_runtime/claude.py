@@ -15,6 +15,8 @@ _CLAUDE_ACTIVITY_EVENTS = (
     'PostToolUse',
     'Stop',
 )
+_CCB_FINISH_HOOK_NAME = 'ccb-provider-finish-hook'
+_CCB_ACTIVITY_HOOK_NAME = 'ccb-provider-activity-hook'
 
 
 def install_claude_hooks(*, home_root: Path, command: str) -> Path:
@@ -22,6 +24,11 @@ def install_claude_hooks(*, home_root: Path, command: str) -> Path:
     data = _load_settings(settings_path)
     hooks = _hooks_payload(data)
     groups = _event_groups(hooks, event_name='Stop')
+    groups = _prune_ccb_managed_hook_groups(
+        groups,
+        current_command=command,
+        managed_hook_name=_CCB_FINISH_HOOK_NAME,
+    )
     if not claude_event_has_command(groups, command):
         groups.append(_command_hook_group(command))
     hooks['Stop'] = groups
@@ -34,6 +41,11 @@ def install_claude_activity_hooks(*, home_root: Path, command: str) -> Path:
     hooks = _hooks_payload(data)
     for event_name in _CLAUDE_ACTIVITY_EVENTS:
         groups = _event_groups(hooks, event_name=event_name)
+        groups = _prune_ccb_managed_hook_groups(
+            groups,
+            current_command=command,
+            managed_hook_name=_CCB_ACTIVITY_HOOK_NAME,
+        )
         if not claude_event_has_command(groups, command):
             groups.append(_command_hook_group(command))
         hooks[event_name] = groups
@@ -81,6 +93,51 @@ def claude_event_has_command(groups: list[object], command: str) -> bool:
             if str(hook.get('command') or '').strip() == command:
                 return True
     return False
+
+
+def _prune_ccb_managed_hook_groups(
+    groups: list[object],
+    *,
+    current_command: str,
+    managed_hook_name: str,
+) -> list[object]:
+    pruned: list[object] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            pruned.append(group)
+            continue
+        hooks = group.get('hooks')
+        if not isinstance(hooks, list):
+            pruned.append(group)
+            continue
+
+        kept_hooks: list[object] = []
+        for hook in hooks:
+            if not _is_stale_ccb_managed_hook(
+                hook,
+                current_command=current_command,
+                managed_hook_name=managed_hook_name,
+            ):
+                kept_hooks.append(hook)
+        if kept_hooks:
+            next_group = dict(group)
+            next_group['hooks'] = kept_hooks
+            pruned.append(next_group)
+    return pruned
+
+
+def _is_stale_ccb_managed_hook(
+    hook: object,
+    *,
+    current_command: str,
+    managed_hook_name: str,
+) -> bool:
+    if not isinstance(hook, dict):
+        return False
+    if str(hook.get('type') or '').strip().lower() != 'command':
+        return False
+    command = str(hook.get('command') or '').strip()
+    return managed_hook_name in command and command != current_command
 
 
 def _load_settings(path: Path) -> dict[str, object]:

@@ -12,7 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
 from agents.models import AgentSpec, PermissionMode, ProviderProfileSpec, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode
 from cli.services.provider_hooks import prepare_provider_workspace
 import provider_core.source_home as source_home_module
-from provider_hooks.settings import build_hook_command, install_workspace_completion_hooks
+from provider_hooks.settings import build_hook_command, install_workspace_activity_hooks, install_workspace_completion_hooks
 from storage.paths import PathLayout
 
 
@@ -103,6 +103,46 @@ def test_install_claude_hooks_preserves_existing_entries_without_duplication(tmp
     data = json.loads(settings_path.read_text(encoding='utf-8'))
     assert len(data['hooks']['Stop']) == 2
     assert not (workspace / '.claude').exists()
+
+
+def test_install_claude_hooks_prunes_stale_ccb_finish_hooks(tmp_path: Path) -> None:
+    workspace = tmp_path / 'workspace'
+    home_root = tmp_path / 'claude-home'
+    settings_path = home_root / '.claude' / 'settings.json'
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    command = '/usr/bin/python3 /current/bin/ccb-provider-finish-hook --provider claude'
+    stale_command = '/usr/bin/python3 /old/bin/ccb-provider-finish-hook --provider claude'
+    settings_path.write_text(
+        json.dumps(
+            {
+                'hooks': {
+                    'Stop': [
+                        {'hooks': [{'type': 'command', 'command': 'echo existing'}]},
+                        {'hooks': [{'type': 'command', 'command': stale_command}]},
+                    ]
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    install_workspace_completion_hooks(
+        provider='claude',
+        workspace_path=workspace,
+        home_root=home_root,
+        command=command,
+    )
+
+    data = json.loads(settings_path.read_text(encoding='utf-8'))
+    commands = [
+        hook['command']
+        for group in data['hooks']['Stop']
+        for hook in group.get('hooks', [])
+        if isinstance(hook, dict)
+    ]
+    assert commands == ['echo existing', command]
 
 
 def test_install_claude_hooks_trusts_workspace_in_managed_home(tmp_path: Path) -> None:
@@ -217,6 +257,60 @@ def test_prepare_provider_workspace_materializes_claude_activity_hooks(tmp_path:
     ]
     assert any('ccb-provider-finish-hook' in command for command in stop_commands)
     assert not (workspace / '.claude').exists()
+
+
+def test_install_claude_activity_hooks_prunes_stale_ccb_activity_hooks(tmp_path: Path) -> None:
+    workspace = tmp_path / 'workspace'
+    home_root = tmp_path / 'claude-home'
+    settings_path = home_root / '.claude' / 'settings.json'
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    activity_command = '/usr/bin/python3 /current/bin/ccb-provider-activity-hook --provider claude'
+    stale_activity_command = '/usr/bin/python3 /old/bin/ccb-provider-activity-hook --provider claude'
+    finish_command = '/usr/bin/python3 /old/bin/ccb-provider-finish-hook --provider claude'
+    settings_path.write_text(
+        json.dumps(
+            {
+                'hooks': {
+                    'Stop': [
+                        {'hooks': [{'type': 'command', 'command': finish_command}]},
+                        {'hooks': [{'type': 'command', 'command': stale_activity_command}]},
+                    ],
+                    'PostToolUse': [
+                        {'hooks': [{'type': 'command', 'command': 'echo existing'}]},
+                        {'hooks': [{'type': 'command', 'command': stale_activity_command}]},
+                    ],
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    install_workspace_activity_hooks(
+        provider='claude',
+        workspace_path=workspace,
+        home_root=home_root,
+        command=activity_command,
+    )
+
+    data = json.loads(settings_path.read_text(encoding='utf-8'))
+    stop_commands = [
+        hook['command']
+        for group in data['hooks']['Stop']
+        for hook in group.get('hooks', [])
+        if isinstance(hook, dict)
+    ]
+    post_tool_commands = [
+        hook['command']
+        for group in data['hooks']['PostToolUse']
+        for hook in group.get('hooks', [])
+        if isinstance(hook, dict)
+    ]
+    assert finish_command in stop_commands
+    assert activity_command in stop_commands
+    assert stale_activity_command not in stop_commands
+    assert post_tool_commands == ['echo existing', activity_command]
 
 
 def test_prepare_provider_workspace_materializes_claude_memory_bundle_before_hooks(
