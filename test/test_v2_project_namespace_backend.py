@@ -378,6 +378,39 @@ def test_create_session_uses_terminal_size_hint_when_provided(monkeypatch, tmp_p
     ]
 
 
+def test_create_session_falls_back_to_default_size_when_terminal_size_too_small(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv('CCB_TMUX_OBJECT_READY_POLL_INTERVAL_S', '0')
+    backend = _FlakyBackend()
+
+    create_session(
+        backend,
+        session_name='ccb-proj',
+        project_root=tmp_path,
+        window_name='cmd',
+        terminal_size=(10, 5),
+    )
+
+    assert backend.calls == [
+        (
+            'new-session',
+            '-d',
+            '-x',
+            '160',
+            '-y',
+            '48',
+            '-s',
+            'ccb-proj',
+            '-n',
+            'cmd',
+            '-c',
+            str(tmp_path),
+            'sh',
+            '-lc',
+            'while :; do sleep 3600; done',
+        )
+    ]
+
+
 def test_create_session_accepts_fast_probe_timeout(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv('CCB_TMUX_OBJECT_READY_POLL_INTERVAL_S', '0')
     backend = _FlakyBackend()
