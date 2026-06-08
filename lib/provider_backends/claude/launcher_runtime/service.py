@@ -96,7 +96,14 @@ def build_start_cmd(
         cmd_parts.append(_ROOT_SKIP_PERMISSIONS_FLAG)
     cmd_parts.extend(['--setting-sources', 'user,project,local'])
     if settings_path is not None:
-        cmd_parts.extend(['--settings', str(settings_path)])
+        try:
+            settings_inline = json.dumps(
+                json.loads(settings_path.read_text(encoding='utf-8')),
+                ensure_ascii=False,
+            )
+            cmd_parts.extend(['--settings', settings_inline])
+        except Exception:
+            cmd_parts.extend(['--settings', str(settings_path)])
     if command.auto_permission:
         cmd_parts.extend(['--permission-mode', 'bypassPermissions'])
     if restore_target.has_history:
