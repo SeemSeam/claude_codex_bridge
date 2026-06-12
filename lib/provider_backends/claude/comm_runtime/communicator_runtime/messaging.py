@@ -66,7 +66,7 @@ def ensure_healthy_session(comm) -> None:
 
 
 def emit_async_success() -> None:
-    print("✅ Sent to Claude")
+    print("📤 Written to Claude, delivery unconfirmed")
     print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
 
 

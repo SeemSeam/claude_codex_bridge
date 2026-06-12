@@ -16,7 +16,7 @@ def ask_async(comm, question: str) -> bool:
     try:
         ensure_session_health(comm)
         comm._send_via_terminal(question)
-        print("✅ Sent to Gemini")
+        print("📤 Written to Gemini, delivery unconfirmed")
         print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
         return True
     except Exception as exc:

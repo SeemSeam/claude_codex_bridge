@@ -123,7 +123,7 @@ def ask_async(comm, question: str) -> bool:
     try:
         _ensure_session_health(comm, probe_terminal=False)
         comm._send_via_terminal(question)
-        print("✅ Sent to OpenCode")
+        print("📤 Written to OpenCode, delivery unconfirmed")
         print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
         return True
     except Exception as exc:

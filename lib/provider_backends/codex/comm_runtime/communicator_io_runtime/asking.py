@@ -31,7 +31,7 @@ def ask_async(comm, question: str) -> bool:
         ensure_session_health(comm)
         marker, state = comm._send_message(question)
         remember_log_hint(comm, state)
-        print(f"✅ Sent to Codex (marker: {marker[:12]}...)")
+        print(f"📤 Written to Codex, delivery unconfirmed (marker: {marker[:12]}...)")
         print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
         return True
     except Exception as exc:
