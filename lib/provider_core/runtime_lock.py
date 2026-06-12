@@ -10,11 +10,13 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from .platform_info import is_windows
+
 from project.runtime_paths import project_anchor_exists, project_lock_dir
 
 
 def _is_pid_alive(pid: int) -> bool:
-    if os.name == "nt":
+    if is_windows():
         try:
             import ctypes
 
@@ -50,7 +52,7 @@ class ProviderLock:
 
     def _try_acquire_once(self) -> bool:
         try:
-            if os.name == "nt":
+            if is_windows():
                 import msvcrt
 
                 try:
@@ -69,7 +71,7 @@ class ProviderLock:
             pid_bytes = f"{os.getpid()}\n".encode()
             os.lseek(self._fd, 0, os.SEEK_SET)
             os.write(self._fd, pid_bytes)
-            if os.name == "nt":
+            if is_windows():
                 try:
                     os.ftruncate(self._fd, max(1, len(pid_bytes)))
                 except Exception:
@@ -144,7 +146,7 @@ class ProviderLock:
         if self._fd is not None:
             try:
                 if self._acquired:
-                    if os.name == "nt":
+                    if is_windows():
                         import msvcrt
 
                         try:

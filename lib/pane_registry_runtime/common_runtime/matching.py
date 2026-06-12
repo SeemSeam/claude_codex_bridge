@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from provider_core.platform_info import is_windows
+
 
 def normalize_path_for_match(value: str | Path | None) -> str:
     raw = str(value or "").strip()
@@ -17,7 +19,7 @@ def normalize_path_for_match(value: str | Path | None) -> str:
     except Exception:
         pass
     normalized = raw.replace("\\", "/").rstrip("/")
-    if os.name == "nt":
+    if is_windows():
         normalized = normalized.lower()
     return normalized
 

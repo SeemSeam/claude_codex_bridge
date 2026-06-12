@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 import re
 
+from provider_core.platform_info import is_windows as _platform_is_windows
+
 
 def env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
@@ -37,11 +39,11 @@ def sanitize_filename(value: str) -> str:
 
 
 def is_windows() -> bool:
-    return platform.system() == "Windows"
+    return _platform_is_windows()
 
 
 def subprocess_kwargs() -> dict:
-    if os.name == "nt":
+    if is_windows():
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         return {"creationflags": flags}
     return {}
