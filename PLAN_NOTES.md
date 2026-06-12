@@ -25,7 +25,23 @@
    `pkill -9 -f ccbd/main.py`。
 4. 本机无 pytest,使用 `.venv-test/` 虚拟环境(未提交)。
 
+## Phase 3(已完成)
+
+- **phase3.1** (a48c74f) `lib/provider_core/transport.py`:MessageTransport 抽象,
+  FifoTransport(POSIX)/ SpoolDirTransport(Windows inbox 目录,原子改名,
+  time_ns+pid+counter 命名免锁排序)。`ensure_fifo` 在 Windows 上不再调
+  `os.mkfifo`(原本直接 AttributeError),改为创建 inbox 目录。
+  发送端与 bridge 读端均经 `create_transport`(全库唯一平台决策点)。
+  对等测试:同一套场景(200 连发、超时、丢读者)参数化跑两种 transport。
+- **phase3.2** (7f21f7b) `platform_info.py` 收敛 is_windows/is_macos/is_wsl;
+  runtime_lock、pane matching、terminal env 已切换。
+  **偏差**:backend_env.py 保留 `sys.platform` —— 其测试 monkeypatch 该接缝,
+  收敛会绕过测试桩(曾导致 2 个测试失败,已回退)。
+  **偏差**:inbox 序号未用计划中的 .seq 文件 + 文件锁,改用
+  time_ns+pid+counter 文件名,免锁且天然有序。
+- 注意:test_v2_phase2_entrypoint.py 的 gemini 重启用例在全量并发下偶发失败
+  (残留 ccbd 守护进程干扰),单独重跑稳定通过;遇到时先 pkill ccbd 再重跑该文件确认。
+
 ## 未完成(后续)
 
-- Phase 3:Windows/跨平台传输抽象(SpoolDirTransport)、平台判断收敛。
 - Phase 4(可选):裸路径收发经由 message_bureau 留痕。
