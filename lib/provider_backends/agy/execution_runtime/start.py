@@ -12,7 +12,7 @@ from ..session import load_project_session
 from .helpers import resolve_work_dir
 
 
-_PANE_LINES_DEFAULT = 200
+_PANE_LINES_DEFAULT = 2000
 
 
 def start_submission(

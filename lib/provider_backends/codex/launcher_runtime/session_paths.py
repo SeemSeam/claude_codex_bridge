@@ -136,6 +136,10 @@ def _path_or_none(value: object) -> Path | None:
     raw = str(value or '').strip()
     if not raw:
         return None
+    if raw.startswith('\\\\wsl.localhost\\') or raw.startswith('\\\\wsl$\\'):
+        parts = raw.split('\\')
+        if len(parts) >= 4:
+            raw = '/' + '/'.join(parts[4:])
     try:
         return Path(raw).expanduser()
     except Exception:

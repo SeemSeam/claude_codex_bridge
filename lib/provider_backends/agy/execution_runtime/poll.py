@@ -11,13 +11,14 @@ from completion.models import (
 from provider_execution.base import ProviderPollResult, ProviderSubmission
 
 from ..comm import AgyPaneReader
-from ..protocol import extract_reply_for_req
+from ..protocol import extract_reply_for_req, pane_contains_req_anchor
 from .helpers import hash_text, seconds_between, state_int, state_str
 
 
 QUIET_SECS = 4.0
 MAX_WAIT_SECS = 300.0
 MIN_OBSERVED_SECS = 2.0
+ANCHOR_WAIT_SECS = 120.0
 
 
 def poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPollResult | None:
@@ -87,6 +88,9 @@ def poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPoll
     state['done_seen'] = done_seen
     state['reply_chars'] = len(reply)
 
+    anchor_present = bool(content) and pane_contains_req_anchor(content, req_id)
+    state['anchor_present'] = anchor_present
+
     if done_seen and reply:
         return _terminal(
             submission,
@@ -133,6 +137,17 @@ def poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPoll
             status=CompletionStatus.COMPLETED,
             reason='pane_text_quiet',
             reply=reply,
+            confidence=CompletionConfidence.DEGRADED,
+        )
+
+    if not anchor_present and total_secs >= ANCHOR_WAIT_SECS:
+        return _terminal(
+            submission,
+            state,
+            now,
+            status=CompletionStatus.INCOMPLETE,
+            reason='agy_input_unresponsive',
+            reply='',
             confidence=CompletionConfidence.DEGRADED,
         )
 
@@ -184,6 +199,7 @@ def _terminal(
         'quiet_secs': float(state.get('quiet_secs') or 0.0),
         'total_secs': float(state.get('total_secs') or 0.0),
         'done_seen': bool(state.get('done_seen')),
+        'anchor_present': bool(state.get('anchor_present')),
         'snapshot_errors': state_int(state, 'snapshot_errors', 0),
         'reply_chars': state_int(state, 'reply_chars', 0),
     }

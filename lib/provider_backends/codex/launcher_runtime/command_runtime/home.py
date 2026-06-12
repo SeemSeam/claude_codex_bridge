@@ -91,10 +91,23 @@ def prepare_codex_home_overrides(
             workspace_path=workspace_path,
         )
 
-    return {
+    overrides = {
         'CODEX_HOME': str(layout.codex_home),
         'CODEX_SESSION_ROOT': str(layout.session_root),
     }
+
+    if "WSL_DISTRO_NAME" in os.environ:
+        # We are running inside WSL. The target executable might be a Windows binary (via interop).
+        # Set USERPROFILE to the same isolated path and instruct WSLENV to automatically translate paths.
+        overrides['USERPROFILE'] = str(layout.codex_home)
+        wslenv_additions = "CODEX_HOME/p:CODEX_SESSION_ROOT/p:USERPROFILE/p"
+        existing_wslenv = os.environ.get("WSLENV", "")
+        if existing_wslenv:
+            overrides['WSLENV'] = f"{wslenv_additions}:{existing_wslenv}"
+        else:
+            overrides['WSLENV'] = wslenv_additions
+
+    return overrides
 
 
 def _profile_runtime_home(profile) -> Path | None:

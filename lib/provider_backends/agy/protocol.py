@@ -38,6 +38,12 @@ def _req_anchor_re(req_id: str) -> re.Pattern[str]:
     return re.compile(rf'{re.escape(REQ_ID_PREFIX)}\s*{re.escape(req_id)}')
 
 
+def pane_contains_req_anchor(text: str, req_id: str) -> bool:
+    if not text or not req_id:
+        return False
+    return _req_anchor_re(req_id).search(text) is not None
+
+
 def _done_anywhere_re(req_id: str) -> re.Pattern[str]:
     return re.compile(rf'{re.escape(DONE_PREFIX)}\s*{re.escape(req_id)}')
 
@@ -156,6 +162,7 @@ __all__ = [
     'extract_reply_for_req',
     'is_done_text',
     'make_req_id',
+    'pane_contains_req_anchor',
     'strip_done_text',
     'wrap_agy_prompt',
 ]

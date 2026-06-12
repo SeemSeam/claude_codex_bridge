@@ -101,6 +101,29 @@ def latest_session_id_for_candidates(*, candidates: list[Path], home_dir: Path, 
             best_cwd=best_cwd,
         )
 
+    if best_uuid is None and not has_any_history:
+        # Fallback: if candidates didn't match (e.g. because a Windows executable generated
+        # a slug using a Windows path instead of a Linux path), search all project directories.
+        # Since this home_dir is already isolated per-agent, any history found here belongs to this agent.
+        projects_root = home_dir / ".claude" / "projects"
+        if projects_root.exists():
+            fallback_cwd = candidates[0] if candidates else None
+            for project_dir in projects_root.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                session_files = list(project_dir.glob("*.jsonl"))
+                if not session_files:
+                    continue
+                has_any_history = True
+                best_any, best_cwd = maybe_update_best_any(session_files, fallback_cwd, best_any=best_any, best_cwd=best_cwd)
+                best_uuid, best_cwd = update_best_uuid_session(
+                    session_files,
+                    fallback_cwd,
+                    session_env_root=session_env_root,
+                    best_uuid=best_uuid,
+                    best_cwd=best_cwd,
+                )
+
     if best_uuid is not None:
         return best_uuid.stem, True, best_cwd
     if has_any_history:

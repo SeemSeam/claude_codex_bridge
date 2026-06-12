@@ -406,6 +406,19 @@ def split_pane(
 def kill_server(backend) -> bool:
     try:
         backend._tmux_run(['kill-server'], check=False, capture=True)  # type: ignore[attr-defined]
+        import os
+        import time
+        socket_path = str(getattr(backend, '_socket_path', '') or getattr(backend, 'socket_path', '') or '').strip()
+        if socket_path and os.path.exists(socket_path):
+            for _ in range(30):
+                if not os.path.exists(socket_path):
+                    break
+                time.sleep(0.1)
+            try:
+                if os.path.exists(socket_path):
+                    os.unlink(socket_path)
+            except OSError:
+                pass
         return True
     except Exception:
         return False

@@ -133,11 +133,12 @@ def _sidebar_resize_sync_shell(
         f'[ "$current_session" = {quoted_session} ] || exit 0; '
         f'guard=$(tmux -S {quoted_socket} show-option -qv -t {quoted_session} @ccb_sidebar_sync_guard 2>/dev/null || true); '
         '[ "$guard" = "1" ] && exit 0; '
-        f'exec {quoted_ccb} __sidebar-resize-sync '
+        f'{quoted_ccb} __sidebar-resize-sync '
         f'--tmux-socket {quoted_socket} '
         f'--session {quoted_session} '
         '--source-pane "#{pane_id}" '
-        '--project-id "#{@ccb_project_id}"'
+        '--project-id "#{@ccb_project_id}" '
+        '>/dev/null 2>&1 || true'
     )
 
 
@@ -155,12 +156,13 @@ def _sidebar_window_resize_sync_shell(
         f'[ "$current_session" = {quoted_session} ] || exit 0; '
         f'guard=$(tmux -S {quoted_socket} show-option -qv -t {quoted_session} @ccb_sidebar_sync_guard 2>/dev/null || true); '
         '[ "$guard" = "1" ] && exit 0; '
-        f'exec {quoted_ccb} __sidebar-resize-sync '
+        f'{quoted_ccb} __sidebar-resize-sync '
         f'--tmux-socket {quoted_socket} '
         f'--session {quoted_session} '
         '--source-window "#{window_id}" '
         '--project-id "#{@ccb_project_id}" '
-        '--from-stored-width'
+        '--from-stored-width '
+        '>/dev/null 2>&1 || true'
     )
 
 
@@ -197,7 +199,7 @@ def _apply_active_pane_border(backend, *, session_name: str) -> None:
 
 def _border_hook_command(border_script: str) -> str:
     quoted_script = shlex.quote(str(border_script))
-    shell = f'[ -x {quoted_script} ] || exit 0; exec {quoted_script} "#{{pane_id}}"'
+    shell = f'[ -x {quoted_script} ] || exit 0; {quoted_script} "#{{pane_id}}" >/dev/null 2>&1 || true'
     return 'run-shell -b ' + shlex.quote(shell)
 
 

@@ -97,10 +97,28 @@ def build_start_cmd(
     cmd_parts.extend(['--setting-sources', 'user,project,local'])
     if settings_path is not None:
         try:
-            settings_inline = json.dumps(
-                json.loads(settings_path.read_text(encoding='utf-8')),
-                ensure_ascii=False,
-            )
+            payload = json.loads(settings_path.read_text(encoding='utf-8'))
+            
+            # --- BUGFIX: Inject ANTHROPIC configuration into settings inline ---
+            if 'env' not in payload:
+                payload['env'] = {}
+            
+            if hasattr(profile, 'env') and isinstance(profile.env, dict):
+                for k, v in profile.env.items():
+                    if k.startswith('ANTHROPIC_') or k.startswith('CLAUDE_'):
+                        payload['env'][k] = v
+            if hasattr(spec, 'env') and isinstance(spec.env, dict):
+                for k, v in spec.env.items():
+                    if k.startswith('ANTHROPIC_') or k.startswith('CLAUDE_'):
+                        payload['env'][k] = v
+            
+            # Ensure top-level mappings are satisfied for newer Claude versions
+            if 'ANTHROPIC_BASE_URL' in payload['env']:
+                payload['anthropicBaseUrl'] = payload['env']['ANTHROPIC_BASE_URL']
+            if 'ANTHROPIC_API_KEY' in payload['env']:
+                payload['anthropicApiKey'] = payload['env']['ANTHROPIC_API_KEY']
+                
+            settings_inline = json.dumps(payload, ensure_ascii=False)
             cmd_parts.extend(['--settings', settings_inline])
         except Exception:
             cmd_parts.extend(['--settings', str(settings_path)])

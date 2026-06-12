@@ -19,7 +19,12 @@ class AgyProviderAdapter:
             'resume_supported': False,
             'restore_mode': 'resubmit_required',
             'restore_reason': 'provider_resume_unsupported',
-            'restore_detail': 'agy adapter does not implement restart-time resume; resubmit after ccbd restart',
+            'restore_detail': (
+                'agy CLI exposes no API for resuming an in-flight job from a '
+                'specific step, so an interrupted job must be resubmitted. '
+                'Conversation history is restored separately by the launcher '
+                'via --conversation <UUID> (see agy/launcher._resolve_resume_uuid).'
+            ),
         }
 
     def start(
