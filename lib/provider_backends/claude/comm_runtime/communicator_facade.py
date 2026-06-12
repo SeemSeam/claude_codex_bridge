@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from provider_core.comm_logging import get_comm_logger, log_comm_event
 from provider_core.protocol import is_done_text, make_req_id, strip_done_text
 from terminal_runtime import get_backend_for_session, get_pane_id_from_session
 
@@ -20,6 +21,9 @@ from . import (
     remember_claude_session as _remember_claude_session_impl,
     remember_claude_session_binding,
 )
+
+
+_comm_logger = get_comm_logger("claude.comm")
 
 
 def _claude_log_reader_cls():
@@ -86,7 +90,18 @@ class ClaudeCommunicator:
     def _send_via_terminal(self, content: str) -> bool:
         if not self.backend or not self.pane_id:
             raise RuntimeError("Terminal session not configured")
-        self.backend.send_text(self.pane_id, content)
+        try:
+            self.backend.send_text(self.pane_id, content)
+        except Exception as exc:
+            log_comm_event(
+                _comm_logger,
+                provider="claude",
+                direction="send",
+                endpoint=str(self.pane_id),
+                event="send_via_terminal_failed",
+                error=exc,
+            )
+            raise
         return True
 
     def _remember_claude_session(self, session_path: Path) -> None:

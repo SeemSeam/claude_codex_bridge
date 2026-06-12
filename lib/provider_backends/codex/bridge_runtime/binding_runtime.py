@@ -10,8 +10,11 @@ from provider_backends.codex.comm_runtime.log_reader_facade import CodexLogReade
 from provider_backends.codex.session import CodexProjectSession
 from provider_backends.codex.session_runtime.follow_policy import should_follow_workspace_sessions
 from provider_backends.codex.session_switch import STATE_AUTO_REBINDABLE, commit_rebind, resolve_switch_decision, write_decision
+from provider_core.comm_logging import get_comm_logger, log_comm_event
 
 from .env import env_float, path_or_none, read_session_data, session_root, session_work_dir
+
+_logger = get_comm_logger('codex.bridge')
 
 
 class CodexBindingTracker:
@@ -39,8 +42,15 @@ class CodexBindingTracker:
         while self._running:
             try:
                 self.refresh_once()
-            except Exception:
-                pass
+            except Exception as exc:
+                log_comm_event(
+                    _logger,
+                    provider='codex',
+                    direction='recv',
+                    endpoint=str(self.session_file),
+                    event='binding_refresh_failed',
+                    error=exc,
+                )
             time.sleep(max(0.05, self._poll_interval))
 
     def refresh_once(self) -> bool:

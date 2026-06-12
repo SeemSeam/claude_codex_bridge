@@ -4,7 +4,11 @@ import json
 from datetime import datetime
 from typing import Any
 
+from provider_core.comm_logging import get_comm_logger, log_comm_event
+
 from .common import ensure_session_health, remember_log_hint
+
+_logger = get_comm_logger('codex.comm')
 
 
 def send_message(comm, content: str) -> tuple[str, dict[str, Any]]:
@@ -31,6 +35,14 @@ def ask_async(comm, question: str) -> bool:
         print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
         return True
     except Exception as exc:
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='send',
+            endpoint=str(getattr(comm, 'input_fifo', '?')),
+            event='ask_async_failed',
+            error=exc,
+        )
         print(f"❌ Send failed: {exc}")
         return False
 

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import time
 
+from provider_core.comm_logging import get_comm_logger, log_comm_event
 from ui_text import t
 
 from .common import ensure_session_health, remember_log_hint
+
+_logger = get_comm_logger('codex.comm')
 
 
 def ask_sync(comm, question: str, timeout: int | None = None) -> str | None:
@@ -21,6 +24,14 @@ def ask_sync(comm, question: str, timeout: int | None = None) -> str | None:
         print(f"⏳ Waiting for Codex reply (timeout {wait_timeout}s)...")
         return _wait_once(comm, state, float(wait_timeout))
     except Exception as exc:
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='send',
+            endpoint=str(getattr(comm, 'input_fifo', '?')),
+            event='ask_sync_failed',
+            error=exc,
+        )
         print(f"❌ Sync ask failed: {exc}")
         return None
 

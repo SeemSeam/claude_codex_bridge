@@ -6,9 +6,12 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from provider_core.comm_logging import get_comm_logger, log_comm_event
 from provider_core.runtime_specs import provider_marker_prefix
 
 from .runtime_state import BridgeRuntimeState
+
+_logger = get_comm_logger('codex.bridge')
 
 
 def read_request(state: BridgeRuntimeState) -> dict[str, Any] | None:
@@ -20,7 +23,15 @@ def read_request(state: BridgeRuntimeState) -> dict[str, Any] | None:
             if not line:
                 return None
             return json.loads(line)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='recv',
+            endpoint=str(state.paths.input_fifo),
+            event='read_request_failed',
+            error=exc,
+        )
         return None
 
 
@@ -43,6 +54,14 @@ def process_request(
         state.codex_session.send(content)
     except Exception as exc:
         message = f'Failed to send to Codex: {exc}'
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='send',
+            endpoint='codex_session',
+            event='forward_to_pane_failed',
+            error=exc,
+        )
         append_history(state, 'codex', message, marker, log_console_fn=log_console_fn)
         log_console_fn(message)
 
@@ -73,8 +92,15 @@ def log_bridge(state: BridgeRuntimeState, message: str) -> None:
     try:
         with state.paths.bridge_log.open('a', encoding='utf-8') as handle:
             handle.write(f'{timestamp_now()} {message}\n')
-    except Exception:
-        pass
+    except Exception as exc:
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='send',
+            endpoint=str(state.paths.bridge_log),
+            event='bridge_log_write_failed',
+            error=exc,
+        )
 
 
 def timestamp_now() -> str:
