@@ -12,8 +12,8 @@ from provider_core.fifo_delivery import (
     DeliveryResult,
     spool_payload,
     wait_for_ack,
-    write_fifo_line,
 )
+from provider_core.transport import create_transport, endpoint_for_fifo_path
 
 from .common import ensure_session_health, remember_log_hint
 
@@ -36,7 +36,7 @@ def send_message(comm, content: str) -> tuple[str, dict[str, Any]]:
         # body in a spool file and send a small pointer line instead.
         spool_file = spool_payload(fifo_path.parent / "spool", marker, line)
         line = json.dumps({"marker": marker, "spool": str(spool_file)}, ensure_ascii=False)
-    write_fifo_line(fifo_path, line)
+    create_transport(endpoint_for_fifo_path(fifo_path)).send_line(line)
     return marker, state
 
 

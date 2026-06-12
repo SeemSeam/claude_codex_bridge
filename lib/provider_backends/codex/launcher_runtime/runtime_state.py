@@ -20,6 +20,12 @@ def prepare_runtime(runtime_dir: Path) -> dict[str, object]:
 
 
 def ensure_fifo(path: Path, mode: int) -> None:
+    if not hasattr(os, 'mkfifo'):
+        # Windows has no FIFOs; the transport layer falls back to an inbox
+        # directory next to the would-be FIFO (provider_core.transport.
+        # SpoolDirTransport), so nothing must exist at the FIFO path itself.
+        path.parent.joinpath('inbox').mkdir(parents=True, exist_ok=True)
+        return
     if path.exists():
         if stat.S_ISFIFO(path.stat().st_mode):
             return
