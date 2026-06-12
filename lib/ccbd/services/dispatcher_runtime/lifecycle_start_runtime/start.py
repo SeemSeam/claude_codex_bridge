@@ -53,7 +53,10 @@ def start_running_job(
         sync_runtime(dispatcher, running.agent_name, state=AgentState.BUSY)
     submission = None
     if dispatcher._execution_service is not None and should_start_execution(dispatcher, running, runtime_context):
-        submission = dispatcher._execution_service.start(running, runtime_context=runtime_context)
+        submission = dispatcher._execution_service.start(
+            with_cancel_flag_notice(dispatcher, running),
+            runtime_context=runtime_context,
+        )
     if is_reply_delivery_job(running) and dispatcher._execution_service is not None:
         return complete_reply_delivery_after_start(
             dispatcher,
@@ -62,6 +65,28 @@ def start_running_job(
             submission=submission,
         )
     return running
+
+
+def with_cancel_flag_notice(dispatcher, running: JobRecord) -> JobRecord:
+    """Append the cancel-flag protocol note to the prompt handed to execution.
+
+    Only the in-memory copy passed to the execution service is modified; the
+    stored job/message records keep the original body.
+    """
+    if running.target_kind is not TargetKind.AGENT or not running.agent_name:
+        return running
+    if is_reply_delivery_job(running):
+        return running
+    try:
+        flag_path = cancel_flag_path(dispatcher._layout, running.agent_name, running.job_id)
+    except Exception:
+        return running
+    notice = (
+        "\n\n[ccb] Before each work step, check whether the file "
+        f"`{flag_path}` exists. If it does, this task has been cancelled: "
+        "stop immediately, reply with CANCELLED, and wait for new instructions."
+    )
+    return replace(running, request=replace(running.request, body=running.request.body + notice))
 
 
 def should_start_execution(dispatcher, current: JobRecord, runtime_context) -> bool:

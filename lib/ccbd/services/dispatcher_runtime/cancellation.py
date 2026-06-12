@@ -6,6 +6,7 @@ from agents.models import AgentState
 from ccbd.api_models import CancelReceipt, JobStatus, TargetKind
 from completion.models import CompletionConfidence, CompletionDecision, CompletionStatus
 
+from .cancel_flags import cleanup_cancel_flags, write_cancel_flag
 from .completion import build_terminal_state
 from .finalization_runtime.artifacts import spill_terminal_reply_if_needed
 from .reply_delivery import resolve_reply_delivery_terminal
@@ -32,6 +33,11 @@ def cancel_job(dispatcher, job_id: str, *, record_reply: bool = True) -> CancelR
     marked = replace(current, cancel_requested_at=cancelled_at, updated_at=cancelled_at)
     dispatcher._append_job(marked)
     dispatcher._append_event(marked, 'job_cancel_requested', {'status': current.status.value}, timestamp=cancelled_at)
+    if current.target_kind is TargetKind.AGENT and current.agent_name:
+        # Visible to the agent itself: the dispatch prompt instructs agents to
+        # check this flag between steps and stop if it exists.
+        write_cancel_flag(dispatcher._layout, current.agent_name, job_id)
+        cleanup_cancel_flags(dispatcher._layout, current.agent_name)
     dispatcher._state.remove_queued_for(current.target_kind, current.target_name, job_id)
     dispatcher._state.clear_active_for(current.target_kind, current.target_name, job_id=job_id)
     if dispatcher._execution_service is not None:
