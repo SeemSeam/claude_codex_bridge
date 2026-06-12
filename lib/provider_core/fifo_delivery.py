@@ -9,10 +9,22 @@ raises ``CommDeliveryError`` instead of failing silently.
 
 from __future__ import annotations
 
+import enum
 import errno
 import os
 import time
 from pathlib import Path
+
+
+class DeliveryResult(enum.Enum):
+    """Outcome of a send; truthy unless the write itself failed."""
+
+    DELIVERED = "delivered"      # receiver confirmed reading the message
+    UNCONFIRMED = "unconfirmed"  # written, but no read confirmation in time
+    FAILED = "failed"            # could not be written at all
+
+    def __bool__(self) -> bool:
+        return self is not DeliveryResult.FAILED
 
 # Writes up to PIPE_BUF bytes are atomic on a FIFO; POSIX guarantees >= 512,
 # Linux/macOS use 4096+. Lines longer than this must go through a spool file.
@@ -77,6 +89,55 @@ def write_fifo_line(
     ) from last_error
 
 
+def ack_file_path(ack_dir: Path, marker: str) -> Path:
+    return ack_dir / f"{marker}.ack"
+
+
+def write_ack(ack_dir: Path, marker: str) -> None:
+    """Atomically record that a message was read; best-effort, never raises."""
+    try:
+        ack_dir.mkdir(parents=True, exist_ok=True)
+        target = ack_file_path(ack_dir, marker)
+        tmp = target.with_suffix(".ack.tmp")
+        tmp.write_text(str(time.time()), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        pass
+
+
+def wait_for_ack(ack_dir: Path, marker: str, *, timeout: float = 5.0) -> bool:
+    """Poll for the receiver's read confirmation; True if it appears in time."""
+    target = ack_file_path(ack_dir, marker)
+    deadline = time.monotonic() + timeout
+    interval = 0.05
+    while True:
+        if target.exists():
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(interval, remaining))
+        interval = min(interval * 1.5, 0.5)
+
+
+def cleanup_acks(ack_dir: Path, *, max_age_seconds: float = 86_400.0) -> None:
+    """Drop stale ack files; best-effort, never raises."""
+    try:
+        cutoff = time.time() - max_age_seconds
+        for entry in ack_dir.glob("*.ack"):
+            try:
+                if entry.stat().st_mtime < cutoff:
+                    entry.unlink()
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+
 def spool_payload(spool_dir: Path, marker: str, payload_json: str) -> Path:
     """Atomically persist an oversized payload; returns the spool file path."""
     spool_dir.mkdir(parents=True, exist_ok=True)
@@ -87,4 +148,14 @@ def spool_payload(spool_dir: Path, marker: str, payload_json: str) -> Path:
     return target
 
 
-__all__ = ["CommDeliveryError", "PIPE_ATOMIC_LIMIT", "spool_payload", "write_fifo_line"]
+__all__ = [
+    "CommDeliveryError",
+    "DeliveryResult",
+    "PIPE_ATOMIC_LIMIT",
+    "ack_file_path",
+    "cleanup_acks",
+    "spool_payload",
+    "wait_for_ack",
+    "write_ack",
+    "write_fifo_line",
+]

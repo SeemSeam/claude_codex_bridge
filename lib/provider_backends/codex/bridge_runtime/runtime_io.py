@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from provider_core.comm_logging import get_comm_logger, log_comm_event
+from provider_core.fifo_delivery import write_ack
 from provider_core.runtime_specs import provider_marker_prefix
 
 from .runtime_state import BridgeRuntimeState
@@ -203,6 +204,9 @@ def process_request(
 ) -> None:
     content = payload.get('content', '')
     marker = payload.get('marker') or generate_marker()
+    # Confirm receipt before doing any work so the sender's ack wait is not
+    # coupled to how long the pane forward takes.
+    write_ack(state.paths.runtime_dir / 'acks', marker)
     timestamp = timestamp_now()
     log_bridge(
         state,

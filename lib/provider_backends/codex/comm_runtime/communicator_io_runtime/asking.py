@@ -7,7 +7,13 @@ from typing import Any
 from pathlib import Path
 
 from provider_core.comm_logging import get_comm_logger, log_comm_event
-from provider_core.fifo_delivery import PIPE_ATOMIC_LIMIT, spool_payload, write_fifo_line
+from provider_core.fifo_delivery import (
+    PIPE_ATOMIC_LIMIT,
+    DeliveryResult,
+    spool_payload,
+    wait_for_ack,
+    write_fifo_line,
+)
 
 from .common import ensure_session_health, remember_log_hint
 
@@ -34,14 +40,11 @@ def send_message(comm, content: str) -> tuple[str, dict[str, Any]]:
     return marker, state
 
 
-def ask_async(comm, question: str) -> bool:
+def ask_async(comm, question: str) -> DeliveryResult:
     try:
         ensure_session_health(comm)
         marker, state = comm._send_message(question)
         remember_log_hint(comm, state)
-        print(f"📤 Written to Codex, delivery unconfirmed (marker: {marker[:12]}...)")
-        print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
-        return True
     except Exception as exc:
         log_comm_event(
             _logger,
@@ -52,7 +55,28 @@ def ask_async(comm, question: str) -> bool:
             error=exc,
         )
         print(f"❌ Send failed: {exc}")
-        return False
+        return DeliveryResult.FAILED
+
+    input_fifo = getattr(comm, "input_fifo", None)
+    if not input_fifo:
+        print(f"📤 Written to Codex, delivery unconfirmed (marker: {marker[:12]}...)")
+        return DeliveryResult.UNCONFIRMED
+    ack_dir = Path(input_fifo).parent / "acks"
+    if wait_for_ack(ack_dir, marker):
+        print(f"✅ Delivered to Codex (marker: {marker[:12]}...)")
+        result = DeliveryResult.DELIVERED
+    else:
+        log_comm_event(
+            _logger,
+            provider='codex',
+            direction='send',
+            endpoint=str(comm.input_fifo),
+            event='ack_timeout',
+        )
+        print(f"⚠️ Written but unconfirmed — receiver may be busy (marker: {marker[:12]}...)")
+        result = DeliveryResult.UNCONFIRMED
+    print("Hint: `ccb pend <agent|job_id>` is only a supplementary observer view, not an authoritative completion path")
+    return result
 
 
 __all__ = ["ask_async", "send_message"]

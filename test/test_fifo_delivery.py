@@ -12,7 +12,11 @@ from provider_backends.codex.bridge_runtime.runtime_io import PersistentFifoRead
 from provider_core.fifo_delivery import (
     CommDeliveryError,
     PIPE_ATOMIC_LIMIT,
+    ack_file_path,
+    cleanup_acks,
     spool_payload,
+    wait_for_ack,
+    write_ack,
     write_fifo_line,
 )
 
@@ -56,6 +60,44 @@ def test_spool_roundtrip(tmp_path):
     spool_file = spool_payload(tmp_path / "spool", "m-big", payload)
     assert spool_file.exists()
     assert json.loads(spool_file.read_text(encoding="utf-8"))["marker"] == "m-big"
+
+
+def test_ack_roundtrip(tmp_path):
+    ack_dir = tmp_path / "acks"
+    write_ack(ack_dir, "m-1")
+    assert wait_for_ack(ack_dir, "m-1", timeout=1.0)
+    # consumed: a second wait for the same marker must time out
+    assert not wait_for_ack(ack_dir, "m-1", timeout=0.2)
+
+
+def test_wait_for_ack_times_out_when_never_written(tmp_path):
+    start = time.monotonic()
+    assert not wait_for_ack(tmp_path / "acks", "m-none", timeout=0.3)
+    assert time.monotonic() - start < 1.0
+
+
+def test_ack_appearing_mid_wait_is_seen(tmp_path):
+    import threading
+
+    ack_dir = tmp_path / "acks"
+
+    def late_ack():
+        time.sleep(0.2)
+        write_ack(ack_dir, "m-late")
+
+    threading.Thread(target=late_ack).start()
+    assert wait_for_ack(ack_dir, "m-late", timeout=3.0)
+
+
+def test_cleanup_acks_removes_only_stale_files(tmp_path):
+    ack_dir = tmp_path / "acks"
+    write_ack(ack_dir, "m-old")
+    write_ack(ack_dir, "m-new")
+    old = ack_file_path(ack_dir, "m-old")
+    os.utime(old, (time.time() - 100_000, time.time() - 100_000))
+    cleanup_acks(ack_dir)
+    assert not old.exists()
+    assert ack_file_path(ack_dir, "m-new").exists()
 
 
 def test_large_message_via_spool_pointer_reaches_reader(fifo_path, tmp_path):

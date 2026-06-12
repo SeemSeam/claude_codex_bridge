@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from provider_core.fifo_delivery import cleanup_acks
+
 from .env import env_float
 from .runtime_io import process_request, read_request
 from .runtime_state import build_bridge_runtime_state
@@ -59,6 +61,7 @@ class DualBridge:
 
     def run(self) -> int:
         self._log_console('Codex bridge started, waiting for Claude commands...')
+        cleanup_acks(self._runtime.paths.runtime_dir / 'acks')
         self.binding_tracker.start()
         idle_sleep = env_float('CCB_BRIDGE_IDLE_SLEEP', 0.05)
         error_backoff_min = env_float('CCB_BRIDGE_ERROR_BACKOFF_MIN', 0.05)
