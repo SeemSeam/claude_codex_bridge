@@ -308,6 +308,7 @@ validate_temporary_install_scope() {
 }
 
 SCRIPTS_TO_LINK=(
+  bin/_ccb-python
   bin/ask
   bin/autonew
   bin/build-ccb-agent-sidebar
@@ -1207,8 +1208,8 @@ read_installed_version() {
     echo "$build_info_version"
     return
   fi
-  if [[ -f "$INSTALL_PREFIX/ccb" ]]; then
-    sed -n 's/^VERSION[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb" | head -1
+  if [[ -f "$INSTALL_PREFIX/ccb.py" ]]; then
+    sed -n 's/^VERSION[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb.py" | head -1
   fi
 }
 
@@ -1312,8 +1313,8 @@ write_install_metadata() {
   local version commit date build_time installed_at platform_name arch_name channel source_kind install_mode
   local install_user_id install_user_name sudo_user root_install_json install_user_id_json
   version="$(resolve_install_version)"
-  commit="$(read_embedded_assignment "$INSTALL_PREFIX/ccb" "GIT_COMMIT")"
-  date="$(read_embedded_assignment "$INSTALL_PREFIX/ccb" "GIT_DATE")"
+  commit="$(read_embedded_assignment "$INSTALL_PREFIX/ccb.py" "GIT_COMMIT")"
+  date="$(read_embedded_assignment "$INSTALL_PREFIX/ccb.py" "GIT_DATE")"
   if [[ -z "$commit" ]]; then
     commit="$(read_source_build_info_field "commit")"
   fi
@@ -1563,9 +1564,9 @@ copy_project() {
   fi
 
   # Method 4: From embedded package metadata
-  if [[ -z "$git_commit" && -f "$INSTALL_PREFIX/ccb" ]]; then
-    git_commit=$(sed -n 's/^GIT_COMMIT = "\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb" | head -1)
-    git_date=$(sed -n 's/^GIT_DATE = "\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb" | head -1)
+  if [[ -z "$git_commit" && -f "$INSTALL_PREFIX/ccb.py" ]]; then
+    git_commit=$(sed -n 's/^GIT_COMMIT = "\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb.py" | head -1)
+    git_date=$(sed -n 's/^GIT_DATE = "\(.*\)"/\1/p' "$INSTALL_PREFIX/ccb.py" | head -1)
   fi
 
   # Method 5: From GitHub API (fallback)
@@ -1578,10 +1579,10 @@ copy_project() {
     fi
   fi
 
-  if [[ -n "$git_commit" && -f "$INSTALL_PREFIX/ccb" ]]; then
-    sed -i.bak "s/^GIT_COMMIT = .*/GIT_COMMIT = \"$git_commit\"/" "$INSTALL_PREFIX/ccb"
-    sed -i.bak "s/^GIT_DATE = .*/GIT_DATE = \"$git_date\"/" "$INSTALL_PREFIX/ccb"
-    rm -f "$INSTALL_PREFIX/ccb.bak"
+  if [[ -n "$git_commit" && -f "$INSTALL_PREFIX/ccb.py" ]]; then
+    sed -i.bak "s/^GIT_COMMIT = .*/GIT_COMMIT = \"$git_commit\"/" "$INSTALL_PREFIX/ccb.py"
+    sed -i.bak "s/^GIT_DATE = .*/GIT_DATE = \"$git_date\"/" "$INSTALL_PREFIX/ccb.py"
+    rm -f "$INSTALL_PREFIX/ccb.py.bak"
   fi
 }
 
@@ -1771,6 +1772,50 @@ is_python_entrypoint() {
   [[ "$first_line" == '#!'*python* ]]
 }
 
+# Detects the new bash-launcher form (#!/usr/bin/env bash + exec ".../_ccb-python" ...)
+# that wraps a sibling .py body. These are present at the top-level (ccb -> ccb.py)
+# and under bin/ (ask -> bin/ask.py, etc).
+is_ccb_launcher_entrypoint() {
+  local source_path="$1"
+  [[ -f "$source_path" ]] || return 1
+  local first_line=""
+  IFS= read -r first_line < "$source_path" || true
+  [[ "$first_line" == '#!'*bash* ]] || return 1
+  grep -q '_ccb-python' "$source_path" 2>/dev/null
+}
+
+# Resolve the .py body name a launcher targets, e.g. "ask" for bin/ask -> ask.py.
+ccb_launcher_target_name() {
+  local source_path="$1"
+  basename "$source_path"
+}
+
+write_ccb_launcher_release_wrapper() {
+  local source_path="$1"
+  local destination_path="$2"
+  local target_name
+  target_name="$(ccb_launcher_target_name "$source_path")"
+  local body_name="$target_name.py"
+  local launcher_path body_path
+  if [[ "$source_path" == */bin/* ]]; then
+    launcher_path="$INSTALL_PREFIX/bin/_ccb-python"
+    body_path="$INSTALL_PREFIX/bin/$body_name"
+  else
+    launcher_path="$INSTALL_PREFIX/bin/_ccb-python"
+    body_path="$INSTALL_PREFIX/$body_name"
+  fi
+  mkdir -p "$(dirname "$destination_path")"
+  clear_installed_path "$destination_path"
+  cat > "$destination_path" <<EOF
+#!/usr/bin/env bash
+if [[ "\${TERM:-}" == "xterm-ghostty" ]]; then
+  export TERM=xterm-256color
+fi
+exec "$launcher_path" "$body_path" "\$@"
+EOF
+  chmod +x "$destination_path" 2>/dev/null || true
+}
+
 install_entrypoint_executable() {
   local source_path="$1"
   local destination_path="$2"
@@ -1784,6 +1829,19 @@ install_entrypoint_executable() {
   if [[ "$absolute_source" != /* ]]; then
     absolute_source="$(cd "$(dirname "$source_path")" && pwd)/$(basename "$source_path")"
   fi
+
+  # New-form launchers (bash, exec _ccb-python <name>.py): under live source we
+  # symlink straight back so the launcher resolves the source tree itself; under
+  # release install we emit a wrapper pinned to INSTALL_PREFIX paths.
+  if is_ccb_launcher_entrypoint "$absolute_source"; then
+    if install_uses_live_source; then
+      install_owned_executable "$source_path" "$destination_path"
+      return 0
+    fi
+    write_ccb_launcher_release_wrapper "$absolute_source" "$destination_path"
+    return 0
+  fi
+
   if ! is_python_entrypoint "$absolute_source"; then
     install_owned_executable "$source_path" "$destination_path"
     return 0

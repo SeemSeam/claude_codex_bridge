@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
-SOURCE_CCB = SCRIPT_ROOT / "ccb"
+SOURCE_CCB = SCRIPT_ROOT / "ccb.py"
 
 
 def _is_diagnose(argv: list[str]) -> bool:

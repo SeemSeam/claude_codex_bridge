@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# _ccb-python — resolve a Python interpreter usable by CCB and exec a target script.
+#
+# Resolution order:
+#   1. $CCB_PYTHON (when set, validated; lets parent CCB processes pin the choice for children)
+#   2. cache file at $CCB_PYTHON_CACHE (default: $HOME/.ccb/state/python-bin), validated
+#   3. probe candidate names (python3.13/3.12/3.11/python3) via PATH plus a few
+#      well-known absolute prefixes; pick the first that imports tomllib successfully.
+#
+# Validation requires Python >= 3.11 (so stdlib tomllib is available, matching
+# what CCB's rich TOML config loader needs).
+#
+# Usage:
+#   _ccb-python --resolve            print the chosen interpreter path
+#   _ccb-python <script> [args...]   exec the chosen interpreter on <script>
+
+set -u
+
+_ccb_python_validate() {
+  local candidate="$1"
+  [[ -n "$candidate" ]] || return 1
+  command -v -- "$candidate" >/dev/null 2>&1 || [[ -x "$candidate" ]] || return 1
+  "$candidate" - <<'PY' >/dev/null 2>&1
+import sys
+if sys.version_info < (3, 11):
+    raise SystemExit(1)
+import tomllib  # noqa: F401
+PY
+}
+
+_ccb_python_cache_path() {
+  if [[ -n "${CCB_PYTHON_CACHE:-}" ]]; then
+    printf '%s\n' "$CCB_PYTHON_CACHE"
+    return
+  fi
+  local home="${HOME:-}"
+  if [[ -z "$home" ]]; then
+    printf ''
+    return
+  fi
+  printf '%s\n' "$home/.ccb/state/python-bin"
+}
+
+_ccb_python_write_cache() {
+  local path="$1"
+  local cache_path
+  cache_path="$(_ccb_python_cache_path)"
+  [[ -n "$cache_path" ]] || return 0
+  local cache_dir
+  cache_dir="$(dirname "$cache_path")"
+  mkdir -p "$cache_dir" 2>/dev/null || return 0
+  printf '%s\n' "$path" > "$cache_path" 2>/dev/null || true
+}
+
+_ccb_python_probe() {
+  local candidates=(
+    python3.13
+    python3.12
+    python3.11
+    python3
+    /opt/homebrew/bin/python3.13
+    /opt/homebrew/bin/python3.12
+    /opt/homebrew/bin/python3.11
+    /opt/homebrew/bin/python3
+    /usr/local/bin/python3.13
+    /usr/local/bin/python3.12
+    /usr/local/bin/python3.11
+    /usr/local/bin/python3
+    /usr/bin/python3
+  )
+  local seen_path=""
+  local cand resolved
+  for cand in "${candidates[@]}"; do
+    if [[ "$cand" == /* ]]; then
+      resolved="$cand"
+    else
+      resolved="$(command -v -- "$cand" 2>/dev/null || true)"
+      [[ -n "$resolved" ]] || continue
+    fi
+    case ":$seen_path:" in
+      *":$resolved:"*) continue ;;
+    esac
+    seen_path="$seen_path:$resolved"
+    if _ccb_python_validate "$resolved"; then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_ccb_python_resolve() {
+  local cached
+  if [[ -n "${CCB_PYTHON:-}" ]] && _ccb_python_validate "$CCB_PYTHON"; then
+    printf '%s\n' "$CCB_PYTHON"
+    return 0
+  fi
+  cached="$(_ccb_python_cache_path)"
+  if [[ -n "$cached" && -f "$cached" ]]; then
+    local cached_value
+    cached_value="$(head -n1 "$cached" 2>/dev/null || true)"
+    if [[ -n "$cached_value" ]] && _ccb_python_validate "$cached_value"; then
+      printf '%s\n' "$cached_value"
+      return 0
+    fi
+  fi
+  local probed
+  if probed="$(_ccb_python_probe)"; then
+    _ccb_python_write_cache "$probed"
+    printf '%s\n' "$probed"
+    return 0
+  fi
+  return 1
+}
+
+_ccb_python_die_no_interpreter() {
+  cat >&2 <<'EOF'
+ccb: cannot find a Python interpreter compatible with CCB.
+     Required: Python >= 3.11 (with stdlib `tomllib`).
+     Tried: python3.13, python3.12, python3.11, python3, plus standard /opt/homebrew and /usr/local prefixes.
+     Set CCB_PYTHON=/absolute/path/to/python3.11 to override, or install Python 3.11+:
+       macOS:  brew install python@3.11
+       Debian: sudo apt-get install python3.11
+EOF
+  exit 127
+}
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: _ccb-python --resolve | _ccb-python <script> [args...]" >&2
+  exit 64
+fi
+
+CCB_RESOLVED_PYTHON="$(_ccb_python_resolve)" || _ccb_python_die_no_interpreter
+export CCB_PYTHON="$CCB_RESOLVED_PYTHON"
+
+if [[ "$1" == "--resolve" ]]; then
+  printf '%s\n' "$CCB_RESOLVED_PYTHON"
+  exit 0
+fi
+
+target="$1"
+shift
+exec "$CCB_RESOLVED_PYTHON" "$target" "$@"

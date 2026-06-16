@@ -22,7 +22,7 @@ class _TtyInput(StringIO):
 
 def _release_install(tmp_path: Path, *, version: str = "6.0.10") -> Path:
     (tmp_path / "install.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-    (tmp_path / "ccb").write_text(
+    (tmp_path / "ccb.py").write_text(
         f'#!/usr/bin/env python3\nVERSION = "{version}"\nGIT_COMMIT = "abc1234"\nGIT_DATE = "2026-04-24"\n',
         encoding="utf-8",
     )
@@ -62,7 +62,7 @@ def _fresh_update_state(*, current: str = "6.0.10", latest: str = "6.0.11") -> d
 
 def _source_install(tmp_path: Path, *, version: str = "6.0.10") -> Path:
     (tmp_path / "install.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-    (tmp_path / "ccb").write_text(
+    (tmp_path / "ccb.py").write_text(
         f'#!/usr/bin/env python3\nVERSION = "{version}"\nGIT_COMMIT = "abc1234"\nGIT_DATE = "2026-04-24"\n',
         encoding="utf-8",
     )
@@ -274,7 +274,7 @@ def test_schedule_background_update_refresh_creates_lock_and_spawns_internal_com
     assert startup_update_runtime.schedule_background_update_refresh(script_root=install_dir, install_dir=install_dir) is True
     assert captured["command"] == [
         startup_update_refresh.sys.executable,
-        str(install_dir / "ccb"),
+        str(install_dir / "ccb.py"),
         startup_update_runtime.BACKGROUND_REFRESH_COMMAND,
     ]
     assert startup_update_runtime.update_check_lock_path(install_dir).exists()

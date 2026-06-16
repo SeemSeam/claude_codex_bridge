@@ -28,7 +28,7 @@ def test_provider_activity_hook_writes_codex_active_snapshot(tmp_path: Path) -> 
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / 'bin' / 'ccb-provider-activity-hook'),
+            str(project_root / 'bin' / 'ccb-provider-activity-hook.py'),
             '--provider',
             'codex',
             '--project-id',
@@ -66,7 +66,7 @@ def test_provider_activity_hook_maps_claude_waiting_notification(tmp_path: Path)
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / 'bin' / 'ccb-provider-activity-hook'),
+            str(project_root / 'bin' / 'ccb-provider-activity-hook.py'),
             '--provider',
             'claude',
             '--project-id',
@@ -95,7 +95,7 @@ def test_provider_activity_hook_exits_zero_without_writing_on_malformed_payload(
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / 'bin' / 'ccb-provider-activity-hook'),
+            str(project_root / 'bin' / 'ccb-provider-activity-hook.py'),
             '--provider',
             'codex',
             '--project-id',
@@ -131,7 +131,7 @@ def test_provider_activity_hook_maps_error_payload_to_failed_without_secret(tmp_
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / 'bin' / 'ccb-provider-activity-hook'),
+            str(project_root / 'bin' / 'ccb-provider-activity-hook.py'),
             '--provider',
             'codex',
             '--project-id',

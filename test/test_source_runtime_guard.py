@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CCB = REPO_ROOT / "ccb"
+CCB = REPO_ROOT / "ccb.py"
 CCB_TEST = REPO_ROOT / "ccb_test"
 
 

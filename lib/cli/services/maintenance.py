@@ -1123,7 +1123,7 @@ def _runner_env() -> dict[str, str]:
 
 
 def _spawn_maintenance_runner(context: CliContext, *, runner_id: str, source: str) -> subprocess.Popen:
-    script = _script_root() / 'ccb'
+    script = _script_root() / 'ccb.py'
     context.paths.ccbd_maintenance_heartbeat_dir.mkdir(parents=True, exist_ok=True)
     stdout_log = open(context.paths.ccbd_maintenance_heartbeat_dir / 'runner.stdout.log', 'ab')
     stderr_log = open(context.paths.ccbd_maintenance_heartbeat_dir / 'runner.stderr.log', 'ab')

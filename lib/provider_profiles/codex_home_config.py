@@ -783,7 +783,7 @@ def _codex_activity_hook_command(
     runtime_dir: Path,
     workspace_path: Path,
 ) -> str:
-    script_path = Path(__file__).resolve().parents[2] / 'bin' / 'ccb-provider-activity-hook'
+    script_path = Path(__file__).resolve().parents[2] / 'bin' / 'ccb-provider-activity-hook.py'
     parts = [
         sys.executable,
         str(script_path),

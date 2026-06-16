@@ -124,7 +124,7 @@ def _spawn_background_refresh(*, script_root: Path, install_dir: Path, lock_path
     env["CCB_UPDATE_REFRESH_LOCK"] = str(lock_path)
     env["CCB_SKIP_STARTUP_UPDATE_CHECK"] = "1"
     subprocess.Popen(
-        [sys.executable, str(Path(script_root) / "ccb"), BACKGROUND_REFRESH_COMMAND],
+        [sys.executable, str(Path(script_root) / "ccb.py"), BACKGROUND_REFRESH_COMMAND],
         cwd=str(install_dir),
         env=env,
         stdin=subprocess.DEVNULL,

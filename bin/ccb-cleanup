@@ -1,17 +1,10 @@
-#!/usr/bin/env python3
-
-from __future__ import annotations
-
-import sys
-
-
-def main() -> int:
-    print(
-        "error: standalone ccb-cleanup was removed; use `ccb kill --zombies` for global cleanup or `ccb kill` inside a project",
-        file=sys.stderr,
-    )
-    return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+#!/usr/bin/env bash
+# ccb-cleanup — bash launcher: resolve symlink, pick a CCB-compatible Python, exec ccb-cleanup.py
+src="${BASH_SOURCE[0]}"
+while [[ -L "$src" ]]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$src")" && pwd)"
+exec "$SCRIPT_DIR/_ccb-python" "$SCRIPT_DIR/ccb-cleanup.py" "$@"

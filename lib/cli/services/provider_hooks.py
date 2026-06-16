@@ -45,7 +45,7 @@ def prepare_workspace_provider_hooks(
         return None
     command = build_hook_command(
         provider=normalized,
-        script_path=Path(__file__).resolve().parents[3] / 'bin' / 'ccb-provider-finish-hook',
+        script_path=Path(__file__).resolve().parents[3] / 'bin' / 'ccb-provider-finish-hook.py',
         python_executable=sys.executable,
         completion_dir=completion_dir,
         agent_name=agent_name,
@@ -61,7 +61,7 @@ def prepare_workspace_provider_hooks(
     if normalized == 'claude' and project_id and runtime_dir is not None:
         activity_command = build_activity_hook_command(
             provider=normalized,
-            script_path=Path(__file__).resolve().parents[3] / 'bin' / 'ccb-provider-activity-hook',
+            script_path=Path(__file__).resolve().parents[3] / 'bin' / 'ccb-provider-activity-hook.py',
             python_executable=sys.executable,
             project_id=project_id,
             agent_name=agent_name,

@@ -23,7 +23,7 @@ def _repo_root() -> Path:
 def _run_ccb(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     return subprocess.run(
-        [sys.executable, str(_repo_root() / 'ccb'), *args],
+        [sys.executable, str(_repo_root() / 'ccb.py'), *args],
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,

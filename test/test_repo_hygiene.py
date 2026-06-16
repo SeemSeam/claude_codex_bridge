@@ -160,7 +160,7 @@ def test_public_readme_routes_config_work_to_ccb_self() -> None:
 
 def test_source_checkout_runtime_discipline_is_enforced_by_entrypoints() -> None:
     repo_root = Path(__file__).resolve().parents[1]
-    source_entrypoint = (repo_root / "ccb").read_text(encoding="utf-8")
+    source_entrypoint = (repo_root / "ccb.py").read_text(encoding="utf-8")
     test_entrypoint = (repo_root / "ccb_test").read_text(encoding="utf-8")
 
     for text in (source_entrypoint, test_entrypoint):

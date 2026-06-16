@@ -93,7 +93,7 @@ def prompt_for_startup_update(
 def relaunch_after_update(tokens: list[str], *, script_root: Path, cwd: Path, env: dict[str, str]) -> int:
     child_env = dict(env)
     child_env["CCB_SKIP_STARTUP_UPDATE_CHECK"] = "1"
-    command = [sys.executable, str(Path(script_root) / "ccb"), *list(tokens)]
+    command = [sys.executable, str(Path(script_root) / "ccb.py"), *list(tokens)]
     return subprocess.run(command, cwd=str(cwd), env=child_env).returncode
 
 

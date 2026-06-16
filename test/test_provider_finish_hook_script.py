@@ -26,7 +26,7 @@ def test_provider_finish_hook_writes_claude_completion_event(tmp_path: Path) -> 
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "claude",
             "--completion-dir",
@@ -103,7 +103,7 @@ def test_provider_finish_hook_marks_empty_claude_reply_incomplete(tmp_path: Path
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "claude",
             "--completion-dir",
@@ -167,7 +167,7 @@ def test_provider_finish_hook_uses_outer_claude_req_id_when_body_mentions_old_re
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "claude",
             "--completion-dir",
@@ -242,7 +242,7 @@ def test_provider_finish_hook_ignores_later_claude_tool_result_req_id(tmp_path: 
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "claude",
             "--completion-dir",
@@ -343,7 +343,7 @@ def test_provider_finish_hook_ignores_claude_scheduled_task_after_stale_ccb_prom
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "claude",
             "--completion-dir",
@@ -384,7 +384,7 @@ def test_provider_finish_hook_writes_gemini_failed_event_for_login_required_resp
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "gemini",
             "--completion-dir",
@@ -432,7 +432,7 @@ def test_provider_finish_hook_accepts_job_id_anchor_from_prompt(tmp_path: Path) 
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "gemini",
             "--completion-dir",
@@ -473,7 +473,7 @@ def test_provider_finish_hook_marks_empty_gemini_reply_incomplete(tmp_path: Path
     proc = subprocess.run(
         [
             sys.executable,
-            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            str(project_root / "bin" / "ccb-provider-finish-hook.py"),
             "--provider",
             "gemini",
             "--completion-dir",

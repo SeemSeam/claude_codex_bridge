@@ -38,7 +38,7 @@ def _run_ccb(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         if name.startswith(('CCB_CALLER_', 'CODEX_', 'CLAUDE_', 'GEMINI_', 'OPENCODE_', 'DROID_')):
             env.pop(name, None)
     return subprocess.run(
-        [sys.executable, str(_repo_root() / 'ccb'), *args],
+        [sys.executable, str(_repo_root() / 'ccb.py'), *args],
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,

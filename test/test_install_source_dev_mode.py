@@ -89,18 +89,13 @@ def test_source_dev_install_links_live_bin_and_ask_skill_asset(tmp_path: Path) -
     bin_dir = tmp_path / "bin"
     ccb_path = bin_dir / "ccb"
     assert ccb_path.exists()
-    assert not ccb_path.is_symlink()
-    ccb_wrapper = ccb_path.read_text(encoding="utf-8")
-    assert ccb_wrapper.startswith("#!/usr/bin/env bash")
-    assert _python310_executable() in ccb_wrapper
-    assert str(REPO_ROOT / "ccb") in ccb_wrapper
+    assert ccb_path.is_symlink()
+    assert ccb_path.resolve() == (REPO_ROOT / "ccb").resolve()
 
     ask_path = bin_dir / "ask"
     assert ask_path.exists()
-    assert not ask_path.is_symlink()
-    ask_wrapper = ask_path.read_text(encoding="utf-8")
-    assert _python310_executable() in ask_wrapper
-    assert str(REPO_ROOT / "bin" / "ask") in ask_wrapper
+    assert ask_path.is_symlink()
+    assert ask_path.resolve() == (REPO_ROOT / "bin" / "ask").resolve()
 
     ask_skill_md = tmp_path / "codex-home" / "skills" / "ask" / "SKILL.md"
     assert ask_skill_md.is_file()
