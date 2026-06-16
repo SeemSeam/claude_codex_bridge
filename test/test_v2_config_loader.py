@@ -278,7 +278,7 @@ def test_load_project_config_uses_builtin_default_when_project_config_is_missing
     assert config.cmd_enabled is False
     assert config.windows_explicit is True
     assert config.entry_window == 'main'
-    assert [window.name for window in config.windows] == ['main']
+    assert [window.name for window in config.windows] == ['main', 'ccb_self']
     assert [tool.name for tool in config.tool_windows] == ['neovim']
     assert config.tool_windows[0].command == 'ccb-nvim'
     loaded = load_project_config(project_root)
@@ -289,14 +289,14 @@ def test_load_project_config_uses_builtin_default_when_project_config_is_missing
     assert loaded.config.cmd_enabled is False
     assert loaded.config.windows_explicit is True
     assert loaded.config.entry_window == 'main'
-    assert [window.name for window in loaded.config.windows] == ['main']
+    assert [window.name for window in loaded.config.windows] == ['main', 'ccb_self']
     assert [tool.name for tool in loaded.config.tool_windows] == ['neovim']
     assert loaded.config.tool_windows[0].command == 'ccb-nvim'
     assert set(loaded.config.agents) == {'agent1', 'agent2', 'agent3', 'ccb_self'}
     assert loaded.config.agents['agent1'].provider == 'codex'
     assert loaded.config.agents['agent2'].provider == 'codex'
     assert loaded.config.agents['agent3'].provider == 'claude'
-    assert loaded.config.agents['ccb_self'].provider == 'codex'
+    assert loaded.config.agents['ccb_self'].provider == 'claude'
     assert loaded.config.agents['ccb_self'].role == 'agentroles.ccb_self'
     assert loaded.config.agents['agent1'].workspace_mode is WorkspaceMode.INPLACE
     assert loaded.config.agents['agent1'].runtime_mode is RuntimeMode.PANE_BACKED
@@ -308,7 +308,8 @@ def test_render_default_project_config_text_includes_neovim_tool_window(tmp_path
     rendered = render_default_project_config_text()
 
     assert '[windows]' in rendered
-    assert 'main = "agent1:codex, agent2:codex, agent3:claude, ccb_self:codex"' in rendered
+    assert 'main = "agent1:codex, agent2:codex, agent3:claude"' in rendered
+    assert 'ccb_self = "ccb_self:claude"' in rendered
     assert '[agents.ccb_self]' in rendered
     assert 'role = "agentroles.ccb_self"' in rendered
     assert '[tool_windows.neovim]' in rendered
