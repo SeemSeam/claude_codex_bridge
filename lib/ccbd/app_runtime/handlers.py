@@ -1,36 +1,24 @@
 from __future__ import annotations
 
+import importlib
 import threading
 
-from ccbd.handlers import (
-    build_ack_handler,
-    build_attach_handler,
-    build_cancel_handler,
-    build_comms_recover_handler,
-    build_get_handler,
-    build_inbox_handler,
-    build_mailbox_head_handler,
-    build_ping_handler,
-    build_project_focus_agent_handler,
-    build_project_focus_window_handler,
-    build_project_sidebar_click_handler,
-    build_project_clear_context_handler,
-    build_project_reload_config_handler,
-    build_project_restart_agent_handler,
-    build_project_restart_panes_handler,
-    build_project_view_dismiss_comms_handler,
-    build_project_view_handler,
-    build_queue_handler,
-    build_resubmit_handler,
-    build_restore_handler,
-    build_retry_handler,
-    build_shutdown_handler,
-    build_start_handler,
-    build_stop_all_handler,
-    build_submit_handler,
-    build_trace_handler,
-    build_watch_handler,
-)
+
+def _lazy_handler(module_name: str, builder_name: str, *builder_args, **builder_kwargs):
+    """Return a handler callable that imports and builds the real handler on first use."""
+    builder = None
+    handler = None
+
+    def handle(payload: dict) -> dict:
+        nonlocal builder, handler
+        if handler is None:
+            if builder is None:
+                mod = importlib.import_module(f'ccbd.handlers.{module_name}')
+                builder = getattr(mod, builder_name)
+            handler = builder(*builder_args, **builder_kwargs)
+        return handler(payload)
+
+    return handle
 
 
 def register_handlers(app) -> None:
@@ -42,74 +30,126 @@ def register_handlers(app) -> None:
     runtime_service = _GraphServiceProxy(graph_source, 'runtime_service')
     ping_graph = _GraphPingDependencies(graph_source)
 
-    app.socket_server.register_handler('submit', _graph_request(graph_source, build_submit_handler(dispatcher)))
+    app.socket_server.register_handler(
+        'submit', _graph_request(graph_source, _lazy_handler('submit', 'build_submit_handler', dispatcher))
+    )
     app.socket_server.register_handler(
         'get',
-        _graph_request(graph_source, build_get_handler(dispatcher, health_monitor=health_monitor)),
+        _graph_request(
+            graph_source,
+            _lazy_handler('get', 'build_get_handler', dispatcher, health_monitor=health_monitor),
+        ),
     )
     app.socket_server.register_handler(
         'watch',
-        _graph_request(graph_source, build_watch_handler(dispatcher, health_monitor=health_monitor)),
+        _graph_request(
+            graph_source,
+            _lazy_handler('watch', 'build_watch_handler', dispatcher, health_monitor=health_monitor),
+        ),
     )
-    app.socket_server.register_handler('queue', _graph_request(graph_source, build_queue_handler(dispatcher)))
-    app.socket_server.register_handler('trace', _graph_request(graph_source, build_trace_handler(dispatcher)))
-    app.socket_server.register_handler('resubmit', _graph_request(graph_source, build_resubmit_handler(dispatcher)))
-    app.socket_server.register_handler('retry', _graph_request(graph_source, build_retry_handler(dispatcher)))
+    app.socket_server.register_handler(
+        'queue', _graph_request(graph_source, _lazy_handler('queue', 'build_queue_handler', dispatcher))
+    )
+    app.socket_server.register_handler(
+        'trace', _graph_request(graph_source, _lazy_handler('trace', 'build_trace_handler', dispatcher))
+    )
+    app.socket_server.register_handler(
+        'resubmit', _graph_request(graph_source, _lazy_handler('resubmit', 'build_resubmit_handler', dispatcher))
+    )
+    app.socket_server.register_handler(
+        'retry', _graph_request(graph_source, _lazy_handler('retry', 'build_retry_handler', dispatcher))
+    )
     app.socket_server.register_handler(
         'comms_recover',
-        _graph_request(graph_source, build_comms_recover_handler(dispatcher)),
+        _graph_request(graph_source, _lazy_handler('comms_recover', 'build_comms_recover_handler', dispatcher)),
     )
-    app.socket_server.register_handler('inbox', _graph_request(graph_source, build_inbox_handler(dispatcher)))
+    app.socket_server.register_handler(
+        'inbox', _graph_request(graph_source, _lazy_handler('inbox', 'build_inbox_handler', dispatcher))
+    )
     app.socket_server.register_handler(
         'mailbox_head',
-        _graph_request(graph_source, build_mailbox_head_handler(dispatcher)),
+        _graph_request(graph_source, _lazy_handler('mailbox_head', 'build_mailbox_head_handler', dispatcher)),
     )
-    app.socket_server.register_handler('ack', _graph_request(graph_source, build_ack_handler(dispatcher)))
-    app.socket_server.register_handler('cancel', _graph_request(graph_source, build_cancel_handler(dispatcher)))
+    app.socket_server.register_handler(
+        'ack', _graph_request(graph_source, _lazy_handler('ack', 'build_ack_handler', dispatcher))
+    )
+    app.socket_server.register_handler(
+        'cancel', _graph_request(graph_source, _lazy_handler('cancel', 'build_cancel_handler', dispatcher))
+    )
     app.socket_server.register_handler(
         'project_view',
-        _graph_request(graph_source, build_project_view_handler(project_view_service)),
+        _graph_request(graph_source, _lazy_handler('project_view', 'build_project_view_handler', project_view_service)),
     )
     app.socket_server.register_handler(
         'project_view_dismiss_comms',
-        build_project_view_dismiss_comms_handler(app.project_view_state_store),
+        _lazy_handler(
+            'project_view', 'build_project_view_dismiss_comms_handler', app.project_view_state_store
+        ),
     )
     app.socket_server.register_handler(
         'project_focus_window',
-        _graph_request(graph_source, build_project_focus_window_handler(project_focus_service)),
+        _graph_request(
+            graph_source,
+            _lazy_handler('project_focus', 'build_project_focus_window_handler', project_focus_service),
+        ),
     )
     app.socket_server.register_handler(
         'project_focus_agent',
-        _graph_request(graph_source, build_project_focus_agent_handler(project_focus_service)),
+        _graph_request(
+            graph_source,
+            _lazy_handler('project_focus', 'build_project_focus_agent_handler', project_focus_service),
+        ),
     )
     app.socket_server.register_handler(
         'project_sidebar_click',
         _graph_request(
             graph_source,
-            build_project_sidebar_click_handler(project_view_service, project_focus_service),
+            _lazy_handler(
+                'project_focus',
+                'build_project_sidebar_click_handler',
+                project_view_service,
+                project_focus_service,
+            ),
         ),
     )
     app.socket_server.register_handler(
         'project_restart_panes',
-        _graph_request(graph_source, build_project_restart_panes_handler(_GraphAppProxy(app, graph_source))),
+        _graph_request(
+            graph_source,
+            _lazy_handler(
+                'project_restart', 'build_project_restart_panes_handler', _GraphAppProxy(app, graph_source)
+            ),
+        ),
     )
     app.socket_server.register_handler(
         'project_restart_agent',
-        _graph_request(graph_source, build_project_restart_agent_handler(_GraphAppProxy(app, graph_source))),
+        _graph_request(
+            graph_source,
+            _lazy_handler(
+                'project_restart', 'build_project_restart_agent_handler', _GraphAppProxy(app, graph_source)
+            ),
+        ),
     )
     app.socket_server.register_handler(
         'project_clear_context',
-        _graph_request(graph_source, build_project_clear_context_handler(_GraphAppProxy(app, graph_source))),
+        _graph_request(
+            graph_source,
+            _lazy_handler(
+                'project_clear', 'build_project_clear_context_handler', _GraphAppProxy(app, graph_source)
+            ),
+        ),
     )
     app.socket_server.register_handler(
         'project_reload_config',
-        build_project_reload_config_handler(app, graph_source.current),
+        _lazy_handler('project_reload', 'build_project_reload_config_handler', app, graph_source.current),
     )
     app.socket_server.register_handler(
         'ping',
         _graph_request(
             graph_source,
-            build_ping_handler(
+            _lazy_handler(
+                'ping',
+                'build_ping_handler',
                 project_id=app.project_id,
                 config=ping_graph,
                 paths=app.paths,
@@ -125,11 +165,15 @@ def register_handlers(app) -> None:
             ),
         ),
     )
-    app.socket_server.register_handler('attach', _graph_request(graph_source, build_attach_handler(runtime_service)))
-    app.socket_server.register_handler('start', build_start_handler(app))
-    app.socket_server.register_handler('restore', _graph_request(graph_source, build_restore_handler(runtime_service)))
-    app.socket_server.register_handler('stop-all', build_stop_all_handler(app))
-    app.socket_server.register_handler('shutdown', build_shutdown_handler(app))
+    app.socket_server.register_handler(
+        'attach', _graph_request(graph_source, _lazy_handler('attach', 'build_attach_handler', runtime_service))
+    )
+    app.socket_server.register_handler('start', _lazy_handler('start', 'build_start_handler', app))
+    app.socket_server.register_handler(
+        'restore', _graph_request(graph_source, _lazy_handler('restore', 'build_restore_handler', runtime_service))
+    )
+    app.socket_server.register_handler('stop-all', _lazy_handler('stop_all', 'build_stop_all_handler', app))
+    app.socket_server.register_handler('shutdown', _lazy_handler('shutdown', 'build_shutdown_handler', app))
 
 
 class _GraphSource:

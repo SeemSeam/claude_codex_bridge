@@ -45,11 +45,13 @@ def build_default_provider_catalog(
     *,
     include_optional: bool = True,
     include_test_doubles: bool = True,
+    providers: set[str] | None = None,
 ) -> ProviderCatalog:
     return ProviderCatalog(
         manifests=build_default_provider_manifests(
             include_optional=include_optional,
             include_test_doubles=include_test_doubles,
+            providers=providers,
         )
     )
 

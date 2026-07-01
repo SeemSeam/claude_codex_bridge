@@ -58,7 +58,10 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.daemon_instance_id = uuid.uuid4().hex
     app.start_maintenance_lock = threading.Lock()
     app._service_graph_publish_lock = threading.Lock()
-    app.provider_catalog = build_default_provider_catalog()
+    _configured_providers = frozenset(
+        str(spec.provider or '').strip().lower() for spec in config.agents.values()
+    )
+    app.provider_catalog = build_default_provider_catalog(providers=_configured_providers)
     app.mount_manager = MountManager(app.paths, clock=app.clock)
     app.lifecycle_store = CcbdLifecycleStore(app.paths)
     app.restore_report_store = CcbdRestoreReportStore(app.paths)
@@ -73,7 +76,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.restore_store = AgentRestoreStore(app.paths)
     app.project_namespace = ProjectNamespaceController(app.paths, app.project_id, clock=app.clock)
     app.snapshot_writer = SnapshotWriter(app.paths, clock=app.clock)
-    app.execution_registry = build_default_execution_registry()
+    app.execution_registry = build_default_execution_registry(providers=_configured_providers)
     app.fault_injection = FaultInjectionService(app.paths, clock=app.clock)
     app.execution_service = ExecutionService(
         app.execution_registry,
@@ -112,6 +115,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
             mount_missing_runtime_fn=lambda agent_name: app._mount_missing_runtime_requested(agent_name),
             supervision_suspended_fn=lambda: lifecycle_is_stopping(_safe_load_lifecycle(app)),
             version=1,
+            providers=_configured_providers,
         )
     )
     publish_ccbd_service_graph(app, service_graph)

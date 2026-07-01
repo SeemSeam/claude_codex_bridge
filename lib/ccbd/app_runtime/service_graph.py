@@ -11,6 +11,7 @@ from ccbd.services import AgentRegistry, HealthMonitor, JobDispatcher, RuntimeSe
 from ccbd.supervision import RuntimeSupervisionLoop
 from ccbd.supervisor import RuntimeSupervisor
 from completion.tracker import CompletionTrackerService
+from provider_core.registry import build_default_session_binding_map
 
 SERVICE_GRAPH_RETAINED_COUNT_SCOPE = 'published_graph_count_not_inflight_retention'
 
@@ -69,16 +70,19 @@ class CcbdServiceGraphDependencies:
     supervision_suspended_fn: Callable[[], bool] | None = None
     version: int = 1
     created_at: str | None = None
+    providers: frozenset[str] | None = None
 
 
 def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceGraph:
     config_identity = project_config_identity_payload(deps.config)
     registry = AgentRegistry(deps.paths, deps.config)
+    session_bindings = build_default_session_binding_map(providers=deps.providers)
     runtime_service = RuntimeService(
         deps.paths,
         registry,
         deps.project_id,
         deps.restore_store,
+        session_bindings=session_bindings,
         daemon_generation_getter=deps.daemon_generation_getter,
         clock=deps.clock,
     )
@@ -160,6 +164,7 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         lifecycle_store=deps.lifecycle_store,
         runtime_service=runtime_service,
         clock=deps.clock,
+        session_bindings=session_bindings,
         namespace_state_store=deps.namespace_state_store,
     )
     return CcbdServiceGraph(

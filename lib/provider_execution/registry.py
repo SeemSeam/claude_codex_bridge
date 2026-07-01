@@ -33,10 +33,12 @@ def build_default_execution_registry(
     *,
     include_optional: bool = True,
     include_test_doubles: bool = True,
+    providers: set[str] | None = None,
 ) -> ProviderExecutionRegistry:
     return ProviderExecutionRegistry(
         build_default_execution_adapters(
             include_optional=include_optional,
             include_test_doubles=include_test_doubles,
+            providers=providers,
         )
     )

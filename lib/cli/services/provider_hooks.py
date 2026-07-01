@@ -7,21 +7,12 @@ import sys
 
 from agents.models import RuntimeMode
 from provider_core.source_home import current_provider_source_home
-from provider_backends.claude.launcher_runtime.binary_cache import route_claude_binary_cache
-from provider_backends.claude.launcher_runtime import materialize_claude_home_config, resolve_claude_home_layout
-from provider_backends.codex.launcher_runtime import resolve_codex_home_layout
-from provider_backends.droid.home import materialize_droid_home_config
-from provider_backends.gemini.launcher_runtime.home import materialize_gemini_home_config
-from provider_backends.kimi.skills import materialize_kimi_skills
-from provider_backends.mimo.launcher import materialize_mimo_memory_config
-from provider_backends.opencode.launcher import materialize_opencode_memory_config
 from provider_hooks.settings import (
     build_activity_hook_command,
     build_hook_command,
     install_workspace_activity_hooks,
     install_workspace_completion_hooks,
 )
-from provider_profiles.codex_home_config import materialize_codex_home_config
 from provider_profiles import (
     ResolvedProviderProfile,
     load_resolved_provider_profile,
@@ -165,6 +156,11 @@ def _materialize_provider_home(
 ) -> None:
     provider = str(spec.provider or '').strip().lower()
     if provider == 'claude':
+        from provider_backends.claude.launcher_runtime import (
+            materialize_claude_home_config,
+            resolve_claude_home_layout,
+        )
+
         home_root = resolve_claude_home_layout(runtime_dir, resolved_profile).home_root
         materialize_claude_home_config(
             home_root,
@@ -189,6 +185,9 @@ def _materialize_provider_home(
         )
         return
     if provider == 'codex':
+        from provider_backends.codex.launcher_runtime import resolve_codex_home_layout
+        from provider_profiles.codex_home_config import materialize_codex_home_config
+
         materialize_codex_home_config(
             resolve_codex_home_layout(runtime_dir, resolved_profile).codex_home,
             profile=resolved_profile,
@@ -201,12 +200,16 @@ def _materialize_provider_home(
         )
         return
     if provider == 'droid':
+        from provider_backends.droid.home import materialize_droid_home_config
+
         materialize_droid_home_config(
             layout.agent_provider_state_dir(spec.name, 'droid') / 'home',
             profile=resolved_profile,
         )
         return
     if provider == 'opencode':
+        from provider_backends.opencode.launcher import materialize_opencode_memory_config
+
         materialize_opencode_memory_config(
             project_root=layout.project_root,
             agent_name=spec.name,
@@ -218,6 +221,8 @@ def _materialize_provider_home(
         )
         return
     if provider == 'kimi':
+        from provider_backends.kimi.skills import materialize_kimi_skills
+
         materialize_kimi_skills(
             project_root=layout.project_root,
             agent_name=spec.name,
@@ -226,6 +231,8 @@ def _materialize_provider_home(
         )
         return
     if provider == 'mimo':
+        from provider_backends.mimo.launcher import materialize_mimo_memory_config
+
         materialize_mimo_memory_config(
             project_root=layout.project_root,
             agent_name=spec.name,
@@ -237,6 +244,8 @@ def _materialize_provider_home(
         )
         return
     if provider == 'gemini':
+        from provider_backends.gemini.launcher_runtime.home import materialize_gemini_home_config
+
         materialize_gemini_home_config(
             resolve_gemini_home_root(
                 layout=layout,
@@ -262,6 +271,8 @@ def provider_hook_home_root(
 ) -> Path | None:
     provider = str(spec.provider or '').strip().lower()
     if provider == 'claude':
+        from provider_backends.claude.launcher_runtime import resolve_claude_home_layout
+
         return resolve_claude_home_layout(runtime_dir, resolved_profile).home_root
     if provider == 'gemini':
         return resolve_gemini_home_root(
@@ -315,6 +326,8 @@ def _route_claude_binary_cache_if_possible(*, layout, home_root: Path) -> None:
         cache_root = layout.ensure_provider_external_cache_dir('claude')
     except Exception:
         return
+    from provider_backends.claude.launcher_runtime.binary_cache import route_claude_binary_cache
+
     route_claude_binary_cache(home_root, cache_root, source_home=current_provider_source_home())
 
 

@@ -16,7 +16,6 @@ from ccbd.project_focus.tmux import backend_for_namespace, refresh_sidebar_panes
 from ccbd.services.dispatcher_runtime import comms_recoverability_for_job
 from ccbd.system import parse_utc_timestamp, utc_now
 from message_bureau import CallbackEdgeState
-from provider_backends.codex.launcher_runtime.command_runtime.home import resolve_codex_home_layout
 from provider_pane_status.codex_pane import parse_codex_pane_status
 from provider_pane_status.codex_session import CodexRuntimeStatus, compose_codex_runtime_status, read_codex_session_status
 from storage.paths import PathLayout
@@ -697,6 +696,10 @@ def _codex_session_root(
         return None
     try:
         runtime_dir = Path(runtime_dir_resolver(agent_name, provider))
+        from provider_backends.codex.launcher_runtime.command_runtime.home import (
+            resolve_codex_home_layout,
+        )
+
         return resolve_codex_home_layout(runtime_dir, provider_profile).session_root
     except Exception:
         return None
