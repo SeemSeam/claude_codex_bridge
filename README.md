@@ -780,6 +780,18 @@ v7 highlights:
 </details>
 
 <details>
+<summary><b>Unreleased</b> - Empty-Reply Diagnostics Split</summary>
+
+- Splits the generic `incomplete/task_complete_empty_reply` completion reason
+  into `model_empty_output`, `delivery_late_empty`, and `api_empty_after_error`
+  so senders can see why the recipient produced no reply.
+- Adds `empty_reply_reason` diagnostics to the empty-reply decision payload.
+- Surfaces `api_error_seen` in Codex `TURN_BOUNDARY` payloads when an `api_error`
+  event is observed during the turn.
+
+</details>
+
+<details>
 <summary><b>v8.0.6</b> - CCB Mobile Real Project Chat Stabilization</summary>
 
 - Improves Android CCB Mobile real-project pane-native chat, status recovery,

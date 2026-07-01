@@ -114,9 +114,10 @@ def test_completion_tracker_marks_empty_protocol_boundary_incomplete() -> None:
 
     assert terminal.decision.terminal is True
     assert terminal.decision.status is CompletionStatus.INCOMPLETE
-    assert terminal.decision.reason == 'task_complete_empty_reply'
+    assert terminal.decision.reason == 'delivery_late_empty'
     assert terminal.decision.reply == ''
     assert terminal.decision.diagnostics['empty_reply'] is True
+    assert terminal.decision.diagnostics['empty_reply_reason'] == 'delivery_late_empty'
     assert terminal.decision.diagnostics['error_type'] == 'empty_provider_reply'
 
 

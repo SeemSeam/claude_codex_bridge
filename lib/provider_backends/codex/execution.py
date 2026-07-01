@@ -69,6 +69,7 @@ class CodexProviderAdapter:
             'last_assistant_message': submission.runtime_state.get('last_assistant_message'),
             'last_assistant_signature': submission.runtime_state.get('last_assistant_signature'),
             'session_path': submission.runtime_state.get('session_path'),
+            'api_error_seen': submission.runtime_state.get('api_error_seen'),
             'workspace_path': submission.runtime_state.get('workspace_path'),
             'delivery_state': submission.runtime_state.get('delivery_state'),
             'delivery_started_at': submission.runtime_state.get('delivery_started_at'),

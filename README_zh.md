@@ -752,6 +752,19 @@ v7 线重点：
 </details>
 
 <details>
+<summary><b>Unreleased</b> - 空回复诊断细化</summary>
+
+- 将泛化的 `incomplete/task_complete_empty_reply` 完成原因拆分为
+  `model_empty_output`（模型无输出）、`delivery_late_empty`（未看到请求
+  anchor 就收到 turn boundary，说明 prompt 未投递或 reader 绑定到旧日志）、
+  `api_empty_after_error`（turn 内出现 api_error 后空完成）。
+- 在空回复决策的 diagnostics 中新增 `empty_reply_reason`。
+- Codex provider 在 turn 内观察到 `api_error` 事件时，会在
+  `TURN_BOUNDARY` payload 中带上 `api_error_seen: true`。
+
+</details>
+
+<details>
 <summary><b>v8.0.6</b> - CCB Mobile 真实项目对话稳定性</summary>
 
 - 改进 Android CCB Mobile 真实项目 pane-native 对话、状态恢复、

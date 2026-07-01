@@ -61,8 +61,20 @@ def process_entry_batch(submission, poll, entries, *, now: str) -> None:
             break
 
 
+def _is_api_error_entry(entry: dict[str, object]) -> bool:
+    if str(entry.get("type") or "").strip().lower() != "event_msg":
+        return False
+    payload = entry.get("payload") or {}
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("type") or "").strip().lower() == "api_error"
+
+
 def process_entry(submission, poll, entry, *, now: str) -> None:
     update_binding_refs(poll, entry)
+    if _is_api_error_entry(entry):
+        poll.api_error_seen = True
+        return
     role = str(entry.get("role") or "").strip().lower()
     if role == "user":
         handle_user_entry(submission, poll, text=str(entry.get("text") or ""), now=now)

@@ -76,6 +76,7 @@ def task_complete_payload(poll: CodexPollState) -> dict[str, object]:
     payload: dict[str, object] = {
         "reason": "task_complete",
         "last_agent_message": selected_reply(poll),
+        "api_error_seen": poll.api_error_seen,
     }
     add_binding_payload(payload, poll)
     return payload

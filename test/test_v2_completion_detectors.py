@@ -63,7 +63,7 @@ def test_protocol_turn_detector_waits_for_turn_boundary() -> None:
     assert decision.reply == 'done'
 
 
-def test_protocol_turn_detector_marks_empty_task_complete_incomplete() -> None:
+def test_protocol_turn_detector_marks_empty_task_complete_as_model_empty_output() -> None:
     detector = ProtocolTurnDetector()
     detector.bind(_ctx(), _cursor(0))
     detector.ingest(_item(CompletionItemKind.ANCHOR_SEEN, 1, '2026-03-18T00:00:01Z'))
@@ -79,17 +79,59 @@ def test_protocol_turn_detector_marks_empty_task_complete_incomplete() -> None:
     decision = detector.decision()
     assert decision.terminal is True
     assert decision.status is CompletionStatus.INCOMPLETE
-    assert decision.reason == 'task_complete_empty_reply'
+    assert decision.reason == 'model_empty_output'
     assert decision.confidence is CompletionConfidence.EXACT
     assert decision.reply == ''
     assert decision.provider_turn_ref == 'turn-empty'
     assert decision.diagnostics['provider_terminal_reason'] == 'task_complete'
     assert decision.diagnostics['empty_reply'] is True
+    assert decision.diagnostics['empty_reply_reason'] == 'model_empty_output'
     assert decision.diagnostics['error_type'] == 'empty_provider_reply'
     assert 'without assistant reply text' in decision.diagnostics['diagnosis']
 
 
-def test_session_boundary_detector_marks_empty_boundary_incomplete() -> None:
+def test_protocol_turn_detector_marks_empty_boundary_before_anchor_as_delivery_late_empty() -> None:
+    detector = ProtocolTurnDetector()
+    detector.bind(_ctx(), _cursor(0))
+    detector.ingest(
+        _item(
+            CompletionItemKind.TURN_BOUNDARY,
+            1,
+            '2026-03-18T00:00:01Z',
+            {'reason': 'task_complete', 'turn_id': 'turn-empty'},
+        )
+    )
+
+    decision = detector.decision()
+    assert decision.terminal is True
+    assert decision.status is CompletionStatus.INCOMPLETE
+    assert decision.reason == 'delivery_late_empty'
+    assert decision.diagnostics['empty_reply_reason'] == 'delivery_late_empty'
+    assert 'before the request anchor was observed' in decision.diagnostics['diagnosis']
+
+
+def test_protocol_turn_detector_marks_empty_boundary_after_api_error_as_api_empty_after_error() -> None:
+    detector = ProtocolTurnDetector()
+    detector.bind(_ctx(), _cursor(0))
+    detector.ingest(_item(CompletionItemKind.ANCHOR_SEEN, 1, '2026-03-18T00:00:01Z'))
+    detector.ingest(
+        _item(
+            CompletionItemKind.TURN_BOUNDARY,
+            2,
+            '2026-03-18T00:00:02Z',
+            {'reason': 'task_complete', 'turn_id': 'turn-empty', 'api_error_seen': True},
+        )
+    )
+
+    decision = detector.decision()
+    assert decision.terminal is True
+    assert decision.status is CompletionStatus.INCOMPLETE
+    assert decision.reason == 'api_empty_after_error'
+    assert decision.diagnostics['empty_reply_reason'] == 'api_empty_after_error'
+    assert 'API error' in decision.diagnostics['diagnosis']
+
+
+def test_session_boundary_detector_marks_empty_boundary_as_model_empty_output() -> None:
     detector = SessionBoundaryDetector()
     detector.bind(_ctx(), _cursor(0))
     detector.ingest(_item(CompletionItemKind.ANCHOR_SEEN, 1, '2026-03-18T00:00:01Z'))
@@ -105,12 +147,13 @@ def test_session_boundary_detector_marks_empty_boundary_incomplete() -> None:
     decision = detector.decision()
     assert decision.terminal is True
     assert decision.status is CompletionStatus.INCOMPLETE
-    assert decision.reason == 'task_complete_empty_reply'
+    assert decision.reason == 'model_empty_output'
     assert decision.confidence is CompletionConfidence.OBSERVED
     assert decision.reply == ''
     assert decision.provider_turn_ref == 'turn-empty'
     assert decision.diagnostics['provider_terminal_reason'] == 'assistant_end_turn'
     assert decision.diagnostics['empty_reply'] is True
+    assert decision.diagnostics['empty_reply_reason'] == 'model_empty_output'
     assert decision.diagnostics['error_type'] == 'empty_provider_reply'
     assert 'without assistant reply text' in decision.diagnostics['diagnosis']
 

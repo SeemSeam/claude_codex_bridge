@@ -30,6 +30,7 @@ def finalize_poll_result(
         "last_assistant_message": poll.last_assistant_message,
         "last_assistant_signature": poll.last_assistant_signature,
         "session_path": poll.session_path,
+        "api_error_seen": poll.api_error_seen,
     }
     if poll.anchor_seen and str(runtime_state.get("delivery_state") or "") == "pending_anchor":
         runtime_state["delivery_state"] = "accepted"

@@ -21,6 +21,7 @@ class CodexPollState:
     last_assistant_message: str
     last_assistant_signature: str
     session_path: str
+    api_error_seen: bool = False
     items: list[CompletionItem] = field(default_factory=list)
     reached_terminal: bool = False
 
@@ -40,6 +41,7 @@ def build_poll_state(submission: ProviderSubmission) -> CodexPollState:
         last_assistant_message=str(submission.runtime_state.get("last_assistant_message") or ""),
         last_assistant_signature=str(submission.runtime_state.get("last_assistant_signature") or ""),
         session_path=str(submission.runtime_state.get("session_path") or ""),
+        api_error_seen=bool(submission.runtime_state.get("api_error_seen", False)),
     )
 
 
@@ -74,6 +76,7 @@ def apply_session_rotation(
     poll.last_final_answer = ""
     poll.last_assistant_message = ""
     poll.last_assistant_signature = ""
+    poll.api_error_seen = False
 
 
 __all__ = [
