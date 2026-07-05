@@ -26,6 +26,8 @@ from cli.services.config_validate import validate_config_context
 from cli.services.doctor import doctor_summary
 from cli.services.doctor_storage import doctor_storage_summary
 from cli.services.diagnostics import export_diagnostic_bundle
+from cli.services.identity import identity_summary
+from cli.services.probe import probe_summary
 from cli.services.fault import arm_fault_rule, clear_fault_rule, list_fault_rules
 from cli.services.inbox import inbox_target
 from cli.services.daemon import KillSummary
@@ -159,6 +161,8 @@ def _dispatch_services():
         doctor_summary=doctor_summary,
         doctor_storage_summary=doctor_storage_summary,
         exit_code_for_ask_status=exit_code_for_ask_status,
+        identity_summary=identity_summary,
+        probe_summary=probe_summary,
         export_diagnostic_bundle=export_diagnostic_bundle,
         inbox_target=inbox_target,
         kill_project=kill_project,

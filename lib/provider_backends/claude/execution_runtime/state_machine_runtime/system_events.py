@@ -83,6 +83,12 @@ def handle_system_event(
                 "retry_attempt": api_error.get("retry_attempt"),
                 "max_retries": api_error.get("max_retries"),
                 "error_type": "provider_api_error",
+                "no_reply_reason": "provider_api_error",
+                "no_reply_detail": {
+                    "event_reason": "api_error",
+                    "error_code": api_error.get("error_code"),
+                    "error_path": api_error.get("error_path"),
+                },
             },
         )
         updated = replace(

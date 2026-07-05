@@ -31,6 +31,7 @@ class HealthMonitor(HealthMonitorRuntimeStateMixin):
         pid_exists=process_exists,
         session_bindings=None,
         namespace_state_store=None,
+        dispatcher=None,
     ) -> None:
         self._runtime_state = HealthMonitorRuntimeState(
             registry=registry,
@@ -43,6 +44,7 @@ class HealthMonitor(HealthMonitorRuntimeStateMixin):
             session_bindings=session_bindings or build_default_session_binding_map(include_optional=True),
             namespace_state_store=namespace_state_store,
             assess_provider_pane=assess_provider_pane,
+            dispatcher=dispatcher,
         )
 
     def daemon_health(self):

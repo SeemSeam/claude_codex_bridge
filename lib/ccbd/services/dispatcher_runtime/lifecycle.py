@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from ccbd.api_models import MessageEnvelope, SubmitReceipt
-from message_bureau import AttemptState, MessageStore
+from message_bureau import AttemptState, MessageStore, ReplyStore
 
+from .failure_policy import nonretryable_provider_error_kind_from_diagnostics
 from .lifecycle_start import tick_jobs
 from .submission import (
     _append_submission_job,
@@ -71,6 +72,8 @@ def retry_attempt(dispatcher, target: str) -> dict[str, object]:
         raise dispatcher._dispatch_error(
             f'retry requires latest attempt for agent: {original_attempt.agent_name}'
         )
+
+    _raise_if_non_retryable(dispatcher, latest_attempt)
 
     message = MessageStore(dispatcher._layout).get_latest(original_attempt.message_id)
     if message is None:
@@ -162,6 +165,39 @@ def _should_retry_with_continue(job) -> bool:
         return True
     terminal = dict(job.terminal_decision or {})
     return bool(terminal.get('anchor_seen') or terminal.get('reply_started'))
+
+
+def _raise_if_non_retryable(dispatcher, attempt) -> None:
+    """Block manual retry when the attempt surfaced a non-retryable hard
+    provider error (usage-limit / auth-failed / config-error).
+
+    Wave 1 writes ``error_kind`` into the reply diagnostics; we look up the
+    latest reply for the attempt and honor the explicit kind. Mirror the
+    existing dispatch-error raise style used by the surrounding validation
+    gates.
+    """
+    diagnostics: dict[str, object] | None = None
+    try:
+        replies = ReplyStore(dispatcher._layout).list_message(attempt.message_id)
+    except Exception:
+        replies = ()
+    latest_reply = None
+    for reply in replies:
+        if reply.attempt_id == attempt.attempt_id:
+            latest_reply = reply
+            break
+    if latest_reply is not None:
+        diagnostics = dict(latest_reply.diagnostics or {})
+        decision_diagnostics = dict(diagnostics.get('decision_diagnostics') or {})
+        # Prefer the explicit decision diagnostics nested by the message bureau,
+        # but fall back to top-level fields if present.
+        merged_diagnostics = {**diagnostics, **decision_diagnostics}
+        diagnostics = merged_diagnostics
+    error_kind = nonretryable_provider_error_kind_from_diagnostics(diagnostics)
+    if error_kind is not None:
+        raise dispatcher._dispatch_error(
+            f'non-retryable: {error_kind} for attempt: {attempt.attempt_id}'
+        )
 
 
 __all__ = ['resubmit_message', 'retry_attempt', 'submit_jobs', 'tick_jobs']

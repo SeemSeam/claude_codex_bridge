@@ -10,7 +10,7 @@ from .job_views import (
     render_wait,
     render_watch_batch,
 )
-from .mailbox_views import render_ack, render_inbox, render_pend, render_queue, render_trace
+from .mailbox_views import render_ack, render_inbox, render_pend, render_queue, render_trace, render_why
 from .ops_views import (
     render_agent_lifecycle,
     render_clear,
@@ -19,6 +19,7 @@ from .ops_views import (
     render_doctor,
     render_doctor_bundle,
     render_doctor_storage,
+    render_identity,
     render_kill,
     render_layout,
     render_logs,
@@ -29,6 +30,7 @@ from .ops_views import (
     render_maintenance,
     render_mobile_serve,
     render_plan_task,
+    render_probe,
     render_ps,
     render_reload,
     render_restart,
@@ -47,6 +49,7 @@ __all__ = [
     'render_doctor_bundle',
     'render_doctor_storage',
     'render_fault_arm',
+    'render_identity',
     'render_fault_clear',
     'render_fault_list',
     'render_inbox',
@@ -60,6 +63,7 @@ __all__ = [
     'render_maintenance',
     'render_mobile_serve',
     'render_plan_task',
+    'render_probe',
     'render_mapping',
     'render_observer_notice',
     'render_pend',
@@ -73,5 +77,6 @@ __all__ = [
     'render_trace',
     'render_wait',
     'render_watch_batch',
+    'render_why',
     'write_lines',
 ]

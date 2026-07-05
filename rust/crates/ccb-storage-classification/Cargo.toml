@@ -1,0 +1,15 @@
+[package]
+name = "ccb-storage-classification"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+camino = { version = "1", features = ["serde1"] }
+ccb-storage = { path = "../ccb-storage" }
+
+[dev-dependencies]
+tempfile = "3"

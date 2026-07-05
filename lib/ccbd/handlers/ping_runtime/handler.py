@@ -62,6 +62,7 @@ def build_ping_handler(
                             registry=registry,
                             inspection=inspection,
                             execution_registry=execution_registry,
+                            provider_pane_assessment=_provider_pane_assessment_for(health_monitor, registry, name),
                         )
                         for name in registry.list_known_agents()
                     ],
@@ -72,12 +73,46 @@ def build_ping_handler(
                 registry=registry,
                 inspection=inspection,
                 execution_registry=execution_registry,
+                provider_pane_assessment=_provider_pane_assessment_for(health_monitor, registry, target),
             )
         finally:
             if metrics is not None:
                 metrics.last_ping_duration_s = max(0.0, monotonic() - started)
 
     return handle
+
+
+def _provider_pane_assessment_for(health_monitor, registry, agent_name):
+    """Best-effort fresh ProviderPaneAssessment for an agent, or None.
+
+    Uses the health monitor's wired assess_provider_pane with the monitor's
+    own registry/session_bindings/namespace_state_store. Returns None on any
+    miss (runtime not started, no session, monitor stub without the seam) so
+    ping stays healthy when pane content visibility is unavailable.
+    """
+    if health_monitor is None:
+        return None
+    assess = getattr(health_monitor, '_assess_provider_pane', None)
+    if not callable(assess):
+        return None
+    try:
+        runtime = registry.get(agent_name)
+    except Exception:
+        return None
+    if runtime is None:
+        return None
+    inner_registry = getattr(health_monitor, '_registry', None) or registry
+    session_bindings = getattr(health_monitor, '_session_bindings', None)
+    namespace_state_store = getattr(health_monitor, '_namespace_state_store', None)
+    try:
+        return assess(
+            runtime=runtime,
+            registry=inner_registry,
+            session_bindings=session_bindings,
+            namespace_state_store=namespace_state_store,
+        )
+    except Exception:
+        return None
 
 
 __all__ = ['build_ping_handler']

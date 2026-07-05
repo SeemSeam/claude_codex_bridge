@@ -9,6 +9,7 @@ from .commands import (
     parse_cleanup,
     parse_config,
     parse_doctor,
+    parse_identity,
     parse_inbox,
     parse_kill,
     parse_layout,
@@ -19,6 +20,7 @@ from .commands import (
     parse_plan,
     parse_pend,
     parse_ping,
+    parse_probe,
     parse_ps,
     parse_question,
     parse_queue,
@@ -30,6 +32,7 @@ from .commands import (
     parse_trace,
     parse_wait,
     parse_watch,
+    parse_why,
 )
 from .constants import ASK_JOB_ACTIONS, SUBCOMMANDS, WAIT_COMMAND_TO_MODE
 from .fault import parse_fault
@@ -49,6 +52,7 @@ __all__ = [
     'parse_doctor',
     'parse_fault',
     'parse_global_options',
+    'parse_identity',
     'parse_inbox',
     'parse_kill',
     'parse_layout',
@@ -59,6 +63,7 @@ __all__ = [
     'parse_plan',
     'parse_pend',
     'parse_ping',
+    'parse_probe',
     'parse_ps',
     'parse_question',
     'parse_queue',
@@ -71,4 +76,5 @@ __all__ = [
     'parse_trace',
     'parse_wait',
     'parse_watch',
+    'parse_why',
 ]

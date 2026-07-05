@@ -222,6 +222,12 @@ _COMMAND_HELP = {
         Advanced lineage view:
           ccb trace <id>   Show the full job/message/reply lineage for one id.
     """,
+    "why": """
+        usage: ccb why <job_id>
+
+        No-reply classification:
+          ccb why <job_id>   Show the no_reply_reason, description, and triage hint for a terminal job.
+    """,
     "theme": """
         usage: ccb theme [dark|light|+|-|solarized|tokyo|gruvbox|rose-pine]
 

@@ -15,6 +15,7 @@ from provider_core.source_home import current_provider_source_home
 from agents.models import AgentSpec
 from cli.context import CliContext
 from cli.models import ParsedStartCommand
+from agents.policy import should_restore_provider_history
 from provider_core.caller_env import (
     caller_context_env,
     export_env_clause,
@@ -22,6 +23,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.identity_prompt import inject_identity_args
 from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from workspace.models import WorkspacePlan
 
@@ -347,12 +349,23 @@ def build_start_cmd(
     cmd_parts = provider_start_parts('agy')
     if command.auto_permission and _YOLO_FLAG not in cmd_parts and _YOLO_FLAG not in spec.startup_args:
         cmd_parts.append(_YOLO_FLAG)
-    if command.restore and not _has_restore_arg(cmd_parts) and not _has_restore_arg(spec.startup_args):
+    if (
+        should_restore_provider_history(spec.restore_default, cli_restore=command.restore)
+        and not _has_restore_arg(cmd_parts)
+        and not _has_restore_arg(spec.startup_args)
+    ):
         resume_uuid = _resolve_resume_uuid(credential_home, prepared_state)
         if resume_uuid:
             cmd_parts.extend(['--conversation', resume_uuid])
         else:
             cmd_parts.append('--continue')
+    cmd_parts = inject_identity_args(
+        cmd_parts,
+        provider=spec.provider,
+        name=spec.name,
+        role=spec.role,
+        window=spec.name,
+    )
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)

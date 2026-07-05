@@ -15,6 +15,7 @@ from .models_mailbox import (
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 )
 from .models_start import (
     ParsedAgentCommand,
@@ -22,6 +23,7 @@ from .models_start import (
     ParsedCleanupCommand,
     ParsedConfigValidateCommand,
     ParsedDoctorCommand,
+    ParsedIdentityCommand,
     ParsedKillCommand,
     ParsedLayoutCommand,
     ParsedLogsCommand,
@@ -33,6 +35,7 @@ from .models_start import (
     ParsedMobileCommand,
     ParsedPlanTaskCommand,
     ParsedPingCommand,
+    ParsedProbeCommand,
     ParsedPsCommand,
     ParsedQuestionCommand,
     ParsedReloadCommand,
@@ -53,6 +56,7 @@ ParsedCommand = Union[
     ParsedFaultArmCommand,
     ParsedFaultClearCommand,
     ParsedFaultListCommand,
+    ParsedIdentityCommand,
     ParsedInboxCommand,
     ParsedKillCommand,
     ParsedLayoutCommand,
@@ -66,6 +70,7 @@ ParsedCommand = Union[
     ParsedPlanTaskCommand,
     ParsedPendCommand,
     ParsedPingCommand,
+    ParsedProbeCommand,
     ParsedPsCommand,
     ParsedQueueCommand,
     ParsedQuestionCommand,
@@ -77,4 +82,5 @@ ParsedCommand = Union[
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 ]

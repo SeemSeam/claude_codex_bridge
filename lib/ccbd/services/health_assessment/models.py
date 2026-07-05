@@ -10,3 +10,7 @@ class ProviderPaneAssessment:
     terminal: str | None
     pane_state: str | None
     health: str
+    pane_signal_state: str | None = None
+    pane_signal_reason: str | None = None
+    retry_after: str | None = None
+    pane_tail: str | None = None

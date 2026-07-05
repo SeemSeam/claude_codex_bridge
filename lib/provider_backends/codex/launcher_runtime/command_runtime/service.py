@@ -7,6 +7,7 @@ from typing import Callable
 
 from agents.policy import should_restore_provider_history
 from provider_core.caller_env import caller_context_env, provider_user_session_env
+from provider_core.identity_prompt import materialize_codex_identity_agents_md
 from provider_core.runtime_shared import apply_provider_command_template
 from provider_backends.codex.runtime_artifacts import codex_runtime_artifact_layout
 from provider_backends.codex.session_authority import (
@@ -41,6 +42,12 @@ def build_start_cmd(
         project_root=project_root,
         agent_name=spec.name,
         workspace_path=_path_or_none(launch_context.get('workspace_path')),
+    )
+    materialize_codex_identity_agents_md(
+        codex_home_overrides.get('CODEX_HOME'),
+        name=spec.name,
+        role=getattr(spec, 'role', None),
+        window=spec.name,
     )
     codex_args = _codex_args(
         command,

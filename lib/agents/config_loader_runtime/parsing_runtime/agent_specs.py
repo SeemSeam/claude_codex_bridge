@@ -125,6 +125,11 @@ def build_agent_spec(agent_name: str, raw: dict[str, Any]) -> AgentSpec:
                 if raw.get('dispatch_disabled') is not None
                 else False
             ),
+            account=(
+                expect_string(raw['account'], field_name=f'agents.{agent_name}.account')
+                if raw.get('account') is not None
+                else None
+            ),
         )
     except AgentValidationError as exc:
         raise ConfigValidationError(str(exc)) from exc

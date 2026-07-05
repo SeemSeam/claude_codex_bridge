@@ -58,6 +58,7 @@ class AgentSpec:
     role: str | None = None
     watch_paths: tuple[str, ...] = field(default_factory=tuple)
     dispatch_disabled: bool = False
+    account: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'name', normalize_agent_name(self.name))
@@ -95,6 +96,7 @@ class AgentSpec:
         object.__setattr__(self, 'role', self._normalize_role())
         object.__setattr__(self, 'watch_paths', tuple(str(item) for item in self.watch_paths))
         object.__setattr__(self, 'dispatch_disabled', bool(self.dispatch_disabled))
+        object.__setattr__(self, 'account', self._normalize_optional_string(self.account, field_name='account'))
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
         object.__setattr__(self, 'api', normalize_agent_api(self.api))
         object.__setattr__(self, 'provider_profile', normalize_provider_profile(self.provider_profile))
@@ -220,6 +222,7 @@ class AgentSpec:
             'role': self.role,
             'watch_paths': list(self.watch_paths),
             'dispatch_disabled': bool(self.dispatch_disabled),
+            'account': self.account,
         }
 
 

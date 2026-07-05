@@ -1,0 +1,24 @@
+[package]
+name = "ccb-mailbox"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+ccb-storage = { path = "../ccb-storage" }
+ccb-types = { path = "../ccb-types" }
+ccb-jobs = { path = "../ccb-jobs" }
+camino = { version = "1", features = ["serde1"] }
+
+[features]
+default = []
+integration-tests = []
+
+[dev-dependencies]
+tempfile = "3"

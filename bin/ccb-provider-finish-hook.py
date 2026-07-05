@@ -104,18 +104,43 @@ def _gemini_text_failure_details(text: str) -> dict[str, str] | None:
     return None
 
 
-def _empty_reply_diagnostics(*, reason: str) -> dict[str, Any]:
+def _empty_reply_diagnostics(*, reason: str, context_text: str = '') -> dict[str, Any]:
     diagnosis = (
         'Provider completion hook fired without assistant reply text; inspect '
         'the provider transcript, pane state, and authentication/API output.'
     )
-    return {
+    diagnostics = {
         'reason': reason,
         'empty_reply': True,
         'error_type': 'empty_provider_reply',
         'message': diagnosis,
         'diagnosis': diagnosis,
     }
+    error_kind = _infer_error_kind_from_text(context_text)
+    if error_kind:
+        diagnostics['error_kind'] = error_kind
+    return diagnostics
+
+
+# Marker -> error_kind mapping for content visible in the hook payload/reply.
+# These mirror the provider pane parsers' markers so an empty reply that is
+# actually a usage-limit / auth / api banner is tagged with a precise kind.
+_ERROR_KIND_MARKERS = (
+    ('provider_usage_limit', ('usage limit', 'purchase more credits', 'out of credits', 'try again at', 'quota', 'plan limit')),
+    ('provider_auth_failed', ('authentication failed', 'unauthorized', 'invalid api key', 'login required', 'not logged in')),
+    ('provider_api_error', ('rate limit', 'too many requests', 'overloaded', 'api error', 'internal server error', 'model unavailable')),
+)
+
+
+def _infer_error_kind_from_text(text: str) -> str | None:
+    normalized = str(text or '').strip().lower()
+    if not normalized:
+        return None
+    for error_kind, markers in _ERROR_KIND_MARKERS:
+        for marker in markers:
+            if marker in normalized:
+                return error_kind
+    return None
 
 
 def _gemini_event_status_and_diagnostics(payload: dict[str, Any], reply: str) -> tuple[str, dict[str, Any]]:
@@ -234,7 +259,7 @@ def _handle_claude(*, payload: dict, completion_dir: Path, agent_name: str, work
     }
     if status == 'completed' and not reply.strip():
         status = 'incomplete'
-        diagnostics.update(_empty_reply_diagnostics(reason='hook_stop_empty_reply'))
+        diagnostics.update(_empty_reply_diagnostics(reason='hook_stop_empty_reply', context_text=reply))
     write_event(
         provider='claude',
         completion_dir=completion_dir,
@@ -268,7 +293,7 @@ def _handle_gemini(*, payload: dict, completion_dir: Path, agent_name: str, work
     status, diagnostics = _gemini_event_status_and_diagnostics(payload, reply)
     if status == 'completed' and not reply:
         status = 'incomplete'
-        diagnostics.update(_empty_reply_diagnostics(reason='hook_after_agent_incomplete'))
+        diagnostics.update(_empty_reply_diagnostics(reason='hook_after_agent_incomplete', context_text=reply))
     session_id = _first_text(payload, 'session_id', 'sessionId', 'session.id') or None
     hook_event_name = _first_text(payload, 'hook_event_name') or 'AfterAgent'
     write_event(

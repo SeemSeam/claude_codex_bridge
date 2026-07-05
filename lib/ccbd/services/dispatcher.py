@@ -37,6 +37,7 @@ from provider_core.catalog import ProviderCatalog, build_default_provider_catalo
 from storage.paths import PathLayout
 
 from .dispatcher_runtime.artifact_maintenance import sweep_text_artifacts_if_due
+from .dispatcher_runtime.quota_buckets import QuotaBuckets
 from .registry import AgentRegistry
 from .snapshot_writer import SnapshotWriter
 
@@ -105,6 +106,7 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
             timing_sink=timing_sink,
             last_restore_entries=(),
             last_restore_generated_at=None,
+            quota_buckets=QuotaBuckets(clock=clock),
         )
         self._rebuild_state()
         cleanup_stale_execution_states(self)

@@ -1669,3 +1669,99 @@ def test_dispatcher_single_target_submit_without_restore_state_starts_via_tick_h
     assert runtime is not None
     assert runtime.state is AgentState.BUSY
     assert runtime.health == 'healthy'
+
+
+def test_auto_retry_skips_non_retryable_provider_error_kind(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-auto-retry-nonretryable'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _fake_config(provider='fake')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('demo', project_id=ctx.project_id, layout=layout, pid=101))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-18T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='demo',
+            from_actor='user',
+            body='hello',
+            task_id='task-1',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+
+    decision = CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.FAILED,
+        reason='api_error',
+        reply='',
+        confidence=CompletionConfidence.EXACT,
+        anchor_seen=False,
+        reply_started=False,
+        reply_stable=False,
+        provider_turn_ref=None,
+        source_cursor=CompletionCursor(source_kind=CompletionSourceKind.PROTOCOL_EVENT_STREAM),
+        diagnostics={'error_kind': 'provider_usage_limit', 'retry_after': '2026-07-01T01:00:00Z'},
+        finished_at='2026-03-18T00:00:01Z',
+    )
+    dispatcher.complete(job_id, decision)
+
+    # No automatic retry should be scheduled; the job remains the only one.
+    latest = dispatcher.latest_for_agent('demo')
+    assert latest is not None
+    assert latest.job_id == job_id
+    assert latest.status is JobStatus.FAILED
+
+
+def test_auto_retry_skips_non_retryable_provider_error_kind_on_incomplete(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-auto-retry-nonretryable-incomplete'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _fake_config(provider='fake')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('demo', project_id=ctx.project_id, layout=layout, pid=101))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-18T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='demo',
+            from_actor='user',
+            body='hello',
+            task_id='task-1',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+
+    decision = CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.INCOMPLETE,
+        reason='model_empty_output',
+        reply='',
+        confidence=CompletionConfidence.EXACT,
+        anchor_seen=False,
+        reply_started=False,
+        reply_stable=False,
+        provider_turn_ref=None,
+        source_cursor=CompletionCursor(source_kind=CompletionSourceKind.PROTOCOL_EVENT_STREAM),
+        diagnostics={'error_kind': 'provider_usage_limit', 'retry_after': '2026-07-01T01:00:00Z'},
+        finished_at='2026-03-18T00:00:01Z',
+    )
+    dispatcher.complete(job_id, decision)
+
+    # No automatic retry should be scheduled; the INCOMPLETE job remains.
+    latest = dispatcher.latest_for_agent('demo')
+    assert latest is not None
+    assert latest.job_id == job_id
+    assert latest.status is JobStatus.INCOMPLETE
+    # The usage-limit signal should degrade the provider bucket immediately.
+    assert dispatcher._quota_buckets.is_degraded('fake') is True

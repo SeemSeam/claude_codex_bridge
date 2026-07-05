@@ -394,6 +394,8 @@ def _job_record_from_record(record: dict) -> JobRecord:
         target_name=record.get('target_name', record.get('agent_name', '')),
         provider_instance=record.get('provider_instance'),
         provider_options=dict(record.get('provider_options') or {}),
+        no_reply_reason=record.get('no_reply_reason'),
+        no_reply_detail=dict(record.get('no_reply_detail') or {}),
     )
 
 

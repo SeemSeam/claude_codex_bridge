@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ccb-py-mailbox"
+version = "7.5.2"
+description = "PyO3 extension module exposing ccb-mailbox and ccb-message-bureau to Python"
+requires-python = ">=3.10"
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "ccb_py_mailbox"

@@ -13,6 +13,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.identity_prompt import materialize_kimi_identity_agents_md
 from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from provider_backends.kimi.skills import kimi_skill_dirs_for_launch
 from workspace.models import WorkspacePlan
@@ -67,6 +68,12 @@ def build_start_cmd(
 ) -> str:
     launch_context = prepared_state or {}
     runtime_dir = Path(runtime_dir)
+    materialize_kimi_identity_agents_md(
+        launch_context.get("workspace_path"),
+        name=spec.name,
+        role=getattr(spec, "role", None),
+        window=spec.name,
+    )
     cmd_parts = provider_start_parts("kimi")
     if command.auto_permission and not _has_any(cmd_parts, _AUTO_FLAGS) and not _has_any(spec.startup_args, _AUTO_FLAGS):
         cmd_parts.append(_AUTO_FLAG)

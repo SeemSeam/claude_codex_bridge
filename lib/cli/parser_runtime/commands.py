@@ -10,6 +10,7 @@ from cli.models import (
     ParsedCleanupCommand,
     ParsedConfigValidateCommand,
     ParsedDoctorCommand,
+    ParsedIdentityCommand,
     ParsedInboxCommand,
     ParsedKillCommand,
     ParsedLayoutCommand,
@@ -23,6 +24,7 @@ from cli.models import (
     ParsedPlanTaskCommand,
     ParsedPendCommand,
     ParsedPingCommand,
+    ParsedProbeCommand,
     ParsedPsCommand,
     ParsedQuestionCommand,
     ParsedQueueCommand,
@@ -33,6 +35,7 @@ from cli.models import (
     ParsedTraceCommand,
     ParsedWaitCommand,
     ParsedWatchCommand,
+    ParsedWhyCommand,
 )
 
 from .common import parse_args, require_no_extra
@@ -853,6 +856,12 @@ def parse_trace(tokens: list[str], *, project: str | None, error_type) -> Parsed
     return ParsedTraceCommand(project=project, target=tokens[0])
 
 
+def parse_why(tokens: list[str], *, project: str | None, error_type) -> ParsedWhyCommand:
+    if len(tokens) != 1:
+        raise error_type('why requires <job_id>')
+    return ParsedWhyCommand(project=project, job_id=tokens[0])
+
+
 def parse_resubmit(tokens: list[str], *, project: str | None, error_type) -> ParsedResubmitCommand:
     if len(tokens) != 1:
         raise error_type('resubmit requires <message_id>')
@@ -936,6 +945,9 @@ def parse_doctor(tokens: list[str], *, project: str | None, error_type) -> Parse
         return ParsedDoctorCommand(project=project, storage=True, json_output=bool(namespace.json_output))
     parser = argparse.ArgumentParser(prog='ccb doctor', add_help=False)
     parser.add_argument('--output', dest='output_path', nargs='?', const='', default=None)
+    parser.add_argument('--identity', dest='identity', action='store_true')
+    parser.add_argument('--deep', dest='deep', action='store_true')
+    parser.add_argument('--json', dest='json_output', action='store_true')
     try:
         namespace = parse_args(parser, tokens, error_message='invalid doctor command', error_type=error_type)
     except Exception as exc:
@@ -944,7 +956,28 @@ def parse_doctor(tokens: list[str], *, project: str | None, error_type) -> Parse
         raise
     bundle = namespace.output_path is not None
     output_path = str(namespace.output_path) if namespace.output_path else None
-    return ParsedDoctorCommand(project=project, bundle=bundle, output_path=output_path)
+    return ParsedDoctorCommand(
+        project=project,
+        bundle=bundle,
+        output_path=output_path,
+        identity=bool(namespace.identity),
+        deep=bool(namespace.deep),
+        json_output=bool(namespace.json_output),
+    )
+
+
+def parse_identity(tokens: list[str], *, project: str | None, error_type) -> ParsedIdentityCommand:
+    parser = argparse.ArgumentParser(prog='ccb identity', add_help=False)
+    parser.add_argument('--json', dest='json_output', action='store_true')
+    namespace = parse_args(parser, tokens, error_message='invalid identity command', error_type=error_type)
+    return ParsedIdentityCommand(project=project, json_output=bool(namespace.json_output))
+
+
+def parse_probe(tokens: list[str], *, project: str | None, error_type) -> ParsedProbeCommand:
+    parser = argparse.ArgumentParser(prog='ccb probe', add_help=False)
+    parser.add_argument('--json', dest='json_output', action='store_true')
+    namespace = parse_args(parser, tokens, error_message='invalid probe command', error_type=error_type)
+    return ParsedProbeCommand(project=project, json_output=bool(namespace.json_output))
 
 
 def parse_config(tokens: list[str], *, project: str | None, error_type) -> ParsedConfigValidateCommand:

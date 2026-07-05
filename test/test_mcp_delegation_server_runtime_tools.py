@@ -86,3 +86,50 @@ def test_handle_tool_call_routes_known_handlers(monkeypatch) -> None:
     assert module.handle_tool_call("ccb_pend_agent", {}, caller="agent1")["route"] == "pend"
     assert module.handle_tool_call("ccb_ping_agent", {}, caller="agent1")["route"] == "ping"
     assert module.handle_tool_call("unknown", {}, caller="agent1")["isError"] is True
+
+
+def test_roster_returns_ps_summary(monkeypatch) -> None:
+    module = _load_module()
+    fake_context = object()
+    monkeypatch.setattr(module, "build_context_for", lambda work_dir: fake_context)
+    monkeypatch.setattr(
+        module,
+        "ps_summary",
+        lambda context, command: {
+            "project_id": "proj-1",
+            "ccbd_state": "mounted",
+            "agents": [{"agent_name": "worker", "state": "running"}],
+        },
+    )
+
+    payload = module.roster({})
+    data = json.loads(payload["content"][0]["text"])
+
+    assert data["project_id"] == "proj-1"
+    assert data["agents"][0]["agent_name"] == "worker"
+
+
+def test_peer_status_returns_ping_target(monkeypatch) -> None:
+    module = _load_module()
+    fake_context = object()
+    monkeypatch.setattr(module, "build_context_for", lambda work_dir: fake_context)
+    monkeypatch.setattr(
+        module,
+        "ping_target",
+        lambda context, command: {"agent_name": "worker", "health": "ok"},
+    )
+
+    payload = module.peer_status({"agent_name": "worker"})
+    data = json.loads(payload["content"][0]["text"])
+
+    assert data["agent_name"] == "worker"
+    assert data["health"] == "ok"
+
+
+def test_handle_tool_call_routes_roster_and_peer_status(monkeypatch) -> None:
+    module = _load_module()
+    monkeypatch.setattr(module, "roster", lambda args: {"route": "roster"})
+    monkeypatch.setattr(module, "peer_status", lambda args: {"route": "peer_status"})
+
+    assert module.handle_tool_call("ccb_roster", {}, caller="agent1")["route"] == "roster"
+    assert module.handle_tool_call("ccb_peer_status", {"agent_name": "worker"}, caller="agent1")["route"] == "peer_status"

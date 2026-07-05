@@ -2,6 +2,18 @@
 resolver = "2"
 members = [
     "crates/ccb-runtime-accelerator",
+    "crates/ccb-project",
+    "crates/ccb-storage",
+    "crates/ccb-storage-classification",
+    "crates/ccb-jobs",
+    "crates/ccb-heartbeat",
+    "crates/ccb-mailbox",
+    "crates/ccb-message-bureau",
+    "crates/ccb-py-heartbeat",
+    "crates/ccb-py-mailbox",
+    "crates/ccb-types",
+    "crates/ccb-runtime-env",
+    "crates/ccb-ui-text",
 ]
 
 [workspace.package]

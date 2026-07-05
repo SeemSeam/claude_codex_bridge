@@ -31,6 +31,7 @@ class DispatcherRuntimeState:
     last_restore_generated_at: str | None = None
     last_text_artifact_sweep_at: float | None = None
     project_view_revision: int = 0
+    quota_buckets: object | None = None
 
 
 class DispatcherRuntimeStateMixin:
@@ -160,6 +161,10 @@ class DispatcherRuntimeStateMixin:
 
     def mark_project_view_dirty(self) -> None:
         self._runtime_state.project_view_revision += 1
+
+    @property
+    def _quota_buckets(self):
+        return self._runtime_state.quota_buckets
 
 
 __all__ = [

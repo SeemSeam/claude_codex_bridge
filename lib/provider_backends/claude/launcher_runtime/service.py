@@ -12,6 +12,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.identity_prompt import inject_identity_args
 from provider_core.runtime_shared import apply_provider_command_template
 
 
@@ -106,6 +107,13 @@ def build_start_cmd(
             cmd_parts.extend(['--settings', str(settings_path)])
     if command.auto_permission:
         cmd_parts.extend(['--permission-mode', 'bypassPermissions'])
+    cmd_parts = inject_identity_args(
+        cmd_parts,
+        provider='claude',
+        name=spec.name,
+        role=spec.role,
+        window=spec.name,
+    )
     if restore_target.has_history:
         cmd_parts.append('--continue')
     cmd_parts.extend(spec.startup_args)

@@ -18,6 +18,8 @@ def persist_terminal_completion(
     decision: CompletionDecision,
     *,
     finished_at: str,
+    no_reply_reason: str | None = None,
+    no_reply_detail: dict[str, object] | None = None,
 ) -> tuple[JobRecord, CompletionDecision, object | None]:
     prior_snapshot = dispatcher._snapshot_writer.load(current.job_id)
     terminal_decision = merge_terminal_decision(
@@ -48,6 +50,8 @@ def persist_terminal_completion(
         status=JobStatus(terminal_decision.status.value),
         terminal_decision=terminal_decision.to_record(),
         updated_at=finished_at,
+        no_reply_reason=no_reply_reason,
+        no_reply_detail=dict(no_reply_detail or {}),
     )
     append_job(dispatcher, terminal)
     append_event(

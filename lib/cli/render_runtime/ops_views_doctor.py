@@ -188,6 +188,15 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
         lines.append(
             f'agent: name={agent["agent_name"]} health={agent["health"]} provider={agent["provider"]} completion={agent["completion_family"]}'
         )
+        provider_health = (agent.get('diagnostics') or {}).get('provider_health')
+        if provider_health:
+            lines.append(
+                'provider_health: '
+                f'state={provider_health.get("state")} '
+                f'signal_state={provider_health.get("signal_state")} '
+                f'signal_reason={provider_health.get("signal_reason")} '
+                f'retry_after={provider_health.get("retry_after")}'
+            )
         lines.append(binding_line(agent))
         lines.append(
             f'restore: supported={agent["execution_resume_supported"]} mode={agent["execution_restore_mode"]} reason={agent["execution_restore_reason"]}'
@@ -238,6 +247,56 @@ def _format_mapping(value: object) -> str:
     if not isinstance(value, Mapping):
         return ''
     return ','.join(f'{key}={value[key]}' for key in sorted(value))
+
+
+def render_identity(payload: Mapping[str, object]) -> tuple[str, ...]:
+    lines = [
+        f'user_id: {payload.get("user_id")}',
+        f'user_name: {payload.get("user_name")}',
+        f'home: {payload.get("home")}',
+        f'root_runtime: {payload.get("root_runtime")}',
+        f'install_root_owned: {payload.get("install_root_owned")}',
+        f'install_user_id: {payload.get("install_user_id")}',
+        f'install_user_name: {payload.get("install_user_name")}',
+        f'sudo_user: {payload.get("sudo_user")}',
+        f'project_owner: {payload.get("project_owner")}',
+        f'ccb_dir_owner: {payload.get("ccb_dir_owner")}',
+        f'install_owner: {payload.get("install_owner")}',
+    ]
+    for warning in payload.get('warnings') or ():
+        lines.append(f'runtime_warning: {warning}')
+    return tuple(lines)
+
+
+def render_probe(payload: Mapping[str, object]) -> tuple[str, ...]:
+    lines = [
+        f'probe_project_id: {payload.get("project_id")}',
+    ]
+    ccbd = payload.get('ccbd') or {}
+    lines.append(f'probe_ccbd_state: {ccbd.get("state", ccbd.get("mount_state"))}')
+    lines.append(f'probe_ccbd_health: {ccbd.get("health")}')
+    lines.append(f'probe_ccbd_reason: {ccbd.get("reason")}')
+    for agent in payload.get('agents') or ():
+        name = agent.get('agent_name')
+        status = agent.get('status') or {}
+        if 'error' in agent:
+            lines.append(f'probe_agent: name={name} error={agent["error"]}')
+        else:
+            lines.append(
+                f'probe_agent: name={name} '
+                f'state={status.get("state", status.get("runtime_state", "unknown"))} '
+                f'health={status.get("health", "unknown")}'
+            )
+    requirements = payload.get('requirements') or {}
+    for provider in requirements.get('provider_commands') or ():
+        lines.append(
+            'probe_provider: '
+            f'name={provider.get("provider")} '
+            f'executable={provider.get("executable")} '
+            f'available={provider.get("available")} '
+            f'path={provider.get("path")}'
+        )
+    return tuple(lines)
 
 
 def render_doctor_storage(payload: Mapping[str, object]) -> tuple[str, ...]:
@@ -291,4 +350,4 @@ def render_doctor_storage(payload: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(lines)
 
 
-__all__ = ['render_doctor', 'render_doctor_storage']
+__all__ = ['render_doctor', 'render_doctor_storage', 'render_identity', 'render_probe']

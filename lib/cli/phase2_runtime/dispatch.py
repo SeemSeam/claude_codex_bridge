@@ -13,6 +13,7 @@ from .handlers_mailbox import (
     handle_trace,
     handle_wait,
     handle_watch,
+    handle_why,
 )
 from .handlers_ops import (
     handle_agent,
@@ -22,6 +23,7 @@ from .handlers_ops import (
     handle_fault_arm,
     handle_fault_clear,
     handle_fault_list,
+    handle_identity,
     handle_kill,
     handle_layout,
     handle_logs,
@@ -32,6 +34,7 @@ from .handlers_ops import (
     handle_maintenance,
     handle_mobile,
     handle_plan_task,
+    handle_probe,
     handle_ps,
     handle_question,
     handle_reload,
@@ -52,6 +55,7 @@ _HANDLERS = {
     'fault-arm': handle_fault_arm,
     'fault-clear': handle_fault_clear,
     'fault-list': handle_fault_list,
+    'identity': handle_identity,
     'inbox': handle_inbox,
     'kill': handle_kill,
     'layout': handle_layout,
@@ -65,6 +69,7 @@ _HANDLERS = {
     'pend': handle_pend,
     'plan-task': handle_plan_task,
     'ping': handle_ping,
+    'probe': handle_probe,
     'ps': handle_ps,
     'question': handle_question,
     'queue': handle_queue,
@@ -76,6 +81,7 @@ _HANDLERS = {
     'trace': handle_trace,
     'wait': handle_wait,
     'watch': handle_watch,
+    'why': handle_why,
 }
 
 

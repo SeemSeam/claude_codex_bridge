@@ -16,6 +16,7 @@ from cli.render import (
     render_fault_arm,
     render_fault_clear,
     render_fault_list,
+    render_identity,
     render_inbox,
     render_kill,
     render_layout,
@@ -26,10 +27,11 @@ from cli.render import (
     render_loop_topology,
     render_maintenance,
     render_mobile_serve,
-    render_plan_task,
     render_mapping,
     render_observer_notice,
     render_pend,
+    render_plan_task,
+    render_probe,
     render_ps,
     render_reload,
     render_restart,
@@ -40,6 +42,7 @@ from cli.render import (
     render_trace,
     render_wait,
     render_watch_batch,
+    render_why,
     write_lines,
 )
 from cli.services.ack import ack_reply
@@ -52,6 +55,8 @@ from cli.services.config_validate import validate_config_context
 from cli.services.doctor import doctor_summary
 from cli.services.doctor_storage import doctor_storage_summary
 from cli.services.diagnostics import export_diagnostic_bundle
+from cli.services.identity import identity_summary
+from cli.services.probe import probe_summary
 from cli.services.fault import arm_fault_rule, clear_fault_rule, list_fault_rules
 from cli.services.inbox import inbox_target
 from cli.services.kill import kill_project
@@ -77,6 +82,7 @@ from cli.services.start import start_agents
 from cli.services.trace import trace_target
 from cli.services.wait import wait_for_replies
 from cli.services.watch import watch_target
+from cli.services.why import why_target
 
 
 def build_phase2_dispatch_services(**overrides):
@@ -92,6 +98,8 @@ def build_phase2_dispatch_services(**overrides):
         doctor_summary=doctor_summary,
         doctor_storage_summary=doctor_storage_summary,
         exit_code_for_ask_status=exit_code_for_ask_status,
+        identity_summary=identity_summary,
+        probe_summary=probe_summary,
         export_diagnostic_bundle=export_diagnostic_bundle,
         inbox_target=inbox_target,
         kill_project=kill_project,
@@ -124,6 +132,7 @@ def build_phase2_dispatch_services(**overrides):
         render_doctor_bundle=render_doctor_bundle,
         render_doctor_storage=render_doctor_storage,
         render_fault_arm=render_fault_arm,
+        render_identity=render_identity,
         render_fault_clear=render_fault_clear,
         render_fault_list=render_fault_list,
         render_inbox=render_inbox,
@@ -137,6 +146,7 @@ def build_phase2_dispatch_services(**overrides):
         render_maintenance=render_maintenance,
         render_mobile_serve=render_mobile_serve,
         render_plan_task=render_plan_task,
+        render_probe=render_probe,
         render_mapping=render_mapping,
         render_observer_notice=render_observer_notice,
         render_pend=render_pend,
@@ -150,6 +160,7 @@ def build_phase2_dispatch_services(**overrides):
         render_trace=render_trace,
         render_wait=render_wait,
         render_watch_batch=render_watch_batch,
+        render_why=render_why,
         resubmit_message=resubmit_message,
         retry_attempt=retry_attempt,
         start_agents=start_agents,
@@ -159,6 +170,7 @@ def build_phase2_dispatch_services(**overrides):
         wait_for_replies=wait_for_replies,
         watch_ask_job=watch_ask_job,
         watch_target=watch_target,
+        why_target=why_target,
         write_ask_output=write_ask_output,
         write_lines=write_lines,
     )

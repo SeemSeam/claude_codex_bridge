@@ -61,7 +61,13 @@ def get_pane_content(service, pane_id: str, *, lines: int = 20) -> str | None:
     if not pane_id:
         return None
     n = max(1, int(lines))
-    cp = service.tmux_run_fn(["capture-pane", "-t", pane_id, "-p", "-S", f"-{n}"], capture=True)
+    cp = run_tmux_capture(
+        service,
+        ["capture-pane", "-t", pane_id, "-p", "-S", f"-{n}"],
+        timeout=2.0,
+    )
+    if cp is None:
+        return None
     if getattr(cp, "returncode", 1) != 0:
         return None
     return service.strip_ansi_fn(getattr(cp, "stdout", "") or "")
@@ -70,7 +76,13 @@ def get_pane_content(service, pane_id: str, *, lines: int = 20) -> str | None:
 def is_pane_alive(service, pane_id: str) -> bool:
     if not pane_id:
         return False
-    cp = service.tmux_run_fn(["display-message", "-p", "-t", pane_id, "#{pane_dead}"], capture=True)
+    cp = run_tmux_capture(
+        service,
+        ["display-message", "-p", "-t", pane_id, "#{pane_dead}"],
+        timeout=2.0,
+    )
+    if cp is None:
+        return False
     if getattr(cp, "returncode", 1) != 0:
         return False
     return service.pane_is_alive_fn(getattr(cp, "stdout", "") or "")

@@ -4,6 +4,7 @@ from .common import head_reply_id, project_id_for_agent
 from .preparation_head import resolve_existing_delivery_job
 from .preparation_message import build_reply_delivery_job
 from .repair import repair_reply_delivery_heads
+from .stalled import mark_stalled_reply_deliveries
 
 
 def prepare_reply_deliveries(dispatcher):
@@ -13,6 +14,7 @@ def prepare_reply_deliveries(dispatcher):
         return ()
 
     repair_reply_delivery_heads(dispatcher)
+    mark_stalled_reply_deliveries(dispatcher)
     created = []
     for agent_name in dispatcher._config.agents:
         job = prepare_agent_reply_delivery(dispatcher, agent_name)

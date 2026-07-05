@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from provider_backends.codex.comm_runtime.binding import extract_cwd_from_log_fi
 from provider_backends.codex.comm_runtime.pathing import normalize_work_dir
 from provider_core.protocol import REQ_ID_PREFIX, request_anchor_for_job, wrap_codex_turn_prompt
 from provider_execution.base import ProviderPollResult, ProviderRuntimeContext, ProviderSubmission
-from provider_execution.common import build_item, request_anchor_from_runtime_state
+from provider_execution.common import build_item, is_runtime_target_alive, request_anchor_from_runtime_state
 from provider_execution.reliability import CompletionReliabilityPolicy
 from terminal_runtime import get_backend_for_session
 
@@ -24,12 +25,15 @@ from .session import load_project_session
 from .session_runtime.follow_policy import codex_session_root_path, should_follow_workspace_sessions
 
 
+CODEX_NO_TERMINAL_TIMEOUT_SECS = 900.0
+
+
 class CodexProviderAdapter:
     provider = 'codex'
     completion_reliability_policy = CompletionReliabilityPolicy(
         provider='codex',
         primary_authority='protocol_log',
-        no_terminal_timeout_s=0.0,
+        no_terminal_timeout_s=CODEX_NO_TERMINAL_TIMEOUT_SECS,
     )
 
     def start(self, job: JobRecord, *, context: ProviderRuntimeContext | None, now: str) -> ProviderSubmission:
@@ -47,6 +51,12 @@ class CodexProviderAdapter:
 
     def poll(self, submission: ProviderSubmission, *, now: str) -> ProviderPollResult | None:
         submission = _refresh_reader_for_current_session_binding(submission)
+        crashed = _codex_runtime_crashed_result(submission, now=now)
+        if crashed is not None:
+            return crashed
+        provider_signal = _codex_provider_signal_terminal_result(submission, now=now)
+        if provider_signal is not None:
+            return provider_signal
         delivery_failure = _delivery_acceptance_guard(submission, now=now)
         if delivery_failure is not None:
             return delivery_failure
@@ -285,6 +295,58 @@ def _delivery_pane_looks_unusable(state: dict[str, object]) -> bool:
         return False
 
 
+# Maps a parsed codex pane signal state to an attributable error_kind for
+# delivery/attempt diagnostics. None means "no content error worth tagging".
+_PANE_SIGNAL_ERROR_KIND = {
+    'usage_limit': 'provider_usage_limit',
+    'api_error': 'provider_api_error',
+    'auth_failed': 'provider_auth_failed',
+    'config_error': 'provider_config_error',
+    'failed': 'provider_error',
+    'auth_required': 'provider_auth_required',
+}
+
+
+def _delivery_pane_signal(state: dict[str, object]) -> dict[str, object] | None:
+    """Capture and parse pane content during a delivery failure.
+
+    Returns a diagnostics fragment ({error_kind, pane_tail, retry_after?}) when
+    the pane shows a classified provider error, or None otherwise. Keeps the
+    delivery path's existing failure classification untouched.
+    """
+    backend = state.get('backend')
+    pane_id = str(state.get('pane_id') or state.get('delivery_target_pane_id') or '').strip()
+    get_pane_content = getattr(backend, 'get_pane_content', None)
+    if not pane_id or not callable(get_pane_content):
+        return None
+    try:
+        content = str(get_pane_content(pane_id, lines=120) or '')
+    except Exception:
+        return None
+    if not content.strip():
+        return None
+    try:
+        from provider_pane_status.codex_pane import parse_codex_pane_status
+    except Exception:
+        return None
+    parsed = parse_codex_pane_status(content)
+    error_kind = _PANE_SIGNAL_ERROR_KIND.get(parsed.state)
+    if error_kind is None:
+        return None
+    tail_lines = [line.rstrip() for line in content.splitlines() if line.strip()]
+    pane_tail = '\n'.join(tail_lines[-20:]) if tail_lines else None
+    fragment: dict[str, object] = {
+        'error_kind': error_kind,
+        'pane_signal_state': parsed.state,
+        'pane_signal_reason': parsed.reason,
+    }
+    if pane_tail:
+        fragment['pane_tail'] = pane_tail
+    if parsed.retry_after:
+        fragment['retry_after'] = parsed.retry_after
+    return fragment
+
+
 def _delivery_timeout_elapsed(state: dict[str, object], *, submission: ProviderSubmission, now: str) -> bool:
     timeout_s = _delivery_timeout_s(state)
     if timeout_s <= 0:
@@ -335,6 +397,12 @@ def _delivery_failure_result(
         'delivery_workspace_path': str(work_dir),
         'delivery_anchor_seen': False,
     }
+    # When the pane content shows a provider error banner (usage-limit / auth /
+    # api), surface it on the delivery diagnostics so the failure is
+    # attributable instead of looking like a generic delivery timeout.
+    pane_signal = _delivery_pane_signal(state)
+    if pane_signal is not None:
+        diagnostics.update(pane_signal)
     item = build_item(
         submission,
         kind=CompletionItemKind.ERROR,
@@ -377,6 +445,241 @@ def _delivery_failure_result(
             diagnostics=diagnostics,
         ),
     )
+
+
+# Pane signal states that should terminalize the job on the normal poll path.
+# The delivery path continues to use _PANE_SIGNAL_ERROR_KIND for diagnostics,
+# but these specific provider-side failures are attributable early.
+_NORMAL_POLL_PANE_ERROR_KINDS = {
+    'provider_usage_limit',
+    'provider_auth_failed',
+    'provider_api_error',
+    'provider_config_error',
+    'provider_waiting_for_user',
+}
+
+_NORMAL_POLL_PANE_STATE_TO_REASON = {
+    'usage_limit': 'provider_usage_limit',
+    'auth_failed': 'provider_auth_failed',
+    'api_error': 'provider_api_error',
+    'config_error': 'provider_config_error',
+    'auth_required': 'provider_waiting_for_user',
+}
+
+
+def _codex_runtime_crashed_result(
+    submission: ProviderSubmission,
+    *,
+    now: str,
+) -> ProviderPollResult | None:
+    """Terminalize with provider_crashed if the codex pane or runtime_pid is gone.
+
+    Reuses the shared ``pane_dead_result`` so the emitted item keeps the
+    ``CompletionItemKind.PANE_DEAD`` kind that downstream detectors and tests
+    rely on, while carrying a codex-specific ``no_reply_reason`` of
+    ``provider_crashed`` (the codex pane dying mid-turn is a provider crash,
+    distinct from a generic unreachable agent).
+    """
+    from provider_execution.active_runtime.polling_runtime import pane_dead_result
+
+    state = dict(submission.runtime_state)
+    if str(state.get('mode') or '').strip().lower() != 'active':
+        return None
+    backend = state.get('backend')
+    pane_id = str(state.get('pane_id') or '').strip()
+    if not backend or not pane_id:
+        return None
+    try:
+        pane_alive = is_runtime_target_alive(backend, pane_id)
+    except Exception:
+        pane_alive = False
+    runtime_pid = _coerce_pid(state.get('runtime_pid'))
+    pid_alive = _pid_alive(runtime_pid) if runtime_pid else True
+    if pane_alive and pid_alive:
+        return None
+    return pane_dead_result(
+        submission,
+        now=now,
+        reason='pane_dead',
+        no_reply_reason='provider_crashed',
+        no_reply_detail={
+            'pane_alive': pane_alive,
+            'runtime_pid': runtime_pid,
+            'pid_alive': pid_alive,
+        },
+    )
+
+
+def _codex_provider_signal_terminal_result(
+    submission: ProviderSubmission,
+    *,
+    now: str,
+) -> ProviderPollResult | None:
+    """Terminalize early when the codex pane shows a HIGH-CONFIDENCE provider error.
+
+    Uses the strict/high-confidence marker tier only: a healthy agent whose
+    output merely *discusses* usage limits / quotas / api errors must NEVER be
+    terminalized here. Broad marker matches stay available to the diagnostics
+    path (_delivery_pane_signal) for attributing an already-failed delivery.
+    """
+    state = dict(submission.runtime_state)
+    if str(state.get('mode') or '').strip().lower() != 'active':
+        return None
+    backend = state.get('backend')
+    pane_id = str(state.get('pane_id') or '').strip()
+    if not backend or not pane_id:
+        return None
+    signal = _read_codex_pane_signal(backend, pane_id, strict=True)
+    if signal is None:
+        return None
+    error_kind = str(signal.get('error_kind') or '').strip()
+    if error_kind not in _NORMAL_POLL_PANE_ERROR_KINDS:
+        return None
+    reason = _NORMAL_POLL_PANE_STATE_TO_REASON.get(
+        str(signal.get('pane_signal_state') or '').strip(), error_kind
+    )
+    extra_diagnostics: dict[str, object] = {
+        'pane_signal_state': signal.get('pane_signal_state'),
+        'pane_signal_reason': signal.get('pane_signal_reason'),
+    }
+    pane_tail = signal.get('pane_tail')
+    if pane_tail:
+        extra_diagnostics['pane_tail'] = pane_tail
+    retry_after = signal.get('retry_after')
+    if retry_after:
+        extra_diagnostics['retry_after'] = retry_after
+    return _codex_terminal_result(
+        submission,
+        now=now,
+        reason=reason,
+        error_kind=error_kind,
+        status=CompletionStatus.FAILED,
+        extra_diagnostics=extra_diagnostics,
+    )
+
+
+def _codex_terminal_result(
+    submission: ProviderSubmission,
+    *,
+    now: str,
+    reason: str,
+    error_kind: str,
+    status: CompletionStatus,
+    extra_diagnostics: dict[str, object],
+) -> ProviderPollResult:
+    state = dict(submission.runtime_state)
+    seq = int(state.get('next_seq', 1))
+    request_anchor = request_anchor_from_runtime_state(state, fallback=submission.job_id)
+    diagnostics = {
+        **dict(submission.diagnostics or {}),
+        'reason': reason,
+        'error_kind': error_kind,
+    }
+    diagnostics.update(extra_diagnostics)
+    item = build_item(
+        submission,
+        kind=CompletionItemKind.ERROR,
+        timestamp=now,
+        seq=seq,
+        payload={'reason': reason, 'error_kind': error_kind},
+    )
+    updated_state = {
+        **state,
+        'mode': 'passive',
+        'next_seq': item.cursor.event_seq + 1,
+    }
+    updated = replace(
+        submission,
+        runtime_state=updated_state,
+        diagnostics=diagnostics,
+    )
+    return ProviderPollResult(
+        submission=updated,
+        items=(item,),
+        decision=CompletionDecision(
+            terminal=True,
+            status=status,
+            reason=reason,
+            confidence=CompletionConfidence.DEGRADED,
+            reply='',
+            anchor_seen=False,
+            reply_started=False,
+            reply_stable=False,
+            provider_turn_ref=request_anchor or submission.job_id,
+            source_cursor=item.cursor,
+            finished_at=now,
+            diagnostics=diagnostics,
+        ),
+    )
+
+
+def _read_codex_pane_signal(
+    backend: object,
+    pane_id: str,
+    *,
+    strict: bool = False,
+) -> dict[str, object] | None:
+    """Parse pane content into a provider-error signal fragment.
+
+    ``strict`` selects the codex_pane marker tier:
+
+    * ``strict=False`` (default): broad markers. Used by the DIAGNOSTICS path
+      (_delivery_pane_signal) where a delivery failure is already established.
+    * ``strict=True``: high-confidence markers only. Used by the AUTO-
+      TERMINALIZATION poll path (_codex_provider_signal_terminal_result) so a
+      healthy agent discussing usage limits / quotas / api errors is not killed.
+    """
+    get_pane_content = getattr(backend, 'get_pane_content', None)
+    if not callable(get_pane_content):
+        return None
+    try:
+        content = str(get_pane_content(pane_id, lines=120) or '')
+    except Exception:
+        return None
+    if not content.strip():
+        return None
+    try:
+        from provider_pane_status.codex_pane import parse_codex_pane_status
+    except Exception:
+        return None
+    parsed = parse_codex_pane_status(content, strict=strict)
+    error_kind = _PANE_SIGNAL_ERROR_KIND.get(parsed.state)
+    if error_kind is None:
+        return None
+    if parsed.state == 'auth_required':
+        error_kind = 'provider_waiting_for_user'
+    tail_lines = [line.rstrip() for line in content.splitlines() if line.strip()]
+    pane_tail = '\n'.join(tail_lines[-20:]) if tail_lines else None
+    fragment: dict[str, object] = {
+        'error_kind': error_kind,
+        'pane_signal_state': parsed.state,
+        'pane_signal_reason': parsed.reason,
+    }
+    if pane_tail:
+        fragment['pane_tail'] = pane_tail
+    if parsed.retry_after:
+        fragment['retry_after'] = parsed.retry_after
+    return fragment
+
+
+def _coerce_pid(value: object) -> int | None:
+    try:
+        pid = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _submission_with_locked_reader(

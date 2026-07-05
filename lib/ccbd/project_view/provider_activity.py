@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from provider_hooks.activity import ProviderActivityEvidence, read_activity_evidence, write_activity
 from storage.paths import PathLayout
 
 
@@ -15,7 +14,9 @@ def provider_activity_evidence(
     provider: str,
     runtime: object | None,
     now: str,
-) -> ProviderActivityEvidence | None:
+):
+    from provider_hooks.activity import ProviderActivityEvidence, read_activity_evidence
+
     runtime_dir = _provider_runtime_dir(
         project_root=project_root,
         paths=paths,
@@ -48,6 +49,8 @@ def record_provider_activity_failure(
     reason: str,
     updated_at: str | None = None,
 ) -> None:
+    from provider_hooks.activity import write_activity
+
     runtime_dir = _provider_runtime_dir(
         project_root=project_root,
         paths=paths,

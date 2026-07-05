@@ -86,6 +86,12 @@ def handle_cancel(context, command, out, services) -> int:
     return 0
 
 
+def handle_why(context, command, out, services) -> int:
+    payload = services.why_target(context, command)
+    services.write_lines(out, services.render_why(payload))
+    return 0
+
+
 __all__ = [
     'handle_ack',
     'handle_cancel',
@@ -98,4 +104,5 @@ __all__ = [
     'handle_trace',
     'handle_wait',
     'handle_watch',
+    'handle_why',
 ]

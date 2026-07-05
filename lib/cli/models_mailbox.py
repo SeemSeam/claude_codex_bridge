@@ -99,6 +99,13 @@ class ParsedAckCommand:
     kind: str = 'ack'
 
 
+@dataclass(frozen=True)
+class ParsedWhyCommand:
+    project: str | None
+    job_id: str
+    kind: str = 'why'
+
+
 __all__ = [
     'ParsedAckCommand',
     'ParsedAskCommand',
@@ -111,4 +118,5 @@ __all__ = [
     'ParsedTraceCommand',
     'ParsedWaitCommand',
     'ParsedWatchCommand',
+    'ParsedWhyCommand',
 ]

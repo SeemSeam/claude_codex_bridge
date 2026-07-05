@@ -47,6 +47,17 @@ _NON_RETRYABLE_API_AUTH_MESSAGE_MARKERS = (
     'run codex login',
     'run login',
 )
+
+# Wave 2: explicit provider error_kind values (surfaced by Wave 1 from pane
+# content / finish-hook diagnostics) that mark a turn non-retryable regardless
+# of message text. Mapped to the legacy classification categories so existing
+# reply rendering and event recording keep working unchanged.
+_NON_RETRYABLE_ERROR_KIND_TO_CATEGORY = {
+    'provider_usage_limit': 'billing',
+    'provider_auth_failed': 'authentication',
+    'provider_auth_required': 'authentication',
+    'provider_config_error': 'authentication',
+}
 _NON_RETRYABLE_API_PERMISSION_MESSAGE_MARKERS = (
     'permission denied',
     'access denied',
@@ -85,8 +96,15 @@ def failure_message_text(decision: CompletionDecision) -> str:
 
 
 def nonretryable_api_failure_kind(decision: CompletionDecision) -> str | None:
-    if decision.status.value != 'failed':
+    if decision.status.value not in {'failed', 'incomplete'}:
         return None
+    # Wave 2: an explicit provider error_kind (from pane content / finish-hook)
+    # is the most authoritative signal; honor it before falling back to the
+    # legacy token/marker heuristics. Classify both FAILED and INCOMPLETE
+    # terminals so usage-limit empty-output turns fast-fail instead of retry.
+    error_kind = nonretryable_provider_error_kind_from_diagnostics(decision.diagnostics)
+    if error_kind is not None:
+        return _NON_RETRYABLE_ERROR_KIND_TO_CATEGORY[error_kind]
     tokens = {
         normalized_error_token(decision.reason),
         normalized_error_token(decision.diagnostics.get('error_type')),
@@ -114,9 +132,33 @@ def is_nonretryable_api_failure(decision: CompletionDecision) -> bool:
     return nonretryable_api_failure_kind(decision) is not None
 
 
+# Wave 2: the set of explicit provider error_kind values that should block
+# retry. Exposed for the manual retry path (which reads attempt/reply
+# diagnostics directly rather than a CompletionDecision).
+NON_RETRYABLE_PROVIDER_ERROR_KINDS = frozenset(_NON_RETRYABLE_ERROR_KIND_TO_CATEGORY)
+
+
+def nonretryable_provider_error_kind_from_diagnostics(diagnostics: dict | None) -> str | None:
+    """Return the explicit non-retryable provider error_kind from raw diagnostics.
+
+    Used at the manual retry entry where only the attempt/reply diagnostics are
+    available (no CompletionDecision). Returns the error_kind string itself
+    (e.g. ``provider_usage_limit``) when present, or ``None`` when the turn is
+    retryable / has no explicit error_kind.
+    """
+    if not diagnostics:
+        return None
+    error_kind = str(diagnostics.get('error_kind') or '').strip().lower()
+    if error_kind and error_kind in NON_RETRYABLE_PROVIDER_ERROR_KINDS:
+        return error_kind
+    return None
+
+
 __all__ = [
+    'NON_RETRYABLE_PROVIDER_ERROR_KINDS',
     'failure_message_text',
     'is_nonretryable_api_failure',
     'nonretryable_api_failure_kind',
+    'nonretryable_provider_error_kind_from_diagnostics',
     'normalized_error_token',
 ]

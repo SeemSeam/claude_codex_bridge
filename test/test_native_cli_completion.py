@@ -177,7 +177,7 @@ def test_kimi_poll_uses_k27_pane_fallback_when_wire_log_missing(tmp_path: Path) 
         CompletionItemKind.ASSISTANT_FINAL,
     ]
 
-    stable = KimiProviderAdapter().poll(first.submission, now="2026-06-13T00:00:16Z")
+    stable = KimiProviderAdapter().poll(first.submission, now="2026-06-13T00:00:51Z")
 
     assert stable is not None
     assert stable.decision is None

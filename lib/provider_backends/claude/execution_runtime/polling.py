@@ -21,6 +21,107 @@ from .state_machine import (
 )
 from .start import looks_ready, send_prompt, state_session_path
 
+# Pane content banners that indicate a terminal provider-side failure for
+# claude.  Claude has no dedicated pane parser in lib/provider_pane_status
+# today, so these are tail-content keyword patterns mirroring codex_pane's
+# markers.
+#
+# Two tiers (mirrors codex_pane's strict/broad split):
+#
+# _CLAUDE_*_MARKERS         : broad markers, DIAGNOSTICS-only (never drive
+#                             terminalization).
+# _CLAUDE_HIGH_CONFIDENCE_* : specific multi-word banners. The ONLY tier that
+#                             may drive AUTO-TERMINALIZATION via
+#                             _claude_provider_signal_terminal_result. Generic
+#                             words ("usage limit", "quota", "rate limit",
+#                             "api error", "overloaded", "unauthorized",
+#                             "x-api-key", ...) are dropped here because a
+#                             healthy agent researching those topics
+#                             legitimately prints them in its output.
+_CLAUDE_USAGE_LIMIT_MARKERS = (
+    "usage limit",
+    "hit your usage limit",
+    "out of credits",
+    "purchase more credits",
+    "quota exceeded",
+    "plan limit",
+    "rate spend limit",
+)
+_CLAUDE_AUTH_FAILED_MARKERS = (
+    "invalid api key",
+    "incorrect api key",
+    "authentication failed",
+    "401 unauthorized",
+    "unauthorized",
+    "api key is invalid",
+    "x-api-key",
+)
+_CLAUDE_API_ERROR_MARKERS = (
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "overloaded",
+    "api error",
+    "internal server error",
+    "model unavailable",
+    "service unavailable",
+    "bad gateway",
+    "connection reset",
+    "connection timed out",
+    "request timed out",
+)
+_CLAUDE_CONFIG_ERROR_MARKERS = (
+    "invalid config",
+    "invalid configuration",
+    "failed to parse config",
+    "unknown model provider",
+    "configuration error",
+)
+
+# High-confidence banners: only these may terminalize a claude job.
+_CLAUDE_HIGH_CONFIDENCE_USAGE_LIMIT_MARKERS = (
+    "hit your usage limit",
+    "out of credits",
+    "purchase more credits",
+    "quota exceeded",
+    "rate spend limit",
+)
+_CLAUDE_HIGH_CONFIDENCE_AUTH_FAILED_MARKERS = (
+    "invalid api key",
+    "incorrect api key",
+    "authentication failed",
+    "401 unauthorized",
+    "api key is invalid",
+)
+_CLAUDE_HIGH_CONFIDENCE_API_ERROR_MARKERS = (
+    "internal server error",
+    "bad gateway",
+    "service unavailable",
+    "connection reset",
+    "connection timed out",
+    "request timed out",
+)
+_CLAUDE_HIGH_CONFIDENCE_CONFIG_ERROR_MARKERS = (
+    "failed to parse config",
+    "invalid configuration",
+    "unknown model provider",
+)
+
+# broad -> high-confidence mapping.
+_CLAUDE_HIGH_CONFIDENCE_MARKERS = {
+    _CLAUDE_USAGE_LIMIT_MARKERS: _CLAUDE_HIGH_CONFIDENCE_USAGE_LIMIT_MARKERS,
+    _CLAUDE_AUTH_FAILED_MARKERS: _CLAUDE_HIGH_CONFIDENCE_AUTH_FAILED_MARKERS,
+    _CLAUDE_API_ERROR_MARKERS: _CLAUDE_HIGH_CONFIDENCE_API_ERROR_MARKERS,
+    _CLAUDE_CONFIG_ERROR_MARKERS: _CLAUDE_HIGH_CONFIDENCE_CONFIG_ERROR_MARKERS,
+}
+
+_CLAUDE_PANE_SIGNAL_TO_REASON = {
+    "usage_limit": "provider_usage_limit",
+    "auth_failed": "provider_auth_failed",
+    "api_error": "provider_api_error",
+    "config_error": "provider_config_error",
+}
+
 
 def poll_submission(
     adapter,
@@ -29,6 +130,14 @@ def poll_submission(
     now: str,
 ) -> ProviderPollResult | None:
     del adapter
+    # Terminalize early when the claude pane shows a classified provider-side
+    # error banner (usage-limit / auth / api / config).  Mirrors codex's
+    # _codex_provider_signal_terminal_result; checked before any delivery or
+    # event-read work so the job fails fast with an attributable no_reply_reason
+    # instead of draining the ready/delivery timeouts.
+    provider_signal = _claude_provider_signal_terminal_result(submission, now=now)
+    if provider_signal is not None:
+        return provider_signal
     prepared = _prepare_submission_poll(submission, now=now)
     if prepared is None or isinstance(prepared, ProviderPollResult):
         return prepared
@@ -301,6 +410,132 @@ def _process_event(
         return handle_system_event(submission, poll, event, now=now, state=state)
     if role == "assistant" and poll.anchor_seen:
         handle_assistant_event(submission, poll, event, now=now)
+    return None
+
+
+def _claude_provider_signal_terminal_result(
+    submission: ProviderSubmission,
+    *,
+    now: str,
+) -> ProviderPollResult | None:
+    """Terminalize early when the claude pane shows a HIGH-CONFIDENCE provider error.
+
+    Mirrors codex's _codex_provider_signal_terminal_result and uses the strict
+    / high-confidence marker tier only: a healthy agent whose output merely
+    *discusses* usage limits / quotas / api errors must NEVER be terminalized.
+    Broad markers stay available for diagnostics.
+    """
+    runtime_state = submission.runtime_state or {}
+    backend = runtime_state.get("backend")
+    pane_id = str(runtime_state.get("pane_id") or "").strip()
+    if not backend or not pane_id:
+        return None
+    signal = _read_claude_pane_signal(backend, pane_id, strict=True)
+    if signal is None:
+        return None
+    no_reply_reason = _CLAUDE_PANE_SIGNAL_TO_REASON.get(str(signal.get("pane_signal_state") or ""))
+    if no_reply_reason is None:
+        return None
+    request_anchor = request_anchor_from_runtime_state(runtime_state, fallback=submission.job_id)
+    diagnostics = {
+        **dict(submission.diagnostics or {}),
+        "reason": no_reply_reason,
+        "pane_signal_state": signal.get("pane_signal_state"),
+        "pane_signal_reason": signal.get("pane_signal_reason"),
+        "no_reply_reason": no_reply_reason,
+        "no_reply_detail": {
+            "pane_signal_state": signal.get("pane_signal_state"),
+            "matched_markers": signal.get("matched_markers"),
+        },
+    }
+    if signal.get("pane_tail"):
+        diagnostics["pane_tail"] = signal.get("pane_tail")
+    item = build_item(
+        submission,
+        kind=CompletionItemKind.ERROR,
+        timestamp=now,
+        seq=int(runtime_state.get("next_seq", 1)),
+        payload={"reason": no_reply_reason, "error_kind": no_reply_reason},
+    )
+    updated_state = {
+        **runtime_state,
+        "mode": "passive",
+        "next_seq": item.cursor.event_seq + 1,
+    }
+    updated = replace(
+        submission,
+        runtime_state=updated_state,
+        diagnostics=diagnostics,
+    )
+    return ProviderPollResult(
+        submission=updated,
+        items=(item,),
+        decision=CompletionDecision(
+            terminal=True,
+            status=CompletionStatus.FAILED,
+            reason=no_reply_reason,
+            confidence=CompletionConfidence.DEGRADED,
+            reply="",
+            anchor_seen=False,
+            reply_started=False,
+            reply_stable=False,
+            provider_turn_ref=request_anchor or submission.job_id,
+            source_cursor=item.cursor,
+            finished_at=now,
+            diagnostics=diagnostics,
+        ),
+    )
+
+
+def _read_claude_pane_signal(
+    backend: object,
+    pane_id: str,
+    *,
+    strict: bool = False,
+) -> dict[str, object] | None:
+    """Scan pane tail content for claude provider-error banners.
+
+    Returns a fragment ({pane_signal_state, pane_signal_reason, pane_tail,
+    matched_markers}) when a classified banner is present, else None.  Order
+    matches codex_pane: usage_limit > auth_failed > config_error > api_error so
+    the most specific terminal signal wins on overlapping text.
+
+    ``strict`` selects the marker tier (mirrors codex_pane strict mode):
+    ``strict=False`` uses broad markers (diagnostics), ``strict=True`` uses
+    high-confidence markers only (auto-terminalization).
+    """
+    get_pane_content = getattr(backend, "get_pane_content", None)
+    if not callable(get_pane_content):
+        return None
+    try:
+        content = str(get_pane_content(pane_id, lines=120) or "")
+    except Exception:
+        return None
+    if not content.strip():
+        return None
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    recent_lines = [line.rstrip() for line in normalized.splitlines() if line.strip()]
+    if not recent_lines:
+        return None
+    recent = " ".join(line.strip() for line in recent_lines[-20:]).lower()
+    tail = "\n".join(recent_lines[-20:])
+
+    for state_key, markers in (
+        ("usage_limit", _CLAUDE_USAGE_LIMIT_MARKERS),
+        ("auth_failed", _CLAUDE_AUTH_FAILED_MARKERS),
+        ("config_error", _CLAUDE_CONFIG_ERROR_MARKERS),
+        ("api_error", _CLAUDE_API_ERROR_MARKERS),
+    ):
+        if strict:
+            markers = _CLAUDE_HIGH_CONFIDENCE_MARKERS.get(markers, markers)
+        matched = tuple(marker for marker in markers if marker in recent)
+        if matched:
+            return {
+                "pane_signal_state": state_key,
+                "pane_signal_reason": _CLAUDE_PANE_SIGNAL_TO_REASON.get(state_key, state_key),
+                "pane_tail": tail,
+                "matched_markers": matched,
+            }
     return None
 
 

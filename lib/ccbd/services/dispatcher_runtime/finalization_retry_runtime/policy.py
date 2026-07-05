@@ -62,9 +62,14 @@ def is_retryable_failure(
     retry_policy: dict[str, object],
     provider_supports_resume_value: bool,
 ) -> bool:
-    if decision.status.value != JobStatus.FAILED.value:
-        return False
+    # Wave 2 must-fix: explicit non-retryable provider error kinds
+    # (provider_usage_limit / auth_failed / auth_required / config_error) block
+    # automatic retry even when the terminal status is INCOMPLETE, e.g. an empty
+    # reply caused by a usage-limit banner. The status guard still rejects other
+    # non-failed terminals.
     if is_nonretryable_api_failure(decision):
+        return False
+    if decision.status.value != JobStatus.FAILED.value:
         return False
     reason = str(decision.reason or '').strip().lower()
     if reason in retryable_reasons(retry_policy):

@@ -68,6 +68,7 @@ ALLOWED_AGENT_KEYS = {
     'role',
     'watch_paths',
     'dispatch_disabled',
+    'account',
 }
 
 

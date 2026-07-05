@@ -25,6 +25,13 @@ _SEMANTIC_PROGRESS_ITEM_KINDS = frozenset(
     }
 )
 
+_TIMEOUT_RECOVERY_ACTION_BY_CLASS = {
+    'anchor_missing_no_reply': 'resend_after_delivery_or_session_binding_check',
+    'reply_captured_anchor_missing': 'deliver_degraded_reply_then_check_anchor_binding',
+    'anchor_seen_no_reply': 'inspect_provider_pane_or_waiting_user',
+    'reply_captured_no_terminal': 'deliver_degraded_reply_then_repair_completion_log',
+}
+
 
 def apply_reliability_progress(
     result: ProviderPollResult,
@@ -152,8 +159,15 @@ def build_timeout_result(
     last_progress_at: str,
     policy,
 ) -> ProviderPollResult:
-    reply = str(submission.reply or '')
+    reply, reply_source = timeout_reply(submission)
     request_anchor = request_anchor_from_runtime_state(submission.runtime_state, fallback=submission.job_id)
+    timeout_detail = timeout_no_reply_detail(
+        submission,
+        reply=reply,
+        reply_source=reply_source,
+        last_progress_at=last_progress_at,
+        timeout_s=timeout_s,
+    )
     diagnostics = {
         **dict(submission.diagnostics or {}),
         'completion_primary_authority': policy.primary_authority,
@@ -162,13 +176,21 @@ def build_timeout_result(
         'completion_timeout_deadline_at': deadline_at(last_progress_at, timeout_s=timeout_s),
         'completion_reliability_reason': policy.timeout_reason,
         'completion_fallback_source': 'execution_reliability_monitor',
+        'completion_timeout_class': timeout_detail['completion_timeout_class'],
+        'completion_recovery_action': timeout_detail['recovery_action'],
+        'no_reply_reason': 'completion_detection_gap',
+        'no_reply_detail': timeout_detail,
     }
+    if reply_source:
+        diagnostics['completion_reply_source'] = reply_source
     runtime_state = {
         **dict(submission.runtime_state),
         'reliability_last_progress_at': last_progress_at,
         'reliability_timeout_s': timeout_s,
         'reliability_timeout_deadline_at': diagnostics['completion_timeout_deadline_at'] or '',
         'reliability_terminalized_at': now,
+        'reliability_timeout_class': timeout_detail['completion_timeout_class'],
+        'reliability_recovery_action': timeout_detail['recovery_action'],
     }
     updated_submission = replace(
         submission,
@@ -199,6 +221,57 @@ def build_timeout_result(
     return ProviderPollResult(submission=updated_submission, decision=decision)
 
 
+def timeout_reply(submission: ProviderSubmission) -> tuple[str, str]:
+    reply = str(submission.reply or '')
+    if reply:
+        return reply, 'submission_reply'
+    runtime_state = dict(submission.runtime_state)
+    for key in ('last_agent_message', 'last_final_answer', 'last_assistant_message', 'reply_buffer'):
+        value = str(runtime_state.get(key) or '').strip()
+        if value:
+            return value, key
+    return '', ''
+
+
+def timeout_no_reply_detail(
+    submission: ProviderSubmission,
+    *,
+    reply: str,
+    reply_source: str,
+    last_progress_at: str,
+    timeout_s: float,
+) -> dict[str, object]:
+    runtime_state = dict(submission.runtime_state)
+    anchor_seen = bool(runtime_state.get('anchor_seen') or runtime_state.get('anchor_emitted'))
+    reply_started = bool(reply)
+    if anchor_seen and reply_started:
+        timeout_class = 'reply_captured_no_terminal'
+    elif anchor_seen:
+        timeout_class = 'anchor_seen_no_reply'
+    elif reply_started:
+        timeout_class = 'reply_captured_anchor_missing'
+    else:
+        timeout_class = 'anchor_missing_no_reply'
+
+    detail: dict[str, object] = {
+        'source': 'completion_timeout',
+        'completion_timeout_class': timeout_class,
+        'anchor_seen': anchor_seen,
+        'anchor_not_required': bool(runtime_state.get('no_wrap')),
+        'reply_started': reply_started,
+        'reply_chars': len(reply),
+        'reply_source': reply_source,
+        'last_progress_at': last_progress_at,
+        'timeout_s': timeout_s,
+        'recovery_action': _TIMEOUT_RECOVERY_ACTION_BY_CLASS[timeout_class],
+    }
+    for key in ('bound_turn_id', 'bound_task_id', 'session_path'):
+        value = str(runtime_state.get(key) or '').strip()
+        if value:
+            detail[key] = value
+    return detail
+
+
 def deadline_at(started_at: str, *, timeout_s: float) -> str | None:
     if not started_at:
         return None
@@ -218,7 +291,9 @@ __all__ = [
     'last_progress_timestamp',
     'semantic_progress_marker',
     'timeout_elapsed',
+    'timeout_no_reply_detail',
     'timeout_poll_result',
+    'timeout_reply',
     'timeout_policy_for',
     'with_last_progress_at',
 ]

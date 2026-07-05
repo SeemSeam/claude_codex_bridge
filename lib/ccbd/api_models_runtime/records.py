@@ -27,6 +27,8 @@ class JobRecord:
     target_name: str = ""
     provider_instance: str | None = None
     provider_options: dict[str, Any] = field(default_factory=dict)
+    no_reply_reason: str | None = None
+    no_reply_detail: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.job_id:
@@ -64,6 +66,8 @@ class JobRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "workspace_path": self.workspace_path,
+            "no_reply_reason": self.no_reply_reason,
+            "no_reply_detail": dict(self.no_reply_detail or {}),
         }
 
 

@@ -15,7 +15,7 @@ from agents.models import (
     WorkspaceMode,
 )
 from ccbd.handlers.ping_runtime.handler import build_ping_handler
-from ccbd.handlers.ping_runtime.payloads import build_ccbd_payload
+from ccbd.handlers.ping_runtime.payloads import build_agent_payload, build_ccbd_payload
 from ccbd.models import LeaseHealth
 from cli.services.ping import ping_target
 from cli.models import ParsedPingCommand
@@ -503,3 +503,226 @@ def test_ping_target_agent_uses_non_mutating_probe(monkeypatch) -> None:
 
     assert payload['agent_name'] == 'demo'
     assert seen == [False]
+
+
+def _usage_limit_assessment():
+    """A ProviderPaneAssessment-shaped namespace with a usage-limit signal."""
+    return SimpleNamespace(
+        binding=None,
+        session=SimpleNamespace(pane_id='%9'),
+        terminal='tmux',
+        pane_state='alive',
+        health='usage-limited',
+        pane_signal_state='usage_limit',
+        pane_signal_reason='provider_usage_limit',
+        retry_after='2026-07-02T10:21:00',
+        pane_tail="You've hit your usage limit. try again at Jul 2nd, 2026 10:21 AM.",
+    )
+
+
+def test_build_agent_payload_includes_provider_health_when_assessment_supplied() -> None:
+    config = _config()
+    runtime = AgentRuntime(
+        agent_name='demo',
+        state=AgentState.BUSY,
+        pid=123,
+        started_at='2026-04-22T00:00:00Z',
+        last_seen_at='2026-04-22T00:00:01Z',
+        runtime_ref='tmux:%1',
+        session_ref='session-1',
+        workspace_path='/tmp/ws',
+        project_id='proj-1',
+        backend_type='pane-backed',
+        queue_depth=1,
+        socket_path=None,
+        health='healthy',
+        provider='codex',
+    )
+
+    payload = build_agent_payload(
+        project_id='proj-1',
+        agent_name='demo',
+        registry=SimpleNamespace(
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: runtime,
+        ),
+        inspection=_inspection(phase='mounted', desired_state='running'),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+        provider_pane_assessment=_usage_limit_assessment(),
+    )
+
+    provider_health = payload['diagnostics']['provider_health']
+    assert provider_health['state'] == 'usage-limited'
+    assert provider_health['signal_state'] == 'usage_limit'
+    assert provider_health['signal_reason'] == 'provider_usage_limit'
+    assert provider_health['retry_after'] == '2026-07-02T10:21:00'
+
+
+def test_build_agent_payload_omits_provider_health_when_assessment_healthy() -> None:
+    config = _config()
+    runtime = AgentRuntime(
+        agent_name='demo',
+        state=AgentState.BUSY,
+        pid=123,
+        started_at='2026-04-22T00:00:00Z',
+        last_seen_at='2026-04-22T00:00:01Z',
+        runtime_ref='tmux:%1',
+        session_ref='session-1',
+        workspace_path='/tmp/ws',
+        project_id='proj-1',
+        backend_type='pane-backed',
+        queue_depth=1,
+        socket_path=None,
+        health='healthy',
+        provider='codex',
+    )
+
+    payload = build_agent_payload(
+        project_id='proj-1',
+        agent_name='demo',
+        registry=SimpleNamespace(
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: runtime,
+        ),
+        inspection=_inspection(phase='mounted', desired_state='running'),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+        provider_pane_assessment=SimpleNamespace(
+            binding=None,
+            session=None,
+            terminal='tmux',
+            pane_state='alive',
+            health='healthy',
+            pane_signal_state=None,
+            pane_signal_reason=None,
+            retry_after=None,
+            pane_tail=None,
+        ),
+    )
+
+    assert 'provider_health' not in payload['diagnostics']
+
+
+def test_build_agent_payload_omits_provider_health_when_no_assessment() -> None:
+    config = _config()
+    runtime = AgentRuntime(
+        agent_name='demo',
+        state=AgentState.BUSY,
+        pid=123,
+        started_at='2026-04-22T00:00:00Z',
+        last_seen_at='2026-04-22T00:00:01Z',
+        runtime_ref='tmux:%1',
+        session_ref='session-1',
+        workspace_path='/tmp/ws',
+        project_id='proj-1',
+        backend_type='pane-backed',
+        queue_depth=1,
+        socket_path=None,
+        health='healthy',
+        provider='codex',
+    )
+
+    payload = build_agent_payload(
+        project_id='proj-1',
+        agent_name='demo',
+        registry=SimpleNamespace(
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: runtime,
+        ),
+        inspection=_inspection(phase='mounted', desired_state='running'),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+    )
+
+    assert 'provider_health' not in payload['diagnostics']
+
+
+def test_ping_handler_surfaces_provider_health_from_health_monitor_assessment() -> None:
+    config = _config()
+    runtime = AgentRuntime(
+        agent_name='demo',
+        state=AgentState.BUSY,
+        pid=123,
+        started_at='2026-04-22T00:00:00Z',
+        last_seen_at='2026-04-22T00:00:01Z',
+        runtime_ref='tmux:%1',
+        session_ref='session-1',
+        workspace_path='/tmp/ws',
+        project_id='proj-1',
+        backend_type='pane-backed',
+        queue_depth=1,
+        socket_path=None,
+        health='healthy',
+        provider='codex',
+    )
+    captured = {}
+
+    def _assess(*, runtime, registry, session_bindings, namespace_state_store):
+        captured['called'] = True
+        return _usage_limit_assessment()
+
+    handler = build_ping_handler(
+        project_id='proj-1',
+        config=config,
+        paths=_paths(),
+        registry=SimpleNamespace(
+            list_known_agents=lambda: ('demo',),
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: runtime,
+        ),
+        health_monitor=SimpleNamespace(
+            check_all=lambda: {},
+            daemon_health=lambda: _inspection(phase='mounted', desired_state='running'),
+            _assess_provider_pane=_assess,
+            _registry=SimpleNamespace(spec_for=lambda name: config.agents[name]),
+            _session_bindings={},
+            _namespace_state_store=None,
+        ),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+    )
+
+    payload = handler({'target': 'demo'})
+
+    assert captured.get('called') is True
+    provider_health = payload['diagnostics']['provider_health']
+    assert provider_health['signal_state'] == 'usage_limit'
+    assert provider_health['retry_after'] == '2026-07-02T10:21:00'
+
+
+def test_ping_handler_skips_provider_health_when_monitor_lacks_assess_seam() -> None:
+    config = _config()
+    runtime = AgentRuntime(
+        agent_name='demo',
+        state=AgentState.BUSY,
+        pid=123,
+        started_at='2026-04-22T00:00:00Z',
+        last_seen_at='2026-04-22T00:00:01Z',
+        runtime_ref='tmux:%1',
+        session_ref='session-1',
+        workspace_path='/tmp/ws',
+        project_id='proj-1',
+        backend_type='pane-backed',
+        queue_depth=1,
+        socket_path=None,
+        health='healthy',
+        provider='codex',
+    )
+
+    handler = build_ping_handler(
+        project_id='proj-1',
+        config=config,
+        paths=_paths(),
+        registry=SimpleNamespace(
+            list_known_agents=lambda: ('demo',),
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: runtime,
+        ),
+        # health_monitor has no _assess_provider_pane seam (legacy/stub).
+        health_monitor=SimpleNamespace(
+            check_all=lambda: {},
+            daemon_health=lambda: _inspection(phase='mounted', desired_state='running'),
+        ),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+    )
+
+    payload = handler({'target': 'demo'})
+
+    assert 'provider_health' not in payload['diagnostics']

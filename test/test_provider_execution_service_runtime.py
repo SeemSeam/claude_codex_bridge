@@ -73,10 +73,17 @@ def _runtime_context() -> ProviderRuntimeContext:
     )
 
 
-def test_default_pane_backed_providers_wait_indefinitely_without_terminal_evidence() -> None:
+def test_codex_defaults_to_bounded_no_terminal_timeout() -> None:
     registry = build_default_execution_registry(include_optional=False, include_test_doubles=False)
 
-    for provider in ("codex", "claude", "gemini"):
+    codex = registry.get("codex")
+    assert codex is not None
+    codex_policy = adapter_reliability_policy(codex)
+    assert codex_policy is not None
+    assert codex_policy.primary_authority == "protocol_log"
+    assert codex_policy.no_terminal_timeout_s == 900.0
+
+    for provider in ("claude", "gemini"):
         adapter = registry.get(provider)
         assert adapter is not None
         policy = adapter_reliability_policy(adapter)
@@ -169,12 +176,99 @@ def test_poll_updates_terminalizes_reliability_timeout(monkeypatch) -> None:
     assert update.decision.reason == "completion_timeout"
     assert update.decision.confidence is CompletionConfidence.DEGRADED
     assert update.decision.diagnostics["completion_primary_authority"] == "protocol_log"
+    assert update.decision.diagnostics["completion_timeout_class"] == "anchor_missing_no_reply"
+    assert update.decision.diagnostics["no_reply_reason"] == "completion_detection_gap"
+    assert update.decision.diagnostics["no_reply_detail"]["completion_timeout_class"] == "anchor_missing_no_reply"
     assert captured["job_id"] == "job_1"
     assert captured["decision"] is update.decision
     assert captured["items"] == ()
     assert captured["submission"].diagnostics["completion_fallback_source"] == "execution_reliability_monitor"
     assert service._active == {}
     assert service._runtime_contexts == {}
+
+
+def test_poll_updates_timeout_classifies_anchor_seen_without_reply(monkeypatch) -> None:
+    submission = replace(
+        _submission(provider="codex"),
+        runtime_state={"anchor_seen": True, "bound_turn_id": "turn-1"},
+    )
+    adapter = SimpleNamespace(
+        poll=lambda current, now: None,
+        completion_reliability_policy=CompletionReliabilityPolicy(
+            provider="codex",
+            primary_authority="protocol_log",
+            no_terminal_timeout_s=900.0,
+        ),
+    )
+    service = SimpleNamespace(
+        _clock=lambda: "2026-04-06T00:15:01Z",
+        _pending_replays={},
+        _active={"job_1": submission},
+        _runtime_contexts={"job_1": _runtime_context()},
+        _registry={"codex": adapter},
+    )
+    monkeypatch.setattr(
+        "provider_execution.service_runtime.polling.persist_submission",
+        lambda service, job_id, pending_decision=None, pending_items=(): None,
+    )
+
+    updates = poll_updates(service)
+
+    assert len(updates) == 1
+    decision = updates[0].decision
+    assert decision is not None
+    assert decision.diagnostics["completion_timeout_class"] == "anchor_seen_no_reply"
+    assert decision.diagnostics["no_reply_detail"]["anchor_seen"] is True
+    assert decision.diagnostics["no_reply_detail"]["bound_turn_id"] == "turn-1"
+
+
+def test_poll_updates_timeout_harvests_captured_reply_without_terminal(monkeypatch) -> None:
+    submission = replace(
+        _submission(provider="codex"),
+        runtime_state={
+            "anchor_seen": True,
+            "bound_turn_id": "turn-1",
+            "last_final_answer": "done from runtime state",
+            "session_path": "/tmp/codex-session.jsonl",
+        },
+    )
+    adapter = SimpleNamespace(
+        poll=lambda current, now: None,
+        completion_reliability_policy=CompletionReliabilityPolicy(
+            provider="codex",
+            primary_authority="protocol_log",
+            no_terminal_timeout_s=900.0,
+        ),
+    )
+    service = SimpleNamespace(
+        _clock=lambda: "2026-04-06T00:15:01Z",
+        _pending_replays={},
+        _active={"job_1": submission},
+        _runtime_contexts={"job_1": _runtime_context()},
+        _registry={"codex": adapter},
+    )
+    captured: dict[str, object] = {}
+
+    def _persist(service, job_id, pending_decision=None, pending_items=()):
+        captured["submission"] = service._active.get(job_id)
+        captured["decision"] = pending_decision
+
+    monkeypatch.setattr(
+        "provider_execution.service_runtime.polling.persist_submission",
+        _persist,
+    )
+
+    updates = poll_updates(service)
+
+    assert len(updates) == 1
+    decision = updates[0].decision
+    assert decision is not None
+    assert decision.reply == "done from runtime state"
+    assert decision.reply_started is True
+    assert decision.diagnostics["completion_timeout_class"] == "reply_captured_no_terminal"
+    assert decision.diagnostics["completion_reply_source"] == "last_final_answer"
+    assert decision.diagnostics["no_reply_detail"]["recovery_action"] == "deliver_degraded_reply_then_repair_completion_log"
+    assert captured["submission"].reply == "done from runtime state"
 
 
 def test_poll_updates_terminalizes_timeout_when_poll_only_advances_cursor(monkeypatch) -> None:

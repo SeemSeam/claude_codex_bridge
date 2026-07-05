@@ -15,6 +15,7 @@ class HealthMonitorRuntimeState:
     session_bindings: object
     namespace_state_store: object
     assess_provider_pane: object
+    dispatcher: object | None = None
 
 
 class HealthMonitorRuntimeStateMixin:
@@ -61,6 +62,10 @@ class HealthMonitorRuntimeStateMixin:
     @property
     def _assess_provider_pane(self):
         return self._runtime_state.assess_provider_pane
+
+    @property
+    def _dispatcher(self):
+        return self._runtime_state.dispatcher
 
 
 __all__ = [

@@ -1299,7 +1299,10 @@ def test_execution_service_claude_persists_before_ready_wait_and_resumes_prompt_
 
     assert restarted.poll() == ()
     assert sent == []
-    assert pane_reads == [('%2', 120)]
+    # Two reads on the first active poll: one for the high-confidence
+    # provider-signal terminalization check (usage-limit false-positive fix)
+    # and one for ready-detection.
+    assert pane_reads == [('%2', 120), ('%2', 120)]
 
     pane_text['value'] = """
 ───────────────────────────────────────────

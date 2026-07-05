@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from cli.context import CliContextBuilder
-from cli.models import ParsedAskCommand, ParsedPendCommand, ParsedPingCommand
+from cli.models import ParsedAskCommand, ParsedPendCommand, ParsedPingCommand, ParsedPsCommand
 from cli.services.ask import submit_ask, watch_ask_job
 from cli.services.pend import pend_target
 from cli.services.ping import ping_target
+from cli.services.ps import ps_summary
 
 from server_runtime_io import tool_error, tool_ok
 
@@ -169,10 +170,34 @@ def ping_agent(args: dict[str, Any]) -> dict[str, Any]:
         return tool_error(str(exc))
 
 
+def roster(args: dict[str, Any]) -> dict[str, Any]:
+    work_dir = _optional_text(args, "work_dir")
+    alive_only = parse_bool(args.get("alive_only"), default=False)
+    try:
+        context = build_context_for(work_dir)
+        payload = ps_summary(context, ParsedPsCommand(project=None, alive_only=alive_only))
+        return tool_ok(payload)
+    except Exception as exc:
+        return tool_error(str(exc))
+
+
+def peer_status(args: dict[str, Any]) -> dict[str, Any]:
+    agent_name = (_optional_text(args, "agent_name") or "ccbd").lower()
+    work_dir = _optional_text(args, "work_dir")
+    try:
+        context = build_context_for(work_dir)
+        payload = ping_target(context, ParsedPingCommand(project=None, target=agent_name))
+        return tool_ok(payload)
+    except Exception as exc:
+        return tool_error(str(exc))
+
+
 _TOOL_HANDLERS = {
     "ccb_ask_agent": lambda args, caller: submit_task(args, caller=caller),
     "ccb_pend_agent": lambda args, caller: pend_task(args),
     "ccb_ping_agent": lambda args, caller: ping_agent(args),
+    "ccb_roster": lambda args, caller: roster(args),
+    "ccb_peer_status": lambda args, caller: peer_status(args),
 }
 
 

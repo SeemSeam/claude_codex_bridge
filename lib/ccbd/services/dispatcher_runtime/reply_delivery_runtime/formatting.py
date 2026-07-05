@@ -7,6 +7,10 @@ def format_reply_delivery_body(dispatcher, reply) -> str:
         return format_heartbeat_delivery_body(reply, source_job=source_job)
     header = _reply_header(reply, source_job=source_job)
     body = reply.reply or '(empty reply)'
+    if str(reply.terminal_status.value or '').lower() != 'completed':
+        no_reply_reason = _no_reply_reason_for_reply(reply, source_job=source_job)
+        if no_reply_reason:
+            body = f'[no_reply_reason={no_reply_reason}]\n{body}'
     return '\n'.join((' '.join(header), '', body)).rstrip()
 
 
@@ -89,6 +93,23 @@ def _heartbeat_job_id(diagnostics: dict, *, source_job) -> str | None:
         return job_id
     if source_job is not None:
         return source_job.job_id
+    return None
+
+
+def _no_reply_reason_for_reply(reply, *, source_job) -> str | None:
+    diagnostics = dict(reply.diagnostics or {})
+    decision_diagnostics = diagnostics.get('decision_diagnostics')
+    if isinstance(decision_diagnostics, dict):
+        reason = str(decision_diagnostics.get('no_reply_reason') or '').strip()
+        if reason:
+            return reason
+    if source_job is not None:
+        terminal = getattr(source_job, 'terminal_decision', None)
+        if isinstance(terminal, dict):
+            terminal_diagnostics = terminal.get('diagnostics') or {}
+            reason = str(terminal_diagnostics.get('no_reply_reason') or '').strip()
+            if reason:
+                return reason
     return None
 
 

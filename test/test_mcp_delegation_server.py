@@ -20,6 +20,6 @@ def test_mcp_delegation_server_exposes_agent_first_tools() -> None:
     module = _load_module()
     tool_names = {tool["name"] for tool in module.TOOL_DEFS}
 
-    assert {"ccb_ask_agent", "ccb_pend_agent", "ccb_ping_agent"} <= tool_names
+    assert {"ccb_ask_agent", "ccb_pend_agent", "ccb_ping_agent", "ccb_roster", "ccb_peer_status"} <= tool_names
     assert "ccb_ask_codex" not in tool_names
     assert "cask" not in tool_names

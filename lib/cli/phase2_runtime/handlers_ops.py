@@ -167,8 +167,41 @@ def handle_doctor(context, command, out, services) -> int:
             return 0
         services.write_lines(out, services.render_doctor_storage(payload))
         return 0
+    if getattr(command, 'identity', False):
+        payload = services.identity_summary(context)
+        if command.json_output:
+            out.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+            out.write('\n')
+            return 0
+        services.write_lines(out, services.render_identity(payload))
+        return 0
     payload = services.doctor_summary(context)
+    if getattr(command, 'deep', False):
+        probe_payload = services.probe_summary(context)
+        services.write_lines(out, services.render_doctor(payload))
+        services.write_lines(out, services.render_probe(probe_payload))
+        return 0
     services.write_lines(out, services.render_doctor(payload))
+    return 0
+
+
+def handle_identity(context, command, out, services) -> int:
+    payload = services.identity_summary(context)
+    if command.json_output:
+        out.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        out.write('\n')
+        return 0
+    services.write_lines(out, services.render_identity(payload))
+    return 0
+
+
+def handle_probe(context, command, out, services) -> int:
+    payload = services.probe_summary(context)
+    if command.json_output:
+        out.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        out.write('\n')
+        return 0
+    services.write_lines(out, services.render_probe(payload))
     return 0
 
 

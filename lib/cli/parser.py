@@ -19,6 +19,7 @@ from .parser_runtime import (
     parse_doctor,
     parse_fault,
     parse_global_options,
+    parse_identity,
     parse_inbox,
     parse_kill,
     parse_layout,
@@ -29,6 +30,7 @@ from .parser_runtime import (
     parse_plan,
     parse_pend,
     parse_ping,
+    parse_probe,
     parse_ps,
     parse_question,
     parse_queue,
@@ -41,6 +43,7 @@ from .parser_runtime import (
     parse_trace,
     parse_wait,
     parse_watch,
+    parse_why,
 )
 
 
@@ -61,6 +64,7 @@ _COMMAND_PARSERS = {
     'queue': parse_queue,
     'repair': parse_repair,
     'trace': parse_trace,
+    'why': parse_why,
     'resubmit': parse_resubmit,
     'retry': parse_retry,
     'inbox': parse_inbox,
@@ -73,6 +77,8 @@ _COMMAND_PARSERS = {
     'maintenance': parse_maintenance,
     'mobile': parse_mobile,
     'doctor': parse_doctor,
+    'identity': parse_identity,
+    'probe': parse_probe,
     'config': parse_config,
     'fault': parse_fault,
     'reload': parse_reload,
