@@ -31,7 +31,7 @@
 
 **中文** | [English](readme_en.md) | [日本語](readme_ja.md) | [Français](readme_fr.md) | [Deutsch](readme_de.md) | [العربية](readme_ar.md) | [Español](readme_es.md) | [Português](readme_pt.md) | [한국어](readme_ko.md) | [Русский](readme_ru.md)
 
-[快速开始](#quick-start) · [Mobile App](#mobile-app) · [Rich 模式](#rich-mode) · [配置团队](#configure-agents) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
+[快速开始](#quick-start) · [Mobile App](#mobile-app) · [Rich 模式](#rich-mode) · [配置团队](#configure-agents) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/) · [架构分析](docs/claude-codex-bridge-architecture-analysis.zh.md)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-zh-light.png" alt="CCB 可见多 Agent CLI 工作台" width="960">
@@ -229,6 +229,10 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以直接问当前工作台里的 `ccb_self`。它是 CCB 内置的 self-agent，理解 CCB 命令、配置权威层、roles、windows、reload 边界和常见恢复路径，并能用私有 `ccb-config` skill 和你讨论后生成配置方案。空白项目默认包含 `ccb_self`；已有自定义配置可以用 `ccb roles add agentroles.ccb_self:codex` 添加。
 
 `.ccb/ccb_memory.md` 是项目级共享记忆文档，适合记录团队协作规则、项目约束、长期上下文和 agent 交接约定。把跨 agent 的稳定信息放在这里，比把同一段说明复制到多个 provider 私有记忆里更可靠。
+
+如果你想先快速理解 CCB 当前的系统形态，而不是从源码入口逐层追踪，可以先看这篇架构分析：
+
+- [深入分析 claude_codex_bridge](docs/claude-codex-bridge-architecture-analysis.zh.md)
 
 <a id="contact"></a>
 
