@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 
+import pytest
+
 from agents.models import (
     AgentSpec,
     PermissionMode,
@@ -18,6 +20,7 @@ from provider_backends.deepseek.launcher import build_start_cmd as build_deepsee
 from provider_backends.kimi.launcher import build_start_cmd as build_kimi_start_cmd
 from provider_backends.kimi.skills import kimi_skill_dirs_for_launch, materialize_kimi_skills
 from provider_backends.mimo.launcher import build_start_cmd as build_mimo_start_cmd
+from provider_backends.opencode.launcher import build_start_cmd as build_opencode_start_cmd
 
 
 def _spec(
@@ -175,6 +178,37 @@ def test_deepseek_start_cmd_supports_env_override_and_template(monkeypatch, tmp_
     cmd = build_deepseek_start_cmd(command, spec, tmp_path / "runtime", "launch-1")
 
     assert cmd.endswith("sandbox=1 /tmp/deepcode --config demo")
+
+
+@pytest.mark.parametrize(
+    ("startup_args", "expected_parts"),
+    [
+        ((), ("opencode",)),
+        (("--session", "ses_x"), ("opencode", "--session", "ses_x")),
+        (("-s", "ses_x"), ("opencode", "-s", "ses_x")),
+    ],
+)
+def test_opencode_start_cmd_preserves_startup_args_without_implicit_restore(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    startup_args: tuple[str, ...],
+    expected_parts: tuple[str, ...],
+) -> None:
+    monkeypatch.delenv("OPENCODE_START_CMD", raising=False)
+    command = ParsedStartCommand(project=None, agent_names=("opencode_agent",), restore=True, auto_permission=False)
+    spec = _spec("opencode_agent", "opencode", startup_args=startup_args)
+
+    cmd = build_opencode_start_cmd(
+        command,
+        spec,
+        tmp_path / "runtime",
+        "launch-1",
+        prepared_state={"project_root": str(tmp_path / "repo")},
+    )
+
+    parts = tuple(shlex.split(cmd.rsplit("; ", 1)[-1]))
+    assert parts == expected_parts
+    assert "--continue" not in parts
 
 
 def test_mimo_start_cmd_uses_managed_home_config_and_env_override(monkeypatch, tmp_path: Path) -> None:

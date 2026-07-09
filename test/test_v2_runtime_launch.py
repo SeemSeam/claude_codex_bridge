@@ -1000,7 +1000,7 @@ def test_ensure_agent_runtime_launches_named_opencode_session(monkeypatch, tmp_p
         runtime_dir=ctx.paths.agent_dir('builder') / 'provider-runtime' / 'opencode',
         session_id=payload['ccb_session_id'],
     )
-    assert payload['start_cmd'].endswith('opencode --continue')
+    assert payload['start_cmd'].endswith('opencode')
     assert payload['ccb_session_id'].startswith('ccb-builder-')
     assert config_path.is_file()
 
@@ -2517,7 +2517,7 @@ def test_opencode_workspace_preparation_writes_memory_config(tmp_path: Path, mon
     config = json.loads(config_path.read_text(encoding='utf-8'))
     assert f'OPENCODE_CONFIG={shlex.quote(str(config_path))}' in cmd
     assert 'OPENCODE_DISABLE_AUTOUPDATE=true' in cmd
-    assert cmd.endswith('opencode --continue')
+    assert cmd.endswith('opencode')
     assert config['provider'] == 'anthropic'
     assert config['autoupdate'] is False
     assert config['instructions'] == [
