@@ -97,8 +97,6 @@ def build_start_cmd(
         **_opencode_memory_env(_path_or_none(launch_context.get('opencode_config_path')), profile),
     }
     cmd_parts = provider_start_parts('opencode')
-    if command.restore:
-        cmd_parts.append('--continue')
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)
