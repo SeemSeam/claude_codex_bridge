@@ -1906,6 +1906,30 @@ def test_grok_launcher_uses_bypass_permissions_and_allows_ccb_skills_on_normal_s
     assert payload['grok_auto_permission_enabled'] is True
 
 
+def test_grok_launcher_fullscreen_overrides_default_minimal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / 'source-home'
+    (source_home / '.grok').mkdir(parents=True)
+    monkeypatch.setattr(grok_home, 'current_provider_source_home', lambda: source_home)
+    project_root = tmp_path / 'repo-grok-fullscreen'
+    command = ParsedStartCommand(project=None, agent_names=('grok1',), restore=True, auto_permission=True)
+    ctx = _context(project_root, command)
+    spec = _spec('grok1', provider='grok', startup_args=('--fullscreen',))
+    plan = WorkspacePlanner().plan(spec, ctx.project)
+    plan.workspace_path.mkdir(parents=True, exist_ok=True)
+    runtime_dir = ctx.paths.agent_provider_runtime_dir('grok1', 'grok')
+    launcher = build_default_runtime_launcher_map(include_optional=True)['grok']
+
+    prepared = launcher.prepare_launch_context(ctx, spec, plan, runtime_dir, {})
+    start_cmd = launcher.build_start_cmd(command, spec, runtime_dir, 'sess-grok', prepared_state=prepared)
+    visible_parts = shlex.split(start_cmd.rsplit('; ', 1)[-1])
+
+    assert '--fullscreen' in visible_parts
+    assert '--minimal' not in visible_parts
+
+
 def test_grok_launcher_disables_skill_projection_and_rules_when_inheritance_is_off(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

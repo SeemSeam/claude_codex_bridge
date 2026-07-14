@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from agents.models import AgentSpec
@@ -77,8 +78,14 @@ def build_start_cmd(
         launch_context['grok_skill_permissions_enabled'] = bool(
             command.auto_permission and grok_ccb_skills_ready(home_dir)
         )
+    launch_config = _GROK_LAUNCH_CONFIG
+    if '--fullscreen' in spec.startup_args:
+        launch_config = replace(
+            launch_config,
+            visible_args=tuple(arg for arg in launch_config.visible_args if arg != '--minimal'),
+        )
     return native_build_start_cmd(
-        _GROK_LAUNCH_CONFIG,
+        launch_config,
         command,
         spec,
         runtime_dir,
