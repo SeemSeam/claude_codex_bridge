@@ -564,6 +564,15 @@ Reply delivery has the same acceptance boundary. Sending `CCB_REPLY` text to a
 pane is not delivery completion. Codex reply-delivery prompts must carry their
 own request anchor, remain running after pane dispatch, and consume the mailbox
 head only after that exact anchor is observed in the bound protocol log.
+The resulting provider acknowledgement is transport work, not a second
+business response, so it may be empty only when all delivery proofs agree:
+the runtime is explicitly marked for reply delivery, its state is `accepted`,
+the request anchor was observed, and the terminal decision is exactly
+`reply_delivery_sent` with accepted-delivery diagnostics. Missing any one of
+those proofs keeps the normal non-empty-reply fail-closed gate. A confirmed
+transport acknowledgement must not be downgraded to
+`task_complete_empty_reply`, because terminal reply-delivery recovery would
+otherwise requeue the same mailbox head indefinitely.
 
 The first implementation must not automatically resend the prompt. Anchor
 absence is observation failure, not proof that Codex never began executing.

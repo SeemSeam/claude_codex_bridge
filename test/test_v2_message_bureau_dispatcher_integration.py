@@ -22,6 +22,7 @@ from agents.models import (
 from ccbd.api_models import DeliveryScope, JobStatus, MessageEnvelope
 from ccbd.services.dispatcher import DispatchError, JobDispatcher
 from ccbd.services.dispatcher_runtime.finalization_runtime.persistence import persist_terminal_completion
+from ccbd.services.dispatcher_runtime.polling_service import _validate_provider_completion_decision
 from ccbd.services.dispatcher_runtime.reply_delivery import prepare_reply_deliveries
 from ccbd.services.job_heartbeat import JobHeartbeatService
 from ccbd.services.registry import AgentRegistry
@@ -4581,6 +4582,71 @@ def test_dispatcher_failed_reply_delivery_requeues_original_reply_head(tmp_path:
     assert mailbox is not None
     assert mailbox.summary_source == 'transition-rewrite-head'
     assert delivery_job_id_from_payload(mailbox.head_payload_ref) is None
+
+
+def test_confirmed_empty_codex_reply_delivery_consumes_head_without_requeue(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-confirmed-empty-codex-reply-delivery'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-07-15T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='question for claude',
+            task_id='task-confirmed-empty-codex-reply-delivery',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    dispatcher.tick()
+    dispatcher.complete(receipt.jobs[0].job_id, _decision(reply='reply for codex'))
+
+    delivery_job = dispatcher.tick()[0]
+    assert delivery_job.request.message_type == 'reply_delivery'
+    submission = ProviderSubmission(
+        job_id=delivery_job.job_id,
+        agent_name='codex',
+        provider='codex',
+        accepted_at='2026-07-15T00:00:00Z',
+        ready_at='2026-07-15T00:00:00Z',
+        source_kind=CompletionSourceKind.PROTOCOL_EVENT_STREAM,
+        reply='',
+        runtime_state={
+            'mode': 'active',
+            'reply_delivery_complete_on_dispatch': True,
+            'delivery_state': 'accepted',
+            'anchor_seen': True,
+        },
+    )
+    decision = CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.COMPLETED,
+        reason='reply_delivery_sent',
+        confidence=CompletionConfidence.OBSERVED,
+        reply='',
+        anchor_seen=True,
+        reply_started=False,
+        reply_stable=True,
+        provider_turn_ref=delivery_job.job_id,
+        source_cursor=None,
+        finished_at='2026-07-15T00:00:01Z',
+        diagnostics={'reply_delivery': True, 'delivery_status': 'accepted'},
+    )
+
+    validated = _validate_provider_completion_decision(submission, decision)
+    dispatcher.complete(delivery_job.job_id, validated)
+
+    assert validated.status is CompletionStatus.COMPLETED
+    assert dispatcher.inbox('codex')['item_count'] == 0
+    assert not any(job.request.message_type == 'reply_delivery' for job in dispatcher.tick())
 
 
 def test_dispatcher_ack_rejects_reply_after_auto_delivery_is_scheduled(tmp_path: Path) -> None:

@@ -66,6 +66,8 @@ def _validate_provider_completion_decision(submission, decision):
         return decision
     if not _requires_codex_active_acceptance_gate(submission):
         return decision
+    if _is_confirmed_reply_delivery_completion(submission, decision):
+        return decision
     if not str(decision.reply or '').strip():
         return _incomplete_provider_completion(
             decision,
@@ -103,6 +105,20 @@ def _requires_codex_active_acceptance_gate(submission) -> bool:
         return False
     runtime_state = dict(getattr(submission, 'runtime_state', {}) or {})
     return str(runtime_state.get('mode') or '').strip().lower() == 'active'
+
+
+def _is_confirmed_reply_delivery_completion(submission, decision) -> bool:
+    """Allow an empty Codex transport acknowledgement only with full delivery proof."""
+    runtime_state = dict(getattr(submission, 'runtime_state', {}) or {})
+    diagnostics = dict(decision.diagnostics or {})
+    return (
+        bool(runtime_state.get('reply_delivery_complete_on_dispatch'))
+        and str(runtime_state.get('delivery_state') or '').strip().lower() == 'accepted'
+        and bool(runtime_state.get('anchor_seen') or decision.anchor_seen)
+        and str(decision.reason or '').strip().lower() == 'reply_delivery_sent'
+        and diagnostics.get('reply_delivery') is True
+        and str(diagnostics.get('delivery_status') or '').strip().lower() == 'accepted'
+    )
 
 
 def _incomplete_provider_completion(decision, *, reason: str, gate: str, diagnostics: dict | None = None):
