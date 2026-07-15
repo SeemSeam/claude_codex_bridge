@@ -6,7 +6,7 @@
 **Coordene Codex, Claude, Gemini e outros agentes CLI em fluxos visíveis e controláveis que você pode assumir diretamente**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.5-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -180,9 +180,9 @@ Esse comando orienta a instalação e a configuração.
 <details>
 <summary><b>Detalhes do Mobile App, limite de segurança e fonte</b></summary>
 
-O CCB 8.1.5 inclui o código Flutter do CCB Mobile em [`mobile/`](../mobile/) e publica o APK Android pelo GitHub Releases:
+O CCB Mobile permanece inalterado no desktop v8.1.6; o último APK Android mantido é o v8.1.4:
 
-- [Baixar CCB Mobile v8.1.5 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.5/ccb-mobile-v8.1.5.apk)
+- [Baixar CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - Fonte do app: [`mobile/app`](../mobile/app)
 - Fonte do gateway servidor: [`lib/mobile_gateway`](../lib/mobile_gateway)
 

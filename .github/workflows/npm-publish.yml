@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to publish"
         required: true
-        default: "v8.1.5"
+        default: "v8.1.6"
   push:
     tags:
       - "v*.*.*"
@@ -59,13 +59,10 @@ jobs:
         run: |
           set -euo pipefail
           required="$(node - <<'NODE'
-          const tag = process.env.TAG_NAME;
           console.log(JSON.stringify([
             "SHA256SUMS",
             "ccb-linux-x86_64.tar.gz",
             "ccb-macos-universal.tar.gz",
-            `ccb-mobile-${tag}.apk`,
-            `ccb-mobile-${tag}.json`,
           ]));
           NODE
           )"

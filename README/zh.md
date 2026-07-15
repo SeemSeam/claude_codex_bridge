@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.5-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -180,9 +180,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.1.5 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+桌面端 v8.1.6 不包含 CCB Mobile 更新；保留的 Android APK 版本为 v8.1.4：
 
-- [下载 CCB Mobile v8.1.5 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.5/ccb-mobile-v8.1.5.apk)
+- [下载 CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -266,13 +266,18 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
-<summary><b>v8.1.5</b> - 工作流权威、provider 恢复与 OMP 支持</summary>
+<summary><b>v8.1.6</b> - 紧急通讯可靠性修复</summary>
 
-- 增加由脚本持有权威状态的单 lane Agentic Workflow 基础能力，Planner、Detailer、Orchestrator、Review、Workgroup 与集成产物均经过校验；replan 具备认证、revision fence、串行化和防重放约束。
-- 通过精确 job/session anchor 恢复后端重启后的 Codex 与 Claude 执行；Codex pane 恢复可刷新继承登录态，并在凭据仍被撤销时阻止重复 respawn。
-- 加固冷启动 tmux 流程，先创建项目 server 再应用 socket policy，并将缺失的项目 socket 正确判定为未启动。
-- 新增独立原生 `omp` backend，使用 Oh My Pi 支持的 JSON event lifecycle、approval mode、session storage、provider catalog 和回归测试。
-- 新增设备绑定、feature-gated 的 Mobile FCM 推送及路由去重，选择兼容 tmux client，并加固同版本构建冲突检测和失败更新回滚。
+- 修复受管 Codex 会话重绑定与请求级投递确认。
+- 活跃 mailbox 工作未完成时禁止清理 provider context。
+- 仅发布桌面端与 npm 包；本次不包含 CCB Mobile 更新。
+
+</details>
+
+<details>
+<summary><b>v8.1.5</b> - 已撤回</summary>
+
+- 因公开版本说明披露未发布内容而撤回。
 
 </details>
 

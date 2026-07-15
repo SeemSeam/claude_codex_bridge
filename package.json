@@ -1,6 +1,6 @@
 {
   "name": "@seemseam/ccb",
-  "version": "8.1.5",
+  "version": "8.1.6",
   "description": "Lightweight multi-agent TUI and stable cross-provider collaboration layer for Codex, Claude, Gemini, Grok, Kimi, DeepSeek, and other CLI agents.",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/SeemSeam/claude_codex_bridge#readme",

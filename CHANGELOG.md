@@ -1,70 +1,18 @@
 # Changelog
 
-## v8.1.5 (2026-07-14)
+## v8.1.6 (2026-07-15)
 
-### Agentic Workflow Foundation
+### Communication Reliability
 
-- **Single-Lane Workflow Authority Is Script-Owned**: planner, orchestrator,
-  task-detailer, worker-review, round-review, and frontdesk handoffs now use
-  validated artifacts, exact authority boundaries, and deterministic status
-  transitions instead of relying on provider conversation state.
-- **Planner Replans Are Revision-Fenced**: macro-impact feedback and task-set
-  outcomes are authenticated, serialized by plan, replay-safe, and projected
-  into PlanTree only after the active revision is verified.
-- **Dynamic Workgroups Retain Lifecycle Evidence**: role capacity, pane layout,
-  worktree topology, review chains, integration gates, and release accounting
-  are represented by bounded runtime services with source and fake-provider
-  regression coverage.
-- **Restricted Roles Fail Closed**: provider projection and strict reply
-  parsing prevent readless planning roles from silently gaining file-backed
-  skills, forbidden tools, or unsupported retry authority.
+- Fixed Codex session rebinding after a managed session rotates.
+- Made task and reply delivery wait for durable, request-specific evidence.
+- Prevented provider-context clearing while active mailbox work is in flight.
+- This emergency release includes desktop artifacts and the npm package only;
+  CCB Mobile is unchanged and is not included.
 
-### Provider Lifecycle Recovery
+## v8.1.5 (withdrawn)
 
-- **Codex And Claude Resume After Backend Restart**: persisted session
-  bindings are restored through exact job anchors instead of drifting to an
-  unrelated current provider session.
-- **Rotated Codex Login State Can Recover In Place**: managed Codex homes
-  refresh stable inherited auth state before respawn, allowing a repaired pane
-  to reuse its existing slot without remounting the project.
-- **Revoked Authentication Stops Restart Loops**: unrecoverable provider auth
-  crashes persist an actionable reason and recovery block; repeated daemon
-  heartbeats do not keep respawning the same broken pane.
-- **Cold Tmux Bootstrap Is Deterministic**: first startup creates the project
-  server before applying socket policy, and a missing project socket is
-  classified as absent rather than as a live backend failure.
-
-### Oh My Pi Provider
-
-- **OMP Is A Native Backend**: the new `omp` provider launches Oh My Pi with
-  its supported JSON event mode, session directory, and approval settings
-  without passing legacy Pi-only flags.
-- **OMP Uses Independent Runtime State**: provider homes, sessions, commands,
-  storage classification, catalog entries, and native lifecycle tests remain
-  separate from the existing Pi adapter.
-
-### Mobile Push Delivery
-
-- **Push Routes Are Device-Bound**: feature-gated FCM delivery binds tokens to
-  the paired device and gateway contract while deduplicating route updates and
-  completion notifications.
-- **Terminal Startup Selects A Compatible Tmux Client**: Mobile gateway
-  startup avoids inheriting an incompatible client when attaching to project
-  sessions.
-
-### Release Update Safety
-
-- **Colliding Builds Are Rejected**: an update cannot replace an installed
-  release with a different payload that claims the same version and commit.
-- **Rollback Backups Survive Failed Updates**: interrupted installation keeps
-  the verified previous payload available until the new release is committed
-  successfully.
-
-### Release Surface
-
-- **Release Metadata Synchronized**: VERSION, source CLI metadata,
-  `package.json`, Mobile app metadata and download links, workflow dispatch
-  defaults, localized README badges, and release notes are aligned for 8.1.5.
+- Withdrawn because its public release notes disclosed unreleased details.
 
 ## v8.1.4 (2026-07-13)
 

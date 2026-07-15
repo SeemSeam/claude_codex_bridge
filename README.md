@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.5-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -186,9 +186,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.1.5 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB Mobile is unchanged in desktop v8.1.6. The last retained Android APK is v8.1.4:
 
-- [Download CCB Mobile v8.1.5 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.5/ccb-mobile-v8.1.5.apk)
+- [Download CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -272,13 +272,18 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
-<summary><b>v8.1.5</b> - Workflow authority, provider recovery, and OMP support</summary>
+<summary><b>v8.1.6</b> - Emergency communication reliability fix</summary>
 
-- Added the script-owned single-lane Agentic Workflow foundation with validated planner, detailer, orchestrator, review, workgroup, and integration artifacts; replans are authenticated, revision-fenced, serialized, and replay-safe.
-- Restored Codex and Claude execution after backend restarts through exact job/session anchors, and made Codex pane recovery refresh rotated inherited auth while stopping repeat respawns for unchanged revoked credentials.
-- Hardened cold tmux startup so the project server exists before socket policy is applied and missing project sockets are classified as absent.
-- Added Oh My Pi as an independent native `omp` backend with its supported JSON event lifecycle, approval mode, session storage, provider catalog, and regression coverage.
-- Added device-bound, feature-gated Mobile FCM delivery with deduplicated routes, compatible tmux client selection, and safer release update collision and rollback handling.
+- Fixed managed Codex session rebinding and request-specific delivery acknowledgement.
+- Prevented context clearing while active mailbox work is in flight.
+- Desktop and npm only; CCB Mobile is unchanged and not included.
+
+</details>
+
+<details>
+<summary><b>v8.1.5</b> - Withdrawn</summary>
+
+- Withdrawn because its public release notes disclosed unreleased details.
 
 </details>
 

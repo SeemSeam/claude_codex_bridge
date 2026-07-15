@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to build and upload"
         required: true
-        default: "v8.1.5"
+        default: "v8.1.6"
   push:
     tags:
       - "v*"
@@ -113,6 +113,7 @@ jobs:
 
   mobile-android:
     name: Build Android mobile APK
+    if: ${{ false }}
     runs-on: ubuntu-latest
 
     steps:
@@ -230,7 +231,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
-      - mobile-android
 
     steps:
       - name: Checkout release notes
@@ -254,9 +254,7 @@ jobs:
           cd dist-release
           test -f ccb-linux-x86_64.tar.gz
           test -f ccb-macos-universal.tar.gz
-          test -f "ccb-mobile-${TAG_NAME}.apk"
-          test -f "ccb-mobile-${TAG_NAME}.json"
-          sha256sum ccb-*.tar.gz ccb-mobile-*.apk ccb-mobile-*.json | sort -k2 > SHA256SUMS
+          sha256sum ccb-*.tar.gz | sort -k2 > SHA256SUMS
           sha256sum -c SHA256SUMS
           notes_file="$(mktemp)"
           python - "$TAG_NAME" > "$notes_file" <<'PY'
@@ -293,6 +291,6 @@ jobs:
               --title "$TAG_NAME" \
               --notes-file "$notes_file"
           fi
-          gh release upload "$TAG_NAME" ccb-linux-x86_64.tar.gz ccb-macos-universal.tar.gz "ccb-mobile-${TAG_NAME}.apk" "ccb-mobile-${TAG_NAME}.json" SHA256SUMS \
+          gh release upload "$TAG_NAME" ccb-linux-x86_64.tar.gz ccb-macos-universal.tar.gz SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
