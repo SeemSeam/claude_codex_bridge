@@ -43,7 +43,10 @@ def start_active_submission(
     reader = reader_factory(prepared.session, None)
     state = reader.capture_state()
     request_anchor = request_anchor_fn(job.job_id)
-    no_wrap = no_wrap_requested(job)
+    reply_delivery = str(job.request.message_type or '').strip().lower() == 'reply_delivery'
+    # Reply delivery is transport work, but Codex still needs a durable request
+    # anchor so ccbd can distinguish "sent to pane" from "accepted by Codex".
+    no_wrap = no_wrap_requested(job) and not reply_delivery
     prompt = job.request.body if no_wrap else wrap_prompt_fn(job.request.body, request_anchor)
     session_path = state_session_path(state)
     if not wait_for_runtime_ready(prepared.backend, prepared.pane_id):
@@ -92,6 +95,7 @@ def start_active_submission(
             'delivery_target_pane_id': prepared.pane_id,
             'delivery_target_session_path': session_path,
             'delivery_confirmed_at': '',
+            'reply_delivery_complete_on_dispatch': reply_delivery,
         },
     )
 

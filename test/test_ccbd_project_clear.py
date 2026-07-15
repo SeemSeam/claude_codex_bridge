@@ -47,12 +47,20 @@ class _FakeBackend:
         self.calls.append(tuple(args))
 
 
-def _app(*, runtimes: dict[str, object], agents: dict[str, object] | None = None):
-    return SimpleNamespace(
+def _app(
+    *,
+    runtimes: dict[str, object],
+    agents: dict[str, object] | None = None,
+    dispatcher: object | None = None,
+):
+    app = SimpleNamespace(
         config=SimpleNamespace(agents=agents or {'agent1': object(), 'agent2': object()}),
         registry=_Registry(runtimes),
         project_namespace=SimpleNamespace(load=lambda: SimpleNamespace(tmux_socket_path='/tmp/tmux.sock')),
     )
+    if dispatcher is not None:
+        app.dispatcher = dispatcher
+    return app
 
 
 def test_project_clear_context_handler_sends_provider_clear_to_all_agent_panes(monkeypatch) -> None:
@@ -177,3 +185,36 @@ def test_project_clear_context_handler_rejects_unknown_target() -> None:
 
     with pytest.raises(ValueError, match='unknown agent: missing'):
         handler({'agent_names': ['missing']})
+
+
+def test_project_clear_context_handler_blocks_active_or_queued_agent(monkeypatch) -> None:
+    backend = _FakeBackend()
+    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    state = SimpleNamespace(
+        active_job=lambda agent_name: 'job_active' if agent_name == 'agent1' else None,
+        queue_depth=lambda agent_name: 2 if agent_name == 'agent1' else 0,
+    )
+    dispatcher = SimpleNamespace(
+        _state=state,
+        _has_outstanding_work=lambda agent_name: agent_name == 'agent1',
+    )
+    handler = build_project_clear_context_handler(
+        _app(
+            runtimes={'agent1': SimpleNamespace(active_pane_id='%1')},
+            dispatcher=dispatcher,
+        )
+    )
+
+    payload = handler({'agent_names': ['agent1']})
+
+    assert payload['status'] == 'blocked'
+    assert payload['results'] == [
+        {
+            'agent': 'agent1',
+            'status': 'blocked',
+            'reason': 'agent_has_outstanding_work',
+            'active_job_id': 'job_active',
+            'queue_depth': 2,
+        }
+    ]
+    assert backend.calls == []

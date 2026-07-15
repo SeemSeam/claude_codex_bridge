@@ -279,6 +279,74 @@ def test_codex_execution_quarantines_matching_fallback_until_official_binding_mo
     assert result.decision is None
 
 
+def test_codex_execution_rebinds_exact_anchor_fallback_after_clear_stale_binding(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from provider_execution import codex as codex_adapter_module
+
+    work_dir = tmp_path / "repo"
+    runtime_dir = work_dir / ".ccb" / "agents" / "agent1" / "provider-runtime" / "codex"
+    root = tmp_path / "sessions"
+    old_id = "11111111-1111-1111-1111-111111111111"
+    new_id = "22222222-2222-2222-2222-222222222222"
+    old_log = _codex_log(root, old_id, work_dir, entries=())
+    new_log = _codex_log(
+        root,
+        new_id,
+        tmp_path / "fresh-rollout-workspace",
+        entries=(
+            _codex_user_entry("job_1", "hello after clear"),
+            _codex_assistant_entry("completed after clear"),
+            _codex_task_complete_entry("completed after clear"),
+        ),
+    )
+    os.utime(old_log, (100, 100))
+    os.utime(new_log, (200, 200))
+
+    session_file = work_dir / ".ccb" / ".codex-agent1-session"
+    session = _WritableCodexSession(
+        work_dir=work_dir,
+        root=root,
+        log_path=old_log,
+        session_id=old_id,
+        runtime_dir=runtime_dir,
+        session_file=session_file,
+    )
+    session._write_back()
+    monkeypatch.setattr(codex_adapter_module, "_load_session", lambda work_dir_arg, agent_name: session)
+
+    submission = _codex_submission(
+        reader=CodexLogReader(root=root, log_path=old_log, session_id_filter=old_id, work_dir=work_dir),
+        state={"log_path": old_log, "offset": old_log.stat().st_size},
+        work_dir=work_dir,
+        delivery=True,
+    )
+
+    result = codex_adapter_module.CodexProviderAdapter().poll(submission, now="2026-04-04T10:00:05Z")
+
+    assert result is not None
+    assert result.decision is None
+    assert result.submission.reply == "completed after clear"
+    assert result.submission.runtime_state["anchor_seen"] is True
+    assert result.submission.runtime_state["session_path"] == str(new_log)
+    assert result.submission.runtime_state["state"]["log_path"] == new_log
+    assert result.submission.runtime_state["delivery_state"] == "accepted"
+    assert "codex_anchor_fallback_quarantined" not in result.submission.runtime_state
+
+    persisted = json.loads(session_file.read_text(encoding="utf-8"))
+    assert persisted["codex_session_id"] == new_id
+    assert persisted["codex_session_path"] == str(new_log)
+    assert persisted["old_codex_session_id"] == old_id
+    assert persisted["old_codex_session_path"] == str(old_log)
+
+    switch = json.loads((runtime_dir / "session-switch.json").read_text(encoding="utf-8"))
+    assert switch["state"] == "auto_rebound"
+    assert switch["reason"] == "exact_request_anchor_fallback"
+    assert switch["candidate"]["session_id"] == new_id
+    assert switch["candidate"]["session_path"] == str(new_log)
+
+
 def test_codex_delivery_timeout_polls_exact_changed_cwd_anchor_before_failure(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_adapter_module
 
@@ -295,13 +363,16 @@ def test_codex_delivery_timeout_polls_exact_changed_cwd_anchor_before_failure(mo
     )
     os.utime(old_log, (100, 100))
     os.utime(new_log, (200, 200))
-    monkeypatch.setattr(
-        codex_adapter_module,
-        "_load_session",
-        lambda work_dir_arg, agent_name: _CodexSession(
-            work_dir=work_dir_arg, root=root, log_path=old_log, session_id=old_id
-        ),
+    session = _WritableCodexSession(
+        work_dir=work_dir,
+        root=root,
+        log_path=old_log,
+        session_id=old_id,
+        runtime_dir=work_dir / ".ccb" / "agents" / "agent1" / "provider-runtime" / "codex",
+        session_file=work_dir / ".ccb" / ".codex-agent1-session",
     )
+    session._write_back()
+    monkeypatch.setattr(codex_adapter_module, "_load_session", lambda work_dir_arg, agent_name: session)
     submission = _codex_submission(
         reader=CodexLogReader(root=root, log_path=old_log, session_id_filter=old_id, work_dir=work_dir),
         state={"log_path": old_log, "offset": old_log.stat().st_size},
@@ -313,8 +384,10 @@ def test_codex_delivery_timeout_polls_exact_changed_cwd_anchor_before_failure(mo
 
     assert result is not None
     assert result.decision is None
-    assert result.submission.runtime_state["codex_anchor_fallback_log"] == str(new_log)
-    assert result.submission.runtime_state["delivery_state"] == "pending_anchor"
+    assert result.submission.runtime_state["session_path"] == str(new_log)
+    assert result.submission.runtime_state["anchor_seen"] is True
+    assert result.submission.runtime_state["delivery_state"] == "accepted"
+    assert "codex_anchor_fallback_log" not in result.submission.runtime_state
     assert result.submission.runtime_state.get("delivery_failure_kind") is None
 
 
@@ -555,6 +628,49 @@ class _CodexSession:
             "codex_session_path": str(log_path),
             "codex_session_id": session_id,
         }
+
+
+class _WritableCodexSession(_CodexSession):
+    def __init__(
+        self,
+        *,
+        work_dir: Path,
+        root: Path,
+        log_path: Path,
+        session_id: str,
+        runtime_dir: Path,
+        session_file: Path,
+    ) -> None:
+        super().__init__(work_dir=work_dir, root=root, log_path=log_path, session_id=session_id)
+        self.session_file = session_file
+        self.data.update(
+            {
+                "agent_name": "agent1",
+                "runtime_dir": str(runtime_dir),
+                "start_cmd": "codex resume " + session_id,
+                "codex_start_cmd": "codex resume " + session_id,
+            }
+        )
+
+    def update_codex_log_binding(
+        self,
+        *,
+        log_path: str | None,
+        session_id: str | None,
+        post_write_validate=None,
+    ) -> bool:
+        from provider_backends.codex.session_runtime.binding import update_codex_log_binding
+
+        return update_codex_log_binding(
+            self,
+            log_path=log_path,
+            session_id=session_id,
+            post_write_validate=post_write_validate,
+        )
+
+    def _write_back(self) -> None:
+        self.session_file.parent.mkdir(parents=True, exist_ok=True)
+        self.session_file.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
 
 
 def _codex_submission(

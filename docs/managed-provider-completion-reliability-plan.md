@@ -544,10 +544,26 @@ hold:
 - the job is still active, wrapped, and has not observed the request anchor
 - the originally bound/current log is drained at the captured cursor, so the
   stale-session fallback has had a chance to run
-- no unique same-workspace fallback log under the managed Codex session root
-  contains the active request anchor
+- no unique newer top-level fallback log under the same agent-managed Codex
+  session root contains the exact active request anchor; an exact anchor may
+  override stale `cwd` metadata left by `/clear`, but never the managed-root or
+  top-level-session boundary
 - there is hard evidence that the pane cannot accept the prompt (`Shutting down`
   / `Pane is dead`) or the conservative delivery timeout has elapsed
+
+When that unique exact-anchor fallback exists, the adapter must commit the new
+session binding transactionally before polling it: persist the new path/id,
+old-binding metadata, and resume command; validate that the candidate still
+exists; then replace the in-memory reader. Failed or concurrent persistence
+must leave the old binding intact and fail closed rather than polling one log
+while the session file names another. Candidate discovery remains off the
+steady-state path: it is allowed only while a wrapped delivery is awaiting its
+anchor and the bound log is drained.
+
+Reply delivery has the same acceptance boundary. Sending `CCB_REPLY` text to a
+pane is not delivery completion. Codex reply-delivery prompts must carry their
+own request anchor, remain running after pane dispatch, and consume the mailbox
+head only after that exact anchor is observed in the bound protocol log.
 
 The first implementation must not automatically resend the prompt. Anchor
 absence is observation failure, not proof that Codex never began executing.

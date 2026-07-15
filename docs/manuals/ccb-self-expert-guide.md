@@ -753,6 +753,11 @@ ccb trace <active_or_recent_id>
 ccb clear <agent>
 ```
 
+`clear` 会在目标 agent 仍有 active 或 queued work 时返回 `blocked`，不会向
+provider pane 发送 `/clear`。清理完成后紧接着提交的新 Codex 任务仍以精确
+request anchor 为权威；即使 Codex 的新 rollout 创建和 session-file 更新存在
+短暂先后差，执行层也会事务化重绑，不能依赖固定 sleep 规避竞态。
+
 如果 provider 进程必须替换，且 active work 已清空：
 
 ```bash

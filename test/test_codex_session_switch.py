@@ -4,7 +4,11 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from provider_backends.codex.bridge_runtime.binding_runtime import CodexBindingTracker
+from provider_backends.codex.session import CodexProjectSession
+from provider_backends.codex.session_runtime.binding_runtime import SessionWriteError
 from provider_backends.codex.session_switch import resolve_switch_decision
 
 
@@ -240,6 +244,89 @@ def test_two_agents_rebind_only_inside_their_own_managed_roots(tmp_path: Path, m
     assert json.loads(first_session.read_text(encoding="utf-8"))["codex_session_path"] == str(first_log)
     assert json.loads(second_session.read_text(encoding="utf-8"))["codex_session_path"] == str(second_log)
     assert str(first_log.parent.parent.parent) not in str(second_log)
+
+
+def test_codex_project_session_false_write_keeps_old_binding_and_skips_transfer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work_dir, session_file, _runtime_dir, _old_log = _project(tmp_path)
+    new_log = _log(tmp_path, session_id=NEW_ID, work_dir=work_dir, mtime=200)
+    original = json.loads(session_file.read_text(encoding="utf-8"))
+    transfers: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        "provider_backends.codex.session_runtime.binding_runtime.safe_write_session",
+        lambda path, payload: (False, "write_failed"),
+    )
+    monkeypatch.setattr("memory.transfer_runtime.maybe_auto_transfer", lambda **kwargs: transfers.append(kwargs))
+
+    session = CodexProjectSession(session_file=session_file, data=dict(original))
+
+    with pytest.raises(SessionWriteError):
+        session.update_codex_log_binding(log_path=str(new_log), session_id=NEW_ID)
+
+    assert session.data == original
+    assert json.loads(session_file.read_text(encoding="utf-8")) == original
+    assert transfers == []
+
+
+def test_codex_project_session_persists_before_transfer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work_dir, session_file, _runtime_dir, old_log = _project(tmp_path)
+    new_log = _log(tmp_path, session_id=NEW_ID, work_dir=work_dir, mtime=200)
+    order: list[str] = []
+
+    def write_session(path, payload):
+        order.append("write")
+        Path(path).write_text(payload, encoding="utf-8")
+        return True, None
+
+    def transfer(**kwargs):
+        order.append("transfer")
+        data = json.loads(session_file.read_text(encoding="utf-8"))
+        assert data["codex_session_id"] == NEW_ID
+        assert data["codex_session_path"] == str(new_log)
+        assert kwargs["session_id"] == OLD_ID
+
+    monkeypatch.setattr("provider_backends.codex.session_runtime.binding_runtime.safe_write_session", write_session)
+    monkeypatch.setattr("memory.transfer_runtime.maybe_auto_transfer", transfer)
+
+    session = CodexProjectSession(
+        session_file=session_file,
+        data=json.loads(session_file.read_text(encoding="utf-8")),
+    )
+
+    assert session.update_codex_log_binding(log_path=str(new_log), session_id=NEW_ID) is True
+
+    assert order == ["write", "transfer"]
+    assert session.data["codex_session_id"] == NEW_ID
+    assert json.loads(session_file.read_text(encoding="utf-8"))["old_codex_session_path"] == str(old_log)
+
+
+def test_codex_project_session_rejects_stale_concurrent_binding_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work_dir, session_file, _runtime_dir, _old_log = _project(tmp_path)
+    first_log = _log(tmp_path, session_id=NEW_ID, work_dir=work_dir, mtime=200)
+    second_id = "33333333-3333-3333-3333-333333333333"
+    second_log = _log(tmp_path, session_id=second_id, work_dir=work_dir, mtime=300)
+    original = json.loads(session_file.read_text(encoding="utf-8"))
+    first = CodexProjectSession(session_file=session_file, data=dict(original))
+    stale = CodexProjectSession(session_file=session_file, data=dict(original))
+    monkeypatch.setattr("memory.transfer_runtime.maybe_auto_transfer", lambda **kwargs: None)
+
+    assert first.update_codex_log_binding(log_path=str(first_log), session_id=NEW_ID) is True
+    with pytest.raises(SessionWriteError, match="changed concurrently"):
+        stale.update_codex_log_binding(log_path=str(second_log), session_id=second_id)
+
+    persisted = json.loads(session_file.read_text(encoding="utf-8"))
+    assert persisted["codex_session_id"] == NEW_ID
+    assert persisted["codex_session_path"] == str(first_log)
+    assert stale.data == original
 
 
 def _project(tmp_path: Path) -> tuple[Path, Path, Path, Path]:

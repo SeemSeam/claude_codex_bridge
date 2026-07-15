@@ -20,7 +20,16 @@ def commit_rebind(
     old_session_path = str(session_data.get("codex_session_path") or "").strip()
     session = CodexProjectSession(session_file=session_file, data=dict(session_data))
     before = _snapshot(session.data)
-    session.update_codex_log_binding(log_path=str(candidate.path), session_id=candidate.session_id)
+    try:
+        committed = session.update_codex_log_binding(
+            log_path=str(candidate.path),
+            session_id=candidate.session_id,
+            post_write_validate=lambda: candidate.path.is_file(),
+        )
+    except Exception:
+        return False
+    if not committed:
+        return False
     changed = before != _snapshot(session.data)
     if changed:
         write_rebound(

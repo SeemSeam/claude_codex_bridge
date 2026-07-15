@@ -17,8 +17,9 @@ def build_project_clear_context_handler(app):
             raise RuntimeError('project namespace is not mounted')
         backend = TmuxBackend(socket_path=namespace.tmux_socket_path)
         results = tuple(_clear_agent_context(app, backend=backend, agent_name=name) for name in agent_names)
+        statuses = {str(item.get('status') or '') for item in results}
         return {
-            'status': 'ok',
+            'status': 'blocked' if 'blocked' in statuses else ('failed' if 'failed' in statuses else 'ok'),
             'agent_names': list(agent_names),
             'results': list(results),
         }
@@ -47,6 +48,14 @@ def _requested_agent_names(app, payload: dict) -> tuple[str, ...]:
 
 
 def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
+    busy = _clear_busy_gate(app, agent_name=agent_name)
+    if busy is not None:
+        return {
+            'agent': agent_name,
+            'status': 'blocked',
+            'reason': 'agent_has_outstanding_work',
+            **busy,
+        }
     runtime = app.registry.get(agent_name)
     if runtime is None:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'runtime_missing'}
@@ -72,6 +81,35 @@ def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
             'pane_id': pane_id,
         }
     return {'agent': agent_name, 'status': 'cleared', 'pane_id': pane_id, 'command': '/clear'}
+
+
+def _clear_busy_gate(app, *, agent_name: str) -> dict[str, object] | None:
+    dispatcher = getattr(app, 'dispatcher', None)
+    has_outstanding = getattr(dispatcher, '_has_outstanding_work', None)
+    if not callable(has_outstanding):
+        return None
+    try:
+        if not has_outstanding(agent_name):
+            return None
+    except Exception:
+        # A failed authority check must not mutate a live provider context.
+        return {'active_job_id': None, 'queue_depth': None, 'authority_check_failed': True}
+
+    state = getattr(dispatcher, '_state', None)
+    active_job = getattr(state, 'active_job', None)
+    queue_depth = getattr(state, 'queue_depth', None)
+    try:
+        active_job_id = active_job(agent_name) if callable(active_job) else None
+    except Exception:
+        active_job_id = None
+    try:
+        depth = queue_depth(agent_name) if callable(queue_depth) else None
+    except Exception:
+        depth = None
+    return {
+        'active_job_id': str(active_job_id or '').strip() or None,
+        'queue_depth': depth,
+    }
 
 
 def _runtime_pane_id(runtime) -> str | None:

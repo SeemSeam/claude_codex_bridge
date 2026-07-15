@@ -278,11 +278,19 @@ session-switch boundary:
   runtime generation
 - when a running job is visible, auto-commit additionally requires the candidate
   log to contain that job's request anchor
+- for an active wrapped job, a unique newer top-level candidate inside the same
+  agent-managed session root may be adopted by exact request-anchor ownership
+  even when `/clear` produced stale or changed `cwd` metadata; this exception
+  does not apply to idle discovery, subagent logs, external roots, ambiguous
+  candidates, or text matches that are not the exact request anchor
 - ambiguous candidates, missing anchors, external logs, and runtime mismatches
   must be recorded as switch diagnostics and must not change binding authority
 - the switch committer is the only code path allowed to update
   `codex_session_id`, `codex_session_path`, old-binding metadata, and persisted
   resume command fields for a native in-pane switch
+- switch persistence must be atomic and serialized across bridge/execution
+  writers; stale writers must not overwrite a newer binding, and transfer or
+  reader activation must occur only after durable persistence succeeds
 - `doctor --fix` may reuse the same switch committer as a fallback repair path,
   but doctor must not define a separate binding authority model
 
