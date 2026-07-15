@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -186,7 +186,7 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB Mobile is unchanged in desktop v8.1.6. The last retained Android APK is v8.1.4:
+CCB Mobile is unchanged in desktop v8.1.7. The last retained Android APK is v8.1.4:
 
 - [Download CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - App source: [`mobile/app`](mobile/app)
@@ -272,6 +272,15 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.1.7</b> - Emergency ask and reply delivery fix</summary>
+
+- Kept managed Codex ask and reply delivery bound to the intended session and request anchor.
+- Stopped accepted reply-delivery acknowledgements from being treated as empty task replies and repeatedly queued.
+- Desktop and npm only; CCB Mobile is unchanged and not included.
+
+</details>
+
+<details>
 <summary><b>v8.1.6</b> - Emergency communication reliability fix</summary>
 
 - Fixed managed Codex session rebinding and request-specific delivery acknowledgement.

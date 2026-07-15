@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -180,7 +180,7 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-桌面端 v8.1.6 不包含 CCB Mobile 更新；保留的 Android APK 版本为 v8.1.4：
+桌面端 v8.1.7 不包含 CCB Mobile 更新；保留的 Android APK 版本为 v8.1.4：
 
 - [下载 CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - App 源码：[`mobile/app`](../mobile/app)
@@ -266,6 +266,15 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.1.7</b> - 紧急 ask/reply 投递修复</summary>
+
+- 保持受管 Codex ask/reply 投递绑定到目标会话和请求锚点。
+- 修复已接受的 reply-delivery 确认被误判为空任务回复并反复重排队。
+- 仅发布桌面端与 npm 包；本次不包含 CCB Mobile 更新。
+
+</details>
+
+<details>
 <summary><b>v8.1.6</b> - 紧急通讯可靠性修复</summary>
 
 - 修复受管 Codex 会话重绑定与请求级投递确认。

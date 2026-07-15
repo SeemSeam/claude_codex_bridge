@@ -6,7 +6,7 @@
 **Coordonne Codex, Claude, Gemini et d'autres agents CLI dans des workflows visibles, contrôlables et reprenables directement**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -180,7 +180,7 @@ Cette commande guide l'installation et la configuration.
 <details>
 <summary><b>Détails de l'app mobile, frontière de sécurité et source</b></summary>
 
-CCB Mobile reste inchangé dans la version bureau v8.1.6 ; le dernier APK Android conservé est v8.1.4 :
+CCB Mobile reste inchangé dans la version bureau v8.1.7 ; le dernier APK Android conservé est v8.1.4 :
 
 - [Télécharger l'APK CCB Mobile v8.1.4](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - Source de l'app : [`mobile/app`](../mobile/app)

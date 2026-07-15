@@ -6,7 +6,7 @@
 **Coordina Codex, Claude, Gemini y otros agentes CLI en flujos visibles y controlables que puedes tomar directamente**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.1.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.1.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -180,7 +180,7 @@ Este comando guía la instalación y configuración.
 <details>
 <summary><b>Detalles de Mobile App, límite de seguridad y fuente</b></summary>
 
-CCB Mobile no cambia en la versión de escritorio v8.1.6; el último APK Android conservado es v8.1.4:
+CCB Mobile no cambia en la versión de escritorio v8.1.7; el último APK Android conservado es v8.1.4:
 
 - [Descargar CCB Mobile v8.1.4 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.1.4/ccb-mobile-v8.1.4.apk)
 - Fuente de la app: [`mobile/app`](../mobile/app)

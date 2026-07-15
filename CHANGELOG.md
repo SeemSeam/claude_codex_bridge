@@ -1,5 +1,16 @@
 # Changelog
 
+## v8.1.7 (2026-07-15)
+
+### Communication Reliability
+
+- Kept managed Codex ask and reply delivery bound to the intended session and
+  request anchor.
+- Fixed accepted reply-delivery acknowledgements being treated as empty task
+  replies and repeatedly queued.
+- This emergency release includes desktop artifacts and the npm package only;
+  CCB Mobile is unchanged and is not included.
+
 ## v8.1.6 (2026-07-15)
 
 ### Communication Reliability
