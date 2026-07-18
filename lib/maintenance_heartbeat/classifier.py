@@ -262,13 +262,20 @@ def _comms_issue(comm: Mapping[str, object]) -> dict[str, Any] | None:
             status=status,
         )
     if business_status in _CONCERN_COMMS_STATUSES:
+        execution_phase = _clean(comm.get('execution_phase'))
+        execution_reason = _clean(comm.get('execution_phase_reason'))
         return _issue(
             HEALTH_CONCERN,
             'comms',
             job_id=job_id,
             target=target,
-            reason=str(comm.get('block_reason') or business_status or 'comms_blocked'),
+            reason=(
+                execution_reason
+                if execution_phase == 'orphaned' and execution_reason
+                else str(comm.get('block_reason') or business_status or 'comms_blocked')
+            ),
             status=status,
+            execution_phase=execution_phase or None,
         )
     return None
 

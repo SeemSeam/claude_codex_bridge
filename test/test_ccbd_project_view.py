@@ -1738,6 +1738,29 @@ def test_project_view_returns_minimal_windows_agents_and_comms(tmp_path: Path) -
     assert [item['id'] for item in view['comms']] == ['job_running_1234', 'job_queued_5678']
     assert view['comms'][0]['sender'] == 'agent2'
     assert view['comms'][0]['target'] == 'agent1'
+    assert view['comms'][0]['execution_phase'] == 'executing'
+    assert view['comms'][1]['execution_phase'] == 'queued'
+
+
+def test_execution_phase_only_marks_request_anchored_provider_idle_as_orphaned() -> None:
+    job = _job('project', job_id='job_running', sender='agent2', target='agent1', status=JobStatus.RUNNING)
+    configured_agents = frozenset({'agent1', 'agent2'})
+
+    for hint in (None, 'provider_prompt_input_stuck', 'provider_prompt_idle_stale'):
+        phase = project_view_service._execution_phase(
+            job,
+            reply_delivery=None,
+            configured_agents=configured_agents,
+            running_recover_hint=hint,
+        )
+        assert phase == ('executing', 'job_running')
+
+    assert project_view_service._execution_phase(
+        job,
+        reply_delivery=None,
+        configured_agents=configured_agents,
+        running_recover_hint='provider_prompt_idle',
+    ) == ('orphaned', 'orphaned_active_inbound')
 
 
 def test_project_view_includes_provider_runtime_for_active_execution(tmp_path: Path) -> None:
@@ -2952,6 +2975,26 @@ def test_project_view_comms_marks_agent_reply_delivery_pending(tmp_path: Path) -
         updated_at='2026-05-20T12:00:01Z',
     )
     dispatcher._append_job(source)
+    delivering_source = _job(
+        project_id,
+        job_id='job_source_delivering',
+        sender='agent2',
+        target='agent3',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:02Z',
+    )
+    dispatcher._append_job(delivering_source)
+    delivery = _reply_delivery_job(
+        project_id,
+        job_id='job_delivery_running',
+        source_agent='agent3',
+        source_job_id=delivering_source.job_id,
+        target='agent2',
+        status=JobStatus.RUNNING,
+        updated_at='2026-05-20T12:00:03Z',
+    )
+    dispatcher._append_job(delivery)
+    dispatcher._state.mark_active_for(TargetKind.AGENT, delivery.target_name, delivery.job_id)
     cmd_source = _job(
         project_id,
         job_id='job_cmd_source',
@@ -2987,6 +3030,11 @@ def test_project_view_comms_marks_agent_reply_delivery_pending(tmp_path: Path) -
     comms_by_id = {item['id']: item for item in service.build_response()['view']['comms']}
 
     assert comms_by_id[source.job_id]['business_status'] == 'delivering'
+    assert comms_by_id[source.job_id]['execution_phase'] == 'reply_queued'
+    assert comms_by_id[source.job_id]['execution_phase_reason'] == 'reply_delivery_pending'
+    assert comms_by_id[delivering_source.job_id]['business_status'] == 'delivering'
+    assert comms_by_id[delivering_source.job_id]['execution_phase'] == 'reply_delivering'
+    assert comms_by_id[delivering_source.job_id]['execution_phase_reason'] == 'reply_delivery_running'
     assert comms_by_id[cmd_source.job_id]['business_status'] == 'replied'
     assert comms_by_id[silent_source.job_id]['business_status'] == 'completed'
 
@@ -3981,6 +4029,8 @@ def test_project_view_marks_running_job_idle_after_provider_prompt_reappears(tmp
     assert comm['id'] == job.job_id
     assert comm['business_status'] == 'replying'
     assert comm['status_label'] == 'work'
+    assert comm['execution_phase'] == 'executing'
+    assert comm['execution_phase_reason'] == 'job_running'
     assert comm['recoverable'] is False
     assert comm['block_reason'] is None
 
@@ -4041,8 +4091,73 @@ def test_project_view_does_not_mark_fresh_running_prompt_idle_as_recoverable(tmp
     assert comm['id'] == job.job_id
     assert comm['business_status'] == 'replying'
     assert comm['status_label'] == 'work'
+    assert comm['execution_phase'] == 'executing'
+    assert comm['execution_phase_reason'] == 'job_running'
     assert comm['recoverable'] is False
     assert comm['block_reason'] is None
+
+
+def test_project_view_marks_stale_claude_idle_job_as_orphaned(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-claude-orphaned-inbound'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    base = _config()
+    config = replace(base, agents={**base.agents, 'agent3': _spec('agent3', 'claude')})
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent3', project_id=project_id, state=AgentState.BUSY))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-claude-orphaned-inbound',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    job_id = _submit(dispatcher, project_id, sender='agent1', target='agent3', body='stale running request')
+    dispatcher.tick()
+    job = dispatcher.get(job_id)
+    assert job is not None
+    job = replace(job, updated_at='2026-05-20T11:59:20Z')
+    dispatcher._append_job(job)
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: _ProviderIdleAfterRequestBackend(job.job_id),
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            clock=lambda: NOW,
+        )
+    )
+
+    comm = service.build_response()['view']['comms'][0]
+
+    assert comm['id'] == job.job_id
+    assert comm['business_status'] == 'blocked'
+    assert comm['execution_phase'] == 'orphaned'
+    assert comm['execution_phase_reason'] == 'orphaned_active_inbound'
+    assert comm['block_reason'] == 'provider_prompt_idle'
+    assert comm['recoverable'] is True
+    evidence = comm['orphaned_active_inbound']
+    assert evidence['inbound_event_id']
+    assert evidence['inbound_status'] == 'delivering'
+    assert evidence['mailbox_state'] == 'delivering'
+    assert evidence['mailbox_head_inbound_event_id'] == evidence['inbound_event_id']
+    assert evidence['active_inbound_event_id'] == evidence['inbound_event_id']
+    assert evidence['lease_state'] == 'acquired'
 
 
 def test_project_view_does_not_use_legacy_codex_prompt_idle_recovery_without_anchor(tmp_path: Path) -> None:

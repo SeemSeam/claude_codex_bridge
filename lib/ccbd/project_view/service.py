@@ -190,12 +190,14 @@ class _CommsLookup:
     attempt_store: object | None
     reply_store: object | None
     message_store: object | None
+    inbound_store: object | None
     attempts_by_job_id: dict[str, object | None] = field(default_factory=dict)
     attempts_by_attempt_id: dict[str, object | None] = field(default_factory=dict)
     attempts_by_message_id: dict[tuple[str, str], object | None] = field(default_factory=dict)
     latest_attempt_by_message_agent: dict[tuple[str, str], object | None] = field(default_factory=dict)
     replies_by_reply_id: dict[str, object | None] = field(default_factory=dict)
     messages_by_message_id: dict[str, object | None] = field(default_factory=dict)
+    inbound_by_attempt: dict[tuple[str, str], object | None] = field(default_factory=dict)
 
     def attempt_by_job_id(self, job_id: object) -> object | None:
         key = str(job_id or '').strip()
@@ -258,6 +260,21 @@ class _CommsLookup:
         if key not in self.messages_by_message_id:
             self.messages_by_message_id[key] = _call_store(self.message_store, 'get_latest', key)
         return self.messages_by_message_id[key]
+
+    def inbound_for_attempt(self, agent_name: object, attempt_id: object) -> object | None:
+        agent_key = str(agent_name or '').strip()
+        attempt_key = str(attempt_id or '').strip()
+        if not agent_key or not attempt_key:
+            return None
+        cache_key = (agent_key, attempt_key)
+        if cache_key not in self.inbound_by_attempt:
+            self.inbound_by_attempt[cache_key] = _call_store(
+                self.inbound_store,
+                'get_latest_for_attempt',
+                agent_key,
+                attempt_key,
+            )
+        return self.inbound_by_attempt[cache_key]
 
 
 @dataclass(frozen=True)
@@ -1493,6 +1510,7 @@ def _comms_view(
                     job,
                     reply_delivery=reply_delivery,
                     configured_agents=configured_agents,
+                    comms_lookup=comms_lookup,
                     running_recover_hint=running_recover_hint,
                     lineage_for_recoverability=lineage_for_recoverability,
                 ),
@@ -1575,6 +1593,7 @@ def _comms_lookup(dispatcher) -> _CommsLookup:
         attempt_store=getattr(control, '_attempt_store', None) if control is not None else None,
         reply_store=getattr(control, '_reply_store', None) if control is not None else None,
         message_store=getattr(control, '_message_store', None) if control is not None else None,
+        inbound_store=getattr(control, '_inbound_store', None) if control is not None else None,
     )
 
 
@@ -1946,6 +1965,7 @@ def _comm_record(
     *,
     reply_delivery,
     configured_agents: frozenset[str],
+    comms_lookup: _CommsLookup,
     running_recover_hint: str | None = None,
     lineage_for_recoverability=None,
 ) -> dict[str, object]:
@@ -1956,6 +1976,12 @@ def _comm_record(
     )
     if running_recover_hint and getattr(job, 'status', None) is JobStatus.RUNNING:
         business_status, status_label = 'blocked', 'stuck'
+    execution_phase, execution_phase_reason = _execution_phase(
+        job,
+        reply_delivery=reply_delivery,
+        configured_agents=configured_agents,
+        running_recover_hint=running_recover_hint,
+    )
     reply_status = reply_delivery.status.value if reply_delivery is not None else None
     updated_at = _comm_sort_key(job, reply_delivery)
     recoverability = comms_recoverability_for_job(
@@ -1976,6 +2002,8 @@ def _comm_record(
         'status': job.status.value,
         'business_status': business_status,
         'status_label': status_label,
+        'execution_phase': execution_phase,
+        'execution_phase_reason': execution_phase_reason,
         'body_preview': _body_preview(job.request.body),
         'reply_status': reply_status,
         'reply_delivery_job_id': reply_delivery.job_id if reply_delivery is not None else None,
@@ -1983,6 +2011,62 @@ def _comm_record(
         'short_reason': _short_reason(job),
         **({'attachments': attachments} if attachments else {}),
         **recoverability.to_record(),
+        **(
+            _orphaned_active_inbound_evidence(dispatcher, job, comms_lookup=comms_lookup)
+            if execution_phase == 'orphaned'
+            else {}
+        ),
+    }
+
+
+def _execution_phase(
+    job,
+    *,
+    reply_delivery,
+    configured_agents: frozenset[str],
+    running_recover_hint: str | None,
+) -> tuple[str, str]:
+    if job.status in _COMMS_PENDING_STATUSES:
+        return 'queued', 'job_queued'
+    if job.status is JobStatus.RUNNING:
+        if running_recover_hint == 'provider_prompt_idle':
+            return 'orphaned', 'orphaned_active_inbound'
+        return 'executing', 'job_running'
+    if job.status is JobStatus.COMPLETED and _expects_reply_delivery(job, configured_agents):
+        if reply_delivery is None or reply_delivery.status in _COMMS_PENDING_STATUSES:
+            return 'reply_queued', 'reply_delivery_pending'
+        if reply_delivery.status is JobStatus.RUNNING:
+            return 'reply_delivering', 'reply_delivery_running'
+    return 'terminal', f'job_{job.status.value}'
+
+
+def _orphaned_active_inbound_evidence(
+    dispatcher,
+    job,
+    *,
+    comms_lookup: _CommsLookup,
+) -> dict[str, object]:
+    attempt = comms_lookup.attempt_by_job_id(getattr(job, 'job_id', None))
+    inbound = comms_lookup.inbound_for_attempt(
+        getattr(job, 'agent_name', None),
+        getattr(attempt, 'attempt_id', None),
+    )
+    control = getattr(dispatcher, '_message_bureau_control', None)
+    mailbox = _call_store(getattr(control, '_mailbox_store', None), 'load', getattr(job, 'agent_name', None))
+    lease = _call_store(getattr(control, '_lease_store', None), 'load', getattr(job, 'agent_name', None))
+    inbound_status = getattr(inbound, 'status', None)
+    mailbox_state = getattr(mailbox, 'mailbox_state', None)
+    lease_state = getattr(lease, 'lease_state', None)
+    return {
+        'orphaned_active_inbound': {
+            'inbound_event_id': getattr(inbound, 'inbound_event_id', None),
+            'inbound_status': getattr(inbound_status, 'value', inbound_status),
+            'attempt_id': getattr(attempt, 'attempt_id', None),
+            'mailbox_state': getattr(mailbox_state, 'value', mailbox_state),
+            'mailbox_head_inbound_event_id': getattr(mailbox, 'head_inbound_event_id', None),
+            'active_inbound_event_id': getattr(mailbox, 'active_inbound_event_id', None),
+            'lease_state': getattr(lease_state, 'value', lease_state),
+        }
     }
 
 
