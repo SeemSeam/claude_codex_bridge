@@ -32,17 +32,24 @@ def observe_kimi_turn(
 ) -> KimiTurnObservation | None:
     if not req_id:
         return None
-    observations: list[KimiTurnObservation] = []
-    for wire_path in _wire_paths(work_dir, home_candidates=home_candidates):
-        observed = _observe_wire_file(wire_path, req_id=req_id)
-        if observed is not None:
-            observations.append(observed)
-    if not observations:
-        return None
-    completed = [item for item in observations if item.completed]
-    if completed:
-        return max(completed, key=_observation_sort_key)
-    return max(observations, key=_observation_sort_key)
+    wire_paths = _wire_paths(work_dir, home_candidates=home_candidates)
+    # Multiple kimi agents can share one work_dir, so one sessions root holds
+    # many agents' wire logs and a req_id can be *mentioned* in other agents'
+    # prompts. Prefer turns whose prompt carries the `CCB_REQ_ID: <id>`
+    # header (strict); fall back to plain substring matching (loose) so
+    # legacy prompt formats without the header still resolve.
+    for strict in (True, False):
+        observations: list[KimiTurnObservation] = []
+        for wire_path in wire_paths:
+            observed = _observe_wire_file(wire_path, req_id=req_id, strict=strict)
+            if observed is not None:
+                observations.append(observed)
+        if observations:
+            completed = [item for item in observations if item.completed]
+            if completed:
+                return max(completed, key=_observation_sort_key)
+            return max(observations, key=_observation_sort_key)
+    return None
 
 
 def kimi_project_hash(work_dir: Path) -> str:
@@ -50,19 +57,31 @@ def kimi_project_hash(work_dir: Path) -> str:
     return hashlib.md5(normalized.encode("utf-8", "surrogateescape")).hexdigest()
 
 
+def kimi_code_project_dirname(work_dir: Path) -> str:
+    normalized = str(Path(work_dir).expanduser().resolve(strict=False))
+    digest = hashlib.sha256(normalized.encode("utf-8", "surrogateescape")).hexdigest()[:12]
+    basename = Path(normalized).name[:40]
+    return f"wd_{basename}_{digest}"
+
+
 def kimi_sessions_root(work_dir: Path, *, home: Path | None = None) -> Path:
     base = _kimi_home(home)
     return base / "sessions" / kimi_project_hash(work_dir)
 
 
+def kimi_code_sessions_root(work_dir: Path, *, home: Path | None = None) -> Path:
+    base = _kimi_code_home(home)
+    return base / "sessions" / kimi_code_project_dirname(work_dir)
+
+
 def _wire_paths(work_dir: Path, *, home_candidates: Iterable[Path] | None) -> list[Path]:
     paths: list[Path] = []
     seen: set[Path] = set()
-    for home in _candidate_homes(home_candidates):
-        root = kimi_sessions_root(work_dir, home=home)
-        if not root.is_dir():
-            continue
-        for path in root.glob("*/wire.jsonl"):
+
+    def _add(pattern_root: Path, pattern: str) -> None:
+        if not pattern_root.is_dir():
+            return
+        for path in pattern_root.glob(pattern):
             try:
                 resolved = path.resolve(strict=False)
             except Exception:
@@ -71,6 +90,12 @@ def _wire_paths(work_dir: Path, *, home_candidates: Iterable[Path] | None) -> li
                 continue
             seen.add(resolved)
             paths.append(path)
+
+    for home in _candidate_homes(home_candidates):
+        # Legacy kimi layout: ~/.kimi/sessions/<md5(work_dir)>/<session>/wire.jsonl
+        _add(kimi_sessions_root(work_dir, home=home), "*/wire.jsonl")
+        # kimi-code layout: ~/.kimi-code/sessions/wd_<base>_<sha256[:12]>/<session>/agents/<agent>/wire.jsonl
+        _add(kimi_code_sessions_root(work_dir, home=home), "*/agents/*/wire.jsonl")
     return sorted(paths, key=_path_mtime)
 
 
@@ -102,7 +127,15 @@ def _kimi_home(home: Path | None) -> Path:
     return home / ".kimi"
 
 
-def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None:
+def _kimi_code_home(home: Path | None) -> Path:
+    if home is None:
+        return current_provider_source_home() / ".kimi-code"
+    if home.name == ".kimi-code":
+        return home
+    return home / ".kimi-code"
+
+
+def _observe_wire_file(path: Path, *, req_id: str, strict: bool = False) -> KimiTurnObservation | None:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -110,6 +143,26 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
 
     current: dict[str, object] | None = None
     latest: KimiTurnObservation | None = None
+
+    def _finalize_current(index: int, timestamp: object | None) -> None:
+        # A turn that produced reply parts and then gave way to a new turn is
+        # complete even if the wire log has no explicit TurnEnd event
+        # (kimi-code wire logs have none).
+        nonlocal current, latest
+        if current is None:
+            return
+        parts = current.get("parts")
+        if isinstance(parts, list) and parts:
+            latest = _observation_from_state(
+                path,
+                current,
+                req_id=req_id,
+                completed=True,
+                completed_at=timestamp,
+                line_count=index,
+            )
+        current = None
+
     for index, line in enumerate(lines, 1):
         try:
             event = json.loads(line)
@@ -120,7 +173,7 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
         event_type, payload, timestamp = _normalize_event(event)
 
         if event_type == "TurnBegin":
-            if _payload_has_req_id(payload, req_id):
+            if _payload_has_req_id(payload, req_id, strict=strict):
                 current = {
                     "parts": [],
                     "started_at": timestamp,
@@ -140,7 +193,8 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
             continue
 
         if event_type in {"turn.prompt", "turn.started"}:
-            if _value_has_req_id(payload, req_id):
+            if _value_has_req_id(payload, req_id, strict=strict):
+                _finalize_current(index, timestamp)
                 current = {
                     "parts": [],
                     "started_at": timestamp,
@@ -155,6 +209,8 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
                     completed_at=None,
                     line_count=index,
                 )
+            else:
+                _finalize_current(index, timestamp)
             continue
 
         if event_type == "context.append_message":
@@ -163,7 +219,7 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
                 continue
             role = str(message.get("role") or "").strip().lower()
             content = _text_from_value(message.get("content"))
-            if role == "user" and req_id in content:
+            if role == "user" and _req_id_in_text(content, req_id, strict=strict):
                 current = {
                     "parts": [],
                     "started_at": timestamp,
@@ -180,7 +236,7 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
                 )
                 continue
             if role == "user" and current is not None:
-                current = None
+                _finalize_current(index, timestamp)
                 continue
             if current is None or role != "assistant":
                 continue
@@ -247,6 +303,14 @@ def _observe_wire_file(path: Path, *, req_id: str) -> KimiTurnObservation | None
                         completed_at=None,
                         line_count=index,
                     )
+            elif nested_type == "step.end":
+                # kimi-code wire logs have no TurnEnd; a step that ends for
+                # any reason other than tool_use is the final step of a turn.
+                finish = str(
+                    nested.get("finishReason") or nested.get("finish_reason") or ""
+                ).strip().lower()
+                if finish and finish != "tool_use":
+                    _finalize_current(index, timestamp)
             continue
 
         if event_type == "StatusUpdate":
@@ -295,7 +359,13 @@ def _normalize_event(event: dict[str, object]) -> tuple[str, dict[str, object], 
     return event_type, event, event.get("timestamp") or event.get("time")
 
 
-def _payload_has_req_id(payload: dict[str, object], req_id: str) -> bool:
+def _req_id_in_text(text: str, req_id: str, *, strict: bool) -> bool:
+    if not strict:
+        return req_id in text
+    return f"CCB_REQ_ID: {req_id}" in text
+
+
+def _payload_has_req_id(payload: dict[str, object], req_id: str, *, strict: bool = False) -> bool:
     user_input = payload.get("user_input")
     if not isinstance(user_input, list):
         return False
@@ -303,7 +373,7 @@ def _payload_has_req_id(payload: dict[str, object], req_id: str) -> bool:
         if not isinstance(part, dict):
             continue
         text = part.get("text")
-        if isinstance(text, str) and req_id in text:
+        if isinstance(text, str) and _req_id_in_text(text, req_id, strict=strict):
             return True
     return False
 
@@ -318,8 +388,8 @@ def _append_part(state: dict[str, object], text: str, *, continuous: bool = Fals
     parts.append(text)
 
 
-def _value_has_req_id(value: object, req_id: str) -> bool:
-    return req_id in _text_from_value(value)
+def _value_has_req_id(value: object, req_id: str, *, strict: bool = False) -> bool:
+    return _req_id_in_text(_text_from_value(value), req_id, strict=strict)
 
 
 def _text_from_value(value: object) -> str:
@@ -354,6 +424,9 @@ def _observation_from_state(
     parts = state.get("parts")
     reply = clean_native_reply("\n".join(str(part) for part in parts), req_id) if isinstance(parts, list) else ""
     session_id = path.parent.name if path.parent.name else None
+    if path.parent.parent.name == "agents" and path.parent.parent.parent.name:
+        # kimi-code layout: <session>/agents/<agent>/wire.jsonl
+        session_id = path.parent.parent.parent.name
     message_id = state.get("message_id")
     provider_turn_ref = str(message_id).strip() if message_id else session_id
     return KimiTurnObservation(
@@ -383,6 +456,8 @@ def _path_mtime(path: Path) -> float:
 
 __all__ = [
     "KimiTurnObservation",
+    "kimi_code_project_dirname",
+    "kimi_code_sessions_root",
     "kimi_project_hash",
     "kimi_sessions_root",
     "observe_kimi_turn",
