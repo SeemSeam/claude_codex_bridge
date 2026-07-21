@@ -16,7 +16,10 @@ EOF
 ```
 
 - During an active CCB ask task, use `ask --chain` when a child result is needed to finish the current task; use `ask --silence` only for independent no-result-needed work.
+- Finish an inbound CCB task in its current turn. CCB routes that turn's terminal result to the caller; do not open a new `ask` to report completion to the original caller.
 - During a CCB result-chain continuation, answer directly with the final result; do not use `ask`, `--chain`, or `--silence` to send that final result to the original caller.
+- `--silence` is not an active-job correction channel. If an executing task needs a scope correction, cancel and resubmit it.
+- A `completed` CCB job means provider execution ended normally; it does not by itself prove business acceptance.
 """
 
 

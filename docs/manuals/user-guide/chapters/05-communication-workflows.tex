@@ -33,6 +33,31 @@ ccb ask --chain archi collect evidence
 
 callback 不是同步等待。CCB 会记录 parent/child 关系，child 完成后把结果作为 continuation 任务送回 parent agent。
 
+\section{Inbound task completion 和 reply routing}
+
+当 agent 正在执行 CCB 投递的 inbound task 时，当前 provider turn 的 final
+就是该 task 的 completion 内容。CCB 会记录 terminal reply，并按原 message
+lineage 投递给 caller。Agent 不应再向 original caller 新开一个普通
+\cmd{ask} 汇报完成；这样会创建第二条任务，而不会终结当前 inbound turn。
+
+result-chain continuation 也遵循同一原则：parent agent 在 continuation 的
+当前 turn 直接给出 final，由 CCB 继续向上游路由。\cmd{--chain} 用于 parent
+确实需要 child 结果才能完成当前任务的场景；\cmd{--silence} 表示成功结果不需
+返回，它不是向 active job 发送 correction 的通道。
+
+当前版本没有 active-job follow-up。执行中的任务需要修正范围时，先取消旧
+job，再用修正后的完整请求重新提交。不要把 correction 作为普通新任务排在同
+一 agent 的 active job 后面。
+
+job 的 \src{completed} 只表示 provider execution 正常结束。它不等同于用户
+或 reviewer 已完成业务验收；业务完成度仍应根据 final 内容、产物和验证证据判
+断。
+
+CCB 在 agent materialization 时把 runtime coordination rules 写入 managed
+\src{AGENTS.md}、\src{CLAUDE.md} 或相应 provider memory。已经启动的 provider
+session 可能缓存旧指令；更新 \src{.ccb/ccb_memory.md} 或升级模板后，应启动新
+session 或重新 materialize，而不要假设现有会话会热加载。
+
 \section{长内容}
 
 长 request：

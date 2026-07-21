@@ -51,9 +51,15 @@ def test_shell_ask_skill_templates_use_short_ask_command() -> None:
         assert 'Automatic spill for text over 4 KiB is a fallback' in text
         assert 'In `A --silence -> B`, B still runs an active job.' in text
         assert 'In task chains, each needed-result hop uses `--chain`' in text
+        assert 'Finish an inbound CCB task in its current turn.' in text
+        assert "CCB routes that turn's terminal" in text
+        assert 'do not open a new `ask` to report completion' in text
         assert 'If the current task is a CCB result-chain continuation' in text
         assert 'Do not use `ask`, `--chain`, or' in text
         assert 'continuation completion upstream' in text
+        assert '`--silence` is not an active-job correction channel.' in text
+        assert 'Cancel and resubmit an' in text
+        assert 'A `completed` CCB job means provider execution ended normally' in text
         assert 'command ask "$TARGET"' in text
         assert 'command ask --chain --artifact-reply "$TARGET"' in text
         legacy_chain_flag = '--' + 'call' + 'back'
@@ -92,9 +98,15 @@ def test_powershell_ask_skill_template_uses_short_ask_command() -> None:
     assert 'Automatic spill for text over 4 KiB is a fallback' in text
     assert 'In `A --silence -> B`, B still runs an active job.' in text
     assert 'In task chains, each needed-result hop uses `--chain`' in text
+    assert 'Finish an inbound CCB task in its current turn.' in text
+    assert "CCB routes that turn's terminal" in text
+    assert 'do not open a new `ask` to report completion' in text
     assert 'If the current task is a CCB result-chain continuation' in text
     assert 'Do not use `ask`, `--chain`, or' in text
     assert 'continuation completion upstream' in text
+    assert '`--silence` is not an active-job correction channel.' in text
+    assert 'Cancel and resubmit an' in text
+    assert 'A `completed` CCB job means provider execution ended normally' in text
     assert '@("--chain", "--artifact-reply", "$TARGET")' in text
     legacy_chain_flag = '--' + 'call' + 'back'
     assert legacy_chain_flag not in text

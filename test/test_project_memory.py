@@ -292,8 +292,14 @@ def test_materialize_runtime_memory_bundle_writes_generated_bundle(tmp_path: Pat
     assert 'CCB `ask` is submit-only' in text
     assert 'Do not wait, poll, or run `pend`/`watch`/`ping`' in text
     assert 'use `ask --chain` when a child result is needed' in text
+    assert 'Finish an inbound CCB task in its current turn' in text
+    assert "CCB routes that turn's terminal result to the caller" in text
+    assert 'do not open a new `ask` to report completion to the original caller' in text
     assert 'During a CCB result-chain continuation, answer directly with the final result' in text
     assert 'do not use `ask`, `--chain`, or `--silence`' in text
+    assert '`--silence` is not an active-job correction channel' in text
+    assert 'cancel and resubmit it' in text
+    assert 'A `completed` CCB job means provider execution ended normally' in text
     assert '## CCB Shared Project Memory' in text
     assert 'shared ask rules' in text
     assert text.index('## CCB Runtime Coordination Rules') < text.index('## CCB Shared Project Memory')
