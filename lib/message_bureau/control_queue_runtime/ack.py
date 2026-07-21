@@ -71,7 +71,7 @@ def _head_event(service, agent_name: str, *, inbound_event_id: str | None):
     )
     if direct_head is not None and direct_head.inbound_event_id == requested_event_id:
         if direct_head.event_type is InboundEventType.TASK_REPLY:
-            return _validate_reply_head(direct_head)
+            return _validate_reply_head(service, direct_head)
         if direct_head.event_type is InboundEventType.TASK_REQUEST:
             return direct_head
 
@@ -82,19 +82,22 @@ def _head_event(service, agent_name: str, *, inbound_event_id: str | None):
     requested_event_id = requested_event_id or head.inbound_event_id
     if head.inbound_event_id != requested_event_id:
         raise ValueError(f'ack requires head event: {head.inbound_event_id}')
-    return _validate_reply_head(head)
+    return _validate_reply_head(service, head)
 
 
-def _validate_reply_head(head):
+def _validate_reply_head(service, head):
     if head.event_type is not InboundEventType.TASK_REPLY:
         raise ValueError(
             f'ack only supports task_reply or terminal task_request head events; found: {head.event_type.value}'
         )
     delivery_job_id = delivery_job_id_from_payload(head.payload_ref)
     if delivery_job_id:
+        attempt = _reply_attempt(service, head)
+        source_job_id = getattr(attempt, 'job_id', None) or 'unknown'
         raise ValueError(
-            'ack is not allowed after automatic reply delivery has been scheduled: '
-            f'{delivery_job_id}'
+            f'ack is not allowed for task_reply event {head.inbound_event_id}: '
+            f'automatic reply delivery has been scheduled as job {delivery_job_id} '
+            f'for source job {source_job_id}; wait for automatic delivery or inspect the delivery job'
         )
     return head
 

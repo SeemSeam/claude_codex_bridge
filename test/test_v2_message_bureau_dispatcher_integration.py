@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 import subprocess
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,6 +34,7 @@ from completion.models import (
     CompletionItem,
     CompletionItemKind,
     CompletionSourceKind,
+    CompletionState,
     CompletionStatus,
 )
 from completion.tracker import CompletionTrackerService
@@ -594,6 +596,112 @@ def test_dispatcher_routes_reply_into_registered_caller_mailbox(tmp_path: Path) 
     assert queue_summary['agent']['queue_depth'] == 1
     assert queue_summary['agent']['pending_reply_count'] == 1
     assert 'queued_events' not in queue_summary['agent']
+
+
+def test_dispatcher_records_empty_cancel_as_consumed_completion_notice(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-empty-cancel-notice'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='cancel without output',
+            task_id='task-empty-cancel',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+
+    dispatcher.cancel(job_id)
+    dispatcher.cancel(job_id)
+
+    attempt = AttemptStore(layout).get_latest_by_job_id(job_id)
+    assert attempt is not None
+    assert attempt.attempt_state is AttemptState.CANCELLED
+    replies = ReplyStore(layout).list_message(attempt.message_id)
+    assert len(replies) == 1
+    assert replies[0].terminal_status is ReplyTerminalStatus.CANCELLED
+    assert replies[0].reply == ''
+    assert replies[0].diagnostics['notice'] is True
+    assert replies[0].diagnostics['notice_kind'] == 'cancelled'
+    assert replies[0].diagnostics['delivery_mode'] == 'auto_consumed_control_notice'
+
+    caller_events = InboundEventStore(layout).list_agent('claude')
+    assert len(caller_events) == 1
+    assert caller_events[0].event_type is InboundEventType.COMPLETION_NOTICE
+    assert caller_events[0].status is InboundEventStatus.CONSUMED
+    assert caller_events[0].started_at == '2026-03-30T00:00:00Z'
+    assert caller_events[0].finished_at == '2026-03-30T00:00:00Z'
+    assert MailboxStore(layout).load('claude') is None
+    assert dispatcher.queue('claude')['agent']['queue_depth'] == 0
+
+    trace = dispatcher.trace(job_id)
+    assert any(event['event_type'] == 'completion_notice' for event in trace['events'])
+    assert trace['replies'][0]['notice'] is True
+    assert trace['replies'][0]['notice_kind'] == 'cancelled'
+
+
+def test_dispatcher_delivers_cancelled_reply_when_partial_output_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / 'repo-partial-cancel-reply'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='cancel after partial output',
+            task_id='task-partial-cancel',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+    snapshot = SimpleNamespace(
+        state=CompletionState(anchor_seen=True, reply_started=True, provider_turn_ref='turn-partial'),
+        latest_decision=_decision(status=CompletionStatus.CANCELLED, reply='partial before cancellation'),
+    )
+    monkeypatch.setattr(dispatcher._snapshot_writer, 'load', lambda _job_id: snapshot)
+
+    dispatcher.cancel(job_id)
+
+    attempt = AttemptStore(layout).get_latest_by_job_id(job_id)
+    assert attempt is not None
+    replies = ReplyStore(layout).list_message(attempt.message_id)
+    assert len(replies) == 1
+    assert replies[0].terminal_status is ReplyTerminalStatus.CANCELLED
+    assert replies[0].reply == 'partial before cancellation'
+    assert replies[0].diagnostics.get('notice') is not True
+    caller_events = InboundEventStore(layout).list_agent('claude')
+    assert len(caller_events) == 1
+    assert caller_events[0].event_type is InboundEventType.TASK_REPLY
+    assert caller_events[0].status is InboundEventStatus.QUEUED
+    mailbox = MailboxStore(layout).load('claude')
+    assert mailbox is not None
+    assert mailbox.queue_depth == 1
+    assert mailbox.pending_reply_count == 1
 
 
 def test_dispatcher_silence_hides_success_reply_body_for_caller_mailbox(tmp_path: Path) -> None:
@@ -4729,10 +4837,16 @@ def test_dispatcher_ack_rejects_reply_after_auto_delivery_is_scheduled(tmp_path:
     dispatcher.tick()
     dispatcher.complete(reply_job_id, _decision(reply='reply for claude'))
 
-    dispatcher.tick()
+    inbound_event_id = dispatcher.inbox('claude')['head']['inbound_event_id']
+    started = dispatcher.tick()
+    delivery_job = next(job for job in started if job.request.message_type == 'reply_delivery')
 
-    with pytest.raises(ValueError, match='automatic reply delivery has been scheduled'):
+    with pytest.raises(ValueError, match='automatic reply delivery has been scheduled') as exc_info:
         dispatcher.ack_reply('claude')
+    message = str(exc_info.value)
+    assert inbound_event_id in message
+    assert reply_job_id in message
+    assert delivery_job.job_id in message
 
 
 def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_service(tmp_path: Path) -> None:
