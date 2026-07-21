@@ -174,6 +174,31 @@ def test_maintenance_classifier_keeps_active_ccb_job_healthy() -> None:
     assert evaluation.evidence == ()
 
 
+def test_maintenance_classifier_flags_orphaned_active_inbound() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='pending',
+            agent_reason='provider_prompt_idle',
+            current_job_id='job_orphaned',
+            queue_depth=2,
+            comms=(
+                {
+                    'id': 'job_orphaned',
+                    'target': 'demo',
+                    'business_status': 'blocked',
+                    'status': 'running',
+                    'execution_phase': 'orphaned',
+                    'execution_phase_reason': 'orphaned_active_inbound',
+                },
+            ),
+        )
+    )
+
+    assert evaluation.health == 'concern'
+    assert evaluation.summary['concern_comms_count'] == 1
+    assert any(item.get('reason') == 'orphaned_active_inbound' for item in evaluation.evidence)
+
+
 def test_maintenance_classifier_keeps_active_comms_without_current_job_healthy() -> None:
     evaluation = evaluate_project_view(
         _project_view_payload(
