@@ -7,7 +7,7 @@ import shutil
 from agents.config_loader import load_project_config
 from agents.store import AgentRuntimeStore
 from ccbd.services.project_namespace_state import ProjectNamespaceStateStore
-from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 
 from .agent_status_diagnostics import (
     agent_kind,
@@ -248,7 +248,7 @@ def _observe_project_namespace(namespace: dict[str, object]) -> dict[str, object
     session_name = _optional_text(namespace.get('tmux_session_name'))
     if socket_path is None or session_name is None:
         return {'observe_status': 'skipped', 'reason': 'namespace_tmux_scope_missing'}
-    backend = TmuxBackend(socket_path=socket_path)
+    backend = make_terminal_backend(socket_path=socket_path)
     try:
         result = backend._tmux_run(
             [

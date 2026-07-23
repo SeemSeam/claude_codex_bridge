@@ -4,7 +4,7 @@ import subprocess
 import time
 
 from agents.models import normalize_agent_name
-from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 
 OPENCODE_CLEAR_SUBMIT_DELAY_S = 0.3
 
@@ -15,7 +15,7 @@ def build_project_clear_context_handler(app):
         namespace = app.project_namespace.load()
         if namespace is None:
             raise RuntimeError('project namespace is not mounted')
-        backend = TmuxBackend(socket_path=namespace.tmux_socket_path)
+        backend = make_terminal_backend(socket_path=namespace.tmux_socket_path)
         results = tuple(_clear_agent_context(app, backend=backend, agent_name=name) for name in agent_names)
         statuses = {str(item.get('status') or '') for item in results}
         return {

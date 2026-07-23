@@ -28,6 +28,7 @@ from ccbd.services.project_namespace_runtime.backend import (
 )
 from ccbd.services.project_namespace_runtime.remove_patch_agents import reflow_window_after_agent_change
 from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
 
 from .daemon import ping_local_state
@@ -535,7 +536,7 @@ def _run_layout_smoke(context, command, windows) -> dict[str, object]:
     context.paths.ensure_runtime_state_root()
     socket_path = _smoke_socket_path(context)
     session_name = _session_name(context, command)
-    backend = TmuxBackend(socket_path=str(socket_path))
+    backend = make_terminal_backend(socket_path=str(socket_path))
     kill_server(backend)
     observed: list[dict[str, object]] = []
     try:
@@ -598,7 +599,7 @@ def _run_layout_dynamic_smoke(context, command, names: tuple[str, ...]) -> dict[
     context.paths.ensure_runtime_state_root()
     socket_path = _smoke_socket_path(context)
     session_name = _session_name(context, command)
-    backend = TmuxBackend(socket_path=str(socket_path))
+    backend = make_terminal_backend(socket_path=str(socket_path))
     kill_server(backend)
     events: list[dict[str, object]] = []
     pane_by_name: dict[str, str] = {}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
 
 from ..project_namespace import ProjectNamespaceController
@@ -88,9 +88,9 @@ def relabel_project_slot_pane(
     if not pane_text.startswith('%'):
         return
     try:
-        backend = TmuxBackend(socket_path=context.tmux_socket_path)
+        backend = make_terminal_backend(socket_path=context.tmux_socket_path)
     except TypeError:
-        backend = TmuxBackend()
+        backend = make_terminal_backend()
     apply_ccb_pane_identity(
         backend,
         pane_text,

@@ -168,7 +168,7 @@ def test_refresh_provider_binding_replaces_missing_project_pane_inside_workspace
         lambda **kwargs: replacement_context,
     )
     monkeypatch.setattr(
-        'ccbd.services.project_namespace_runtime.slot_replacement.TmuxBackend',
+        'ccbd.services.project_namespace_runtime.slot_replacement.make_terminal_backend',
         lambda socket_path=None: backend,
     )
 

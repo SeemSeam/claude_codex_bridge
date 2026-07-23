@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 
 
 class TerminalCodexSession:
@@ -8,7 +8,7 @@ class TerminalCodexSession:
 
     def __init__(self, pane_id: str):
         self.pane_id = pane_id
-        self.backend = TmuxBackend()
+        self.backend = make_terminal_backend()
 
     def send(self, text: str) -> None:
         command = text.replace('\r', ' ').replace('\n', ' ').strip()

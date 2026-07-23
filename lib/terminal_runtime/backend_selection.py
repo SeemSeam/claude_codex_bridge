@@ -6,6 +6,20 @@ from dataclasses import dataclass
 from typing import Callable
 
 from terminal_runtime.layouts import LayoutResult, create_tmux_auto_layout
+from terminal_runtime.tmux_backend import TmuxBackend
+
+
+def make_terminal_backend(
+    terminal_type=None,
+    *,
+    socket_name=None,
+    socket_path=None,
+):
+    if terminal_type in (None, 'tmux'):
+        return TmuxBackend(socket_name=socket_name, socket_path=socket_path)
+    if terminal_type == 'herdr':
+        raise NotImplementedError('herdr terminal backend lands in PR #2')
+    raise ValueError(f'unsupported terminal backend: {terminal_type}')
 
 
 @dataclass
@@ -20,6 +34,8 @@ class TerminalBackendSelection:
         selected = terminal_type or self.detect_terminal_fn()
         if selected == 'tmux':
             self.cached_backend = self.tmux_backend_factory()
+        elif selected == 'herdr':
+            raise NotImplementedError('herdr terminal backend lands in PR #2')
         return self.cached_backend
 
     def get_backend_for_session(self, session_data: dict) -> object:
@@ -53,7 +69,13 @@ class TerminalLayoutService:
         percent: int = 50,
         set_markers: bool = True,
         marker_prefix: str = 'CCB',
+        terminal_type: str | None = None,
     ) -> LayoutResult:
+        selected = terminal_type or 'tmux'
+        if selected == 'herdr':
+            raise NotImplementedError('herdr terminal backend lands in PR #2')
+        if selected != 'tmux':
+            raise ValueError(f'unsupported terminal backend: {selected}')
         env = self.env if self.env is not None else os.environ
         return create_tmux_auto_layout(
             providers,

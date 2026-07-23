@@ -10,7 +10,7 @@ from provider_core.registry import build_default_session_binding_map
 from provider_core.session_binding_evidence_runtime.loading import binding_search_roots, load_provider_session
 from rolepacks.runtime_lookup import load_installed_role, tree_digest
 from rolepacks.sources import installed_role_metadata
-from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 
 
 RESTART_PANES_REASON = 'manual_restart_panes'
@@ -268,7 +268,7 @@ def restart_project_agent_panes_in_place(app, *, agent_names: tuple[str, ...]) -
     namespace = app.project_namespace.load()
     if namespace is None:
         raise RuntimeError('project namespace is not mounted')
-    backend = TmuxBackend(socket_path=namespace.tmux_socket_path)
+    backend = make_terminal_backend(socket_path=namespace.tmux_socket_path)
     results: list[dict[str, object]] = []
     for agent_name in agent_names:
         results.append(_restart_agent_pane(app, backend=backend, agent_name=str(agent_name)))

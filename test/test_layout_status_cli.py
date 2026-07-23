@@ -439,7 +439,7 @@ main = "main:fake, helper:fake"
                 )
             )
 
-    monkeypatch.setattr(layout_status_service, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(layout_status_service, 'make_terminal_backend', FakeTmuxBackend)
     monkeypatch.setattr(layout_status_service.shutil, 'which', lambda _name: '/usr/bin/tmux')
     monkeypatch.setattr(
         layout_status_service,
