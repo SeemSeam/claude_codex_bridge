@@ -80,10 +80,14 @@ def is_top_level_user_prompt(event: dict[str, object] | None) -> bool:
         return True
     if event.get("subagent_id") or event.get("subagent_name"):
         return False
+    if bool(event.get("is_sidechain")):
+        return False
     entry = event.get("entry")
     if not isinstance(entry, dict):
         return True
     if entry.get("toolUseResult") is not None or bool(entry.get("isMeta", False)):
+        return False
+    if bool(entry.get("isSidechain")):
         return False
     message = entry.get("message")
     if not isinstance(message, dict):

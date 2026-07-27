@@ -152,6 +152,85 @@ def callback_child_edge(dispatcher, job) -> CallbackEdgeRecord | None:
     return dispatcher._message_bureau.callback_edge_for_child_message(message.message_id)
 
 
+def deliver_orphaned_chain_result(
+    dispatcher,
+    edge: CallbackEdgeRecord,
+    *,
+    child_job,
+    decision: CompletionDecision,
+    finished_at: str,
+) -> str | None:
+    """Deliver a chain child result whose edge closed before the child finished.
+
+    When the callback edge is already FAILED/TIMED_OUT (e.g. the parent job was
+    cancelled or the continuation lineage broke), the normal continuation path
+    drops the child result silently. Re-deliver it to the dispatching agent
+    (edge.parent_agent) as a fresh notice so the result is never lost.
+    """
+    if dispatcher._message_bureau is None:
+        return None
+    parent_job = get_job(dispatcher, edge.parent_job_id)
+    if parent_job is None:
+        return None
+    reply_id = dispatcher._message_bureau.record_notice(
+        parent_job,
+        reply=_orphaned_result_body(edge=edge, child_job=child_job, decision=decision),
+        diagnostics={
+            'notice': True,
+            'chain_edge_id': edge.edge_id,
+            'chain_orphan_delivery': True,
+            'edge_state': edge.state.value,
+            'child_job_id': child_job.job_id,
+            'child_status': child_job.status.value,
+        },
+        finished_at=finished_at,
+        terminal_status=(
+            ReplyTerminalStatus.COMPLETED
+            if child_job.status is JobStatus.COMPLETED
+            else ReplyTerminalStatus.INCOMPLETE
+        ),
+        deliver_to_actor=edge.parent_agent,
+    )
+    append_event(
+        dispatcher,
+        child_job,
+        'chain_orphan_result_delivered',
+        {
+            'edge_id': edge.edge_id,
+            'edge_state': edge.state.value,
+            'deliver_to_actor': edge.parent_agent,
+            'notice_reply_id': reply_id,
+        },
+        timestamp=finished_at,
+    )
+    return reply_id
+
+
+def _orphaned_result_body(*, edge: CallbackEdgeRecord, child_job, decision: CompletionDecision) -> str:
+    failure = str((edge.diagnostics or {}).get('failure_reason') or '').strip()
+    parts = [
+        'CCB orphaned chain result delivery.',
+        '',
+        f'Chain edge: {edge.edge_id} (state: {edge.state.value})',
+        f'Parent job: {edge.parent_job_id}',
+        f'Child job: {child_job.job_id}',
+        f'Child agent: {child_job.agent_name}',
+        f'Child status: {child_job.status.value}',
+    ]
+    if failure:
+        parts.append(f'Edge failure: {failure}')
+    parts.extend(
+        [
+            '',
+            'The chain closed before the child result could be continued, so it is delivered here as a new event.',
+            '',
+            'Child result:',
+            _reply_summary(decision) or '(no reply body)',
+        ]
+    )
+    return '\n'.join(parts)
+
+
 def submit_callback_continuation(
     dispatcher,
     edge: CallbackEdgeRecord,
@@ -851,6 +930,7 @@ __all__ = [
     'callback_child_edge',
     'delegated_parent_edge',
     'delegated_terminal_job',
+    'deliver_orphaned_chain_result',
     'mark_parent_message_waiting',
     'mark_callback_done',
     'persist_delegated_terminal_job',
