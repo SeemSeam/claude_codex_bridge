@@ -17,7 +17,7 @@ PROVIDER_SESSION_FILENAMES = {
     'mimo': '.mimo-session',
     'qwen': '.qwen-session',
     'qoder': '.qoder-session',
-    'qoderclicn': '.qoderclicn-session',
+    'qodercn': '.qodercn-session',
     'cursor': '.cursor-session',
     'copilot': '.copilot-session',
     'crush': '.crush-session',

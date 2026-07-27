@@ -251,16 +251,16 @@ CCB direction:
 - The native command contract matches Qoder's documented print surface:
   `-p` / `--print`, `-w <workspace>`, `--output-format stream-json`,
   `--config-dir <root>`, `--permission-mode <mode>`, and `--session-id <uuid>`.
-  A raw CCB id such as `job_qoderclicn_*` exits `42` with
+  A raw CCB id such as `job_qodercn_*` exits `42` with
   `Invalid session ID. Must be a valid UUID`, so CCB derives a deterministic
   provider-scoped UUIDv5.
 - A credential-free `1.1.3` probe emitted an assistant envelope with
   `error=authentication_failed`, followed by `result.is_error=true`. Assistant
   text is non-terminal; only a successful result envelope with a normal stop
   reason completes. A clean process exit without that result fails closed.
-- Visible and headless commands share the agent-local `qoderclicn_home` /
-  `qoderclicn_config_dir`. Explicit config and permission flags from
-  `QODERCLICN_START_CMD` or startup args remain authoritative and are not
+- Visible and headless commands share the agent-local `qodercn_home` /
+  `qodercn_config_dir`. Explicit config and permission flags from
+  `QODERCN_START_CMD` or startup args remain authoritative and are not
   duplicated. Auto permission maps to `auto`; normal headless execution uses
   `dont_ask`.
 - Qoder CN defaults to update checks. CCB merges

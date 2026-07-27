@@ -58,7 +58,7 @@ def _stub_provider_name(provider: str) -> str:
     if provider == "qodercli":
         return "qoder"
     if provider == "qoderclicn":
-        return "qoderclicn"
+        return "qodercn"
     return provider
 
 

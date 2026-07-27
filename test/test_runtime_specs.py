@@ -30,8 +30,8 @@ from provider_core.runtime_specs import (
     QWEN_RUNTIME_SPEC,
     QODER_CLIENT_SPEC,
     QODER_RUNTIME_SPEC,
-    QODERCLICN_CLIENT_SPEC,
-    QODERCLICN_RUNTIME_SPEC,
+    QODERCN_CLIENT_SPEC,
+    QODERCN_RUNTIME_SPEC,
     RUNTIME_SPECS_BY_PROVIDER,
     provider_env_name,
     provider_marker_prefix,
@@ -78,9 +78,9 @@ def test_runtime_specs_use_provider_native_names() -> None:
     assert QODER_RUNTIME_SPEC.provider_key == "qoder"
     assert QODER_RUNTIME_SPEC.idle_timeout_env == "CCB_QODER_RUNTIME_IDLE_TIMEOUT_S"
     assert QODER_CLIENT_SPEC.session_filename == ".qoder-session"
-    assert QODERCLICN_RUNTIME_SPEC.provider_key == "qoderclicn"
-    assert QODERCLICN_RUNTIME_SPEC.idle_timeout_env == "CCB_QODERCLICN_RUNTIME_IDLE_TIMEOUT_S"
-    assert QODERCLICN_CLIENT_SPEC.session_filename == ".qoderclicn-session"
+    assert QODERCN_RUNTIME_SPEC.provider_key == "qodercn"
+    assert QODERCN_RUNTIME_SPEC.idle_timeout_env == "CCB_QODERCN_RUNTIME_IDLE_TIMEOUT_S"
+    assert QODERCN_CLIENT_SPEC.session_filename == ".qodercn-session"
     assert CURSOR_RUNTIME_SPEC.provider_key == "cursor"
     assert CURSOR_RUNTIME_SPEC.idle_timeout_env == "CCB_CURSOR_RUNTIME_IDLE_TIMEOUT_S"
     assert CURSOR_CLIENT_SPEC.session_filename == ".cursor-session"
@@ -109,8 +109,8 @@ def test_runtime_specs_use_provider_native_names() -> None:
     assert RUNTIME_SPECS_BY_PROVIDER["qwen"] is QWEN_RUNTIME_SPEC
     assert RUNTIME_SPECS_BY_PROVIDER["qoder"] is QODER_RUNTIME_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["qoder"] is QODER_CLIENT_SPEC
-    assert RUNTIME_SPECS_BY_PROVIDER["qoderclicn"] is QODERCLICN_RUNTIME_SPEC
-    assert CLIENT_SPECS_BY_PROVIDER["qoderclicn"] is QODERCLICN_CLIENT_SPEC
+    assert RUNTIME_SPECS_BY_PROVIDER["qodercn"] is QODERCN_RUNTIME_SPEC
+    assert CLIENT_SPECS_BY_PROVIDER["qodercn"] is QODERCN_CLIENT_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["cursor"] is CURSOR_CLIENT_SPEC
     assert RUNTIME_SPECS_BY_PROVIDER["copilot"] is COPILOT_RUNTIME_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["crush"] is CRUSH_CLIENT_SPEC

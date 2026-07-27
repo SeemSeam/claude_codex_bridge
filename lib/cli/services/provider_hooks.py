@@ -19,6 +19,8 @@ from provider_backends.qwen.home import materialize_qwen_home_config
 from provider_backends.kimi.skills import materialize_kimi_skills
 from provider_backends.mimo.launcher import materialize_mimo_memory_config
 from provider_backends.opencode.launcher import materialize_opencode_memory_config
+from provider_backends.qoder.skills import materialize_qoder_skills
+from provider_backends.qodercn.skills import materialize_qodercn_skills
 from provider_hooks.settings import (
     build_activity_hook_command,
     build_hook_command,
@@ -319,6 +321,18 @@ def _materialize_provider_home(
             layout.agent_provider_state_dir(spec.name, 'qwen') / 'home',
             profile=resolved_profile,
             command_policy=command_policy,
+        )
+        return
+    if provider == 'qoder':
+        materialize_qoder_skills(
+            layout.agent_provider_state_dir(spec.name, 'qoder') / 'home',
+            profile=resolved_profile,
+        )
+        return
+    if provider == 'qodercn':
+        materialize_qodercn_skills(
+            layout.agent_provider_state_dir(spec.name, 'qodercn') / 'home',
+            profile=resolved_profile,
         )
 
 
