@@ -9,6 +9,7 @@ from message_bureau import CallbackEdgeState
 from ..callbacks import (
     callback_child_edge,
     delegated_parent_edge,
+    deliver_orphaned_chain_result,
     mark_callback_done,
     mark_parent_message_waiting,
     persist_delegated_terminal_job,
@@ -138,14 +139,23 @@ def _record_terminal_result(
             finished_at=finished_at,
             deliver_to_caller=False,
         )
-        submit_callback_continuation(
-            dispatcher,
-            child_edge,
-            child_job=terminal,
-            child_reply_id=reply_id,
-            decision=decision,
-            finished_at=finished_at,
-        )
+        if child_edge.state in {CallbackEdgeState.FAILED, CallbackEdgeState.TIMED_OUT}:
+            deliver_orphaned_chain_result(
+                dispatcher,
+                child_edge,
+                child_job=terminal,
+                decision=decision,
+                finished_at=finished_at,
+            )
+        else:
+            submit_callback_continuation(
+                dispatcher,
+                child_edge,
+                child_job=terminal,
+                child_reply_id=reply_id,
+                decision=decision,
+                finished_at=finished_at,
+            )
         mark_callback_done(dispatcher, terminal, finished_at=finished_at)
         return
     dispatcher._message_bureau.record_reply(

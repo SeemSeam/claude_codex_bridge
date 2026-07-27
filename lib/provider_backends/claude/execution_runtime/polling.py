@@ -10,6 +10,8 @@ from provider_execution.base import ProviderPollResult, ProviderSubmission
 
 from .event_reading import is_turn_boundary_event, read_events, terminal_api_error_payload
 from .hook_results import poll_exact_hook
+from .hook_results_runtime import hook_poll_context
+from provider_hooks.artifacts import load_event
 from .state_machine import (
     apply_session_rotation,
     build_poll_state,
@@ -47,6 +49,8 @@ def poll_submission(
     if reply_delivery_terminal is not None:
         return _merge_poll_result_items(reply_delivery_terminal, prefix_items=dispatch_items)
     hook_result = poll_exact_hook(submission, now=now) if _prompt_completion_is_eligible(submission) else None
+    if hook_result is None:
+        hook_result = _orphaned_exact_hook(submission, prepared=prepared, now=now)
     if hook_result is not None:
         return _merge_poll_result_items(hook_result, prefix_items=dispatch_items)
     pane_dead_result = _ensure_prepared_pane_alive(submission, prepared=prepared, now=now)
@@ -232,6 +236,87 @@ def _prompt_completion_is_eligible(submission: ProviderSubmission) -> bool:
     if state.get("prompt_anchor_emitted_at"):
         return False
     return bool(state.get("anchor_seen", False))
+
+
+_ORPHANED_HOOK_GRACE_S = 180.0
+
+
+def _orphaned_exact_hook(submission: ProviderSubmission, *, prepared, now: str) -> ProviderPollResult | None:
+    """Recover a terminal Stop-hook artifact when session-log anchor tracking failed.
+
+    The primary hook path is gated on the session event log observing prompt
+    activation and the request anchor. If log parsing misses that window
+    (parser regression, rotated offsets, already-consumed bytes), the job
+    would zombie-run forever with its terminal reply stranded on disk and its
+    active-task flag never cleared. Accept the artifact only with independent
+    proof: it names this job's own request anchor (load_event enforces the
+    req_id match), it was written after submission, a grace period has elapsed
+    since it was written, the hook session matches the tracked session, and
+    the target pane is observably idle.
+    """
+    state = submission.runtime_state
+    if bool(state.get("no_wrap", False)):
+        return None
+    if not bool(state.get("prompt_sent", False)):
+        return None
+    context = hook_poll_context(submission)
+    if context is None:
+        return None
+    event = load_event(context.completion_dir, context.request_anchor)
+    if not event:
+        return None
+    finished_at = _parse_utc(str(event.get("timestamp") or ""))
+    now_dt = _parse_utc(now)
+    if finished_at is None or now_dt is None:
+        return None
+    accepted_at = _parse_utc(str(getattr(submission, "accepted_at", "") or ""))
+    if accepted_at is not None and finished_at < accepted_at:
+        return None
+    if (now_dt - finished_at).total_seconds() < _ORPHANED_HOOK_GRACE_S:
+        return None
+    if not _orphaned_hook_session_matches(submission, event):
+        return None
+    if not _pane_observably_idle(prepared):
+        return None
+    return poll_exact_hook(submission, now=now)
+
+
+def _parse_utc(value: str):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = parse_utc_timestamp(text)
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        from datetime import timezone
+
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _orphaned_hook_session_matches(submission: ProviderSubmission, event: dict[str, object]) -> bool:
+    hook_session = str(event.get("session_id") or "").strip()
+    tracked = str(submission.runtime_state.get("session_path") or "").strip()
+    if not hook_session or not tracked:
+        return True
+    tracked_stem = tracked.rsplit("/", 1)[-1].removesuffix(".jsonl")
+    return hook_session == tracked_stem
+
+
+def _pane_observably_idle(prepared) -> bool:
+    backend = getattr(prepared, "backend", None)
+    get_pane_content = getattr(backend, "get_pane_content", None)
+    if not callable(get_pane_content):
+        return False
+    try:
+        text = str(get_pane_content(getattr(prepared, "pane_id", None), lines=80) or "")
+    except Exception:
+        return False
+    if "esc to interrupt" in text.lower():
+        return False
+    return _has_idle_input_box(text)
 
 
 def _merge_poll_result_items(result: ProviderPollResult, *, prefix_items: tuple) -> ProviderPollResult:
