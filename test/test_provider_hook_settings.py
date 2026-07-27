@@ -1159,6 +1159,50 @@ def test_prepare_provider_workspace_materializes_kimi_inherited_skills(tmp_path:
     assert 'command ask "$TARGET"' in skill_path.read_text(encoding='utf-8')
 
 
+def test_prepare_provider_workspace_materializes_qodercn_inherited_skills(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root / 'workspace'
+    layout = PathLayout(project_root)
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='qodercn'),
+        workspace_path=workspace,
+        completion_dir=layout.agent_provider_runtime_dir('agent1', 'qodercn') / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    home = layout.agent_provider_state_dir('agent1', 'qodercn') / 'home'
+    skill_path = home / 'skills' / 'ask' / 'SKILL.md'
+    assert skill_path.is_file()
+    assert 'command ask "$TARGET"' in skill_path.read_text(encoding='utf-8')
+    assert (home / 'skills' / 'ask.ccb-projection.json').is_file()
+    assert (home / 'skills' / 'ccb-clear' / 'SKILL.md').is_file()
+
+
+def test_prepare_provider_workspace_materializes_qoder_inherited_skills(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root / 'workspace'
+    layout = PathLayout(project_root)
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='qoder'),
+        workspace_path=workspace,
+        completion_dir=layout.agent_provider_runtime_dir('agent1', 'qoder') / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    home = layout.agent_provider_state_dir('agent1', 'qoder') / 'home'
+    skill_path = home / 'skills' / 'ask' / 'SKILL.md'
+    assert skill_path.is_file()
+    assert 'command ask "$TARGET"' in skill_path.read_text(encoding='utf-8')
+    assert (home / 'skills' / 'ask.ccb-projection.json').is_file()
+    assert (home / 'skills' / 'ccb-clear' / 'SKILL.md').is_file()
+
+
 def test_prepare_provider_workspace_materializes_qwen_extensions_from_account_home(
     tmp_path: Path,
     monkeypatch,

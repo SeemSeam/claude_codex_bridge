@@ -67,6 +67,7 @@ def test_inherited_skills_live_under_inherit_skills_only() -> None:
         "gemini_skills",
         "grok_skills",
         "kimi_skills",
+        "qoder_skills",
         "mimo_skills",
         "opencode_skills",
         "qwen_skills",
@@ -82,6 +83,10 @@ def test_inherited_skills_live_under_inherit_skills_only() -> None:
     assert (inherited / "grok_skills" / "ask" / "SKILL.md").is_file()
     assert (inherited / "grok_skills" / "ccb-clear" / "SKILL.md").is_file()
     assert (inherited / "kimi_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "qoder_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "qoder_skills" / "ccb-clear" / "SKILL.md").is_file()
+    assert (inherited / "qodercn_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "qodercn_skills" / "ccb-clear" / "SKILL.md").is_file()
     assert (inherited / "mimo_skills" / "ask.md").is_file()
     assert (inherited / "opencode_skills" / "ask.md").is_file()
     assert (inherited / "qwen_skills" / "ask.md").is_file()
@@ -108,6 +113,8 @@ def test_inherited_skill_set_is_minimal() -> None:
         "gemini_skills": {"ask"},
         "grok_skills": {"ask", "ccb-clear"},
         "kimi_skills": {"ask"},
+        "qoder_skills": {"ask", "ccb-clear"},
+        "qodercn_skills": {"ask", "ccb-clear"},
     }
     for provider_root, expected_names in expected.items():
         skill_root = repo_root / "inherit_skills" / provider_root

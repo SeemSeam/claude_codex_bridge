@@ -1,3 +1,5 @@
+"""Qoder CN provider backend."""
+
 from provider_core.contracts import ProviderBackend
 
 from .execution import build_execution_adapter

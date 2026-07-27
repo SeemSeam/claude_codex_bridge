@@ -17,7 +17,7 @@ Date: 2026-06-13
   workdir-global `--continue`. Qoder's merged provider registration is now
   corrected to use documented print/config arguments, UUID session identity,
   agent-local config state, and provider-specific stream terminalization. Qoder
-  CLI CN is registered separately as `qoderclicn` and reuses that corrected
+  CLI CN is registered separately as `qodercn` and reuses that corrected
   contract for `@qodercn-ai/qoderclicn` rather than the retired generic adapter.
 - Last verified: focused native completion tests, provider catalog tests,
   Kimi/OpenCode skill projection tests, and a real MiMo CCB ask passed after
@@ -29,7 +29,7 @@ Date: 2026-06-13
   remains a release-qualification gate rather than an inferred pass.
 - Qoder CN verification on 2026-07-24 used isolated
   `@qodercn-ai/qoderclicn@1.1.3` (binary `qoderclicn`, Node `>=20`). The raw
-  `job_qoderclicn_*` session id was rejected with exit `42`; UUIDv5 reached the
+  `job_qodercn_*` session id was rejected with exit `42`; UUIDv5 reached the
   native stream, whose unauthenticated assistant error plus
   `result.is_error=true` confirmed the CN-specific fail-closed observer. Managed
   panes share one agent-local config root and disable both update switches.

@@ -102,7 +102,7 @@
 ### Configuration, Lifecycle, And Rich Mode
 
 - **Qoder CLI CN Is A Native Provider**: the official
-  `@qodercn-ai/qoderclicn` distribution is registered as `qoderclicn`, with
+  `@qodercn-ai/qoderclicn` distribution is registered as `qodercn`, with
   isolated visible/headless config and session state, UUID session ids,
   permission mapping, native stream-result completion, and managed suppression
   of provider-owned update prompts.

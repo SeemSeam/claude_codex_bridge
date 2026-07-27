@@ -9,7 +9,7 @@ from provider_core.contracts import ProviderRuntimeLauncher
 
 def build_runtime_launcher() -> ProviderRuntimeLauncher:
     return build_qoder_runtime_launcher(
-        provider="qoderclicn",
+        provider="qodercn",
         managed_config_preparer=_disable_managed_updates,
     )
 

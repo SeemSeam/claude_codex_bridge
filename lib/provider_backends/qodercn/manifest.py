@@ -5,7 +5,7 @@ from provider_core.manifests import ProviderManifest
 
 
 def build_manifest() -> ProviderManifest:
-    return build_native_cli_manifest(provider="qoderclicn")
+    return build_native_cli_manifest(provider="qodercn")
 
 
 __all__ = ["build_manifest"]

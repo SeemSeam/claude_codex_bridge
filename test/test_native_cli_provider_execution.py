@@ -23,10 +23,10 @@ from provider_backends.qoder.execution import (
     _qoder_session_id_for_job,
     observe_qoder_output,
 )
-from provider_backends.qoderclicn.execution import (
-    _build_command as build_qoderclicn_command,
-    _qoderclicn_session_id_for_job,
-    observe_qoderclicn_output,
+from provider_backends.qodercn.execution import (
+    _build_command as build_qodercn_command,
+    _qodercn_session_id_for_job,
+    observe_qodercn_output,
 )
 from provider_backends.zai.execution import observe_zai_output
 from provider_core.pathing import session_filename_for_agent
@@ -34,7 +34,7 @@ from provider_core.registry import build_default_backend_registry
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 
 
-PROVIDERS = ("qwen", "qoder", "qoderclicn", "cursor", "copilot", "crush", "kiro", "pi", "omp", "zai")
+PROVIDERS = ("qwen", "qoder", "qodercn", "cursor", "copilot", "crush", "kiro", "pi", "omp", "zai")
 STRUCTURED_PROVIDERS = ("qwen", "cursor", "copilot", "pi", "omp")
 
 
@@ -102,15 +102,15 @@ def _adapter(provider: str):
     return backend.execution_adapter
 
 
-def test_qoderclicn_headless_command_uses_qoder_contract_and_uuid(
+def test_qodercn_headless_command_uses_qoder_contract_and_uuid(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.delenv("QODERCLICN_START_CMD", raising=False)
-    provider = "qoderclicn"
-    work_dir = tmp_path / "repo-qoderclicn-command"
+    monkeypatch.delenv("QODERCN_START_CMD", raising=False)
+    provider = "qodercn"
+    work_dir = tmp_path / "repo-qodercn-command"
     work_dir.mkdir()
-    config_dir = work_dir / ".ccb" / "agents" / "qoderclicn1" / "provider-state" / provider / "home"
+    config_dir = work_dir / ".ccb" / "agents" / "qodercn1" / "provider-state" / provider / "home"
     request = NativeCliExecutionRequest(
         provider=provider,
         job=_job(provider, work_dir),
@@ -120,7 +120,7 @@ def test_qoderclicn_headless_command_uses_qoder_contract_and_uuid(
         request_anchor="CCB_REQ_ID: job",
     )
 
-    command = build_qoderclicn_command(request)
+    command = build_qodercn_command(request)
     session_id = command[command.index("--session-id") + 1]
 
     assert command == [
@@ -139,32 +139,32 @@ def test_qoderclicn_headless_command_uses_qoder_contract_and_uuid(
         "Reply exactly once.",
     ]
     assert str(uuid.UUID(session_id)) == session_id
-    assert session_id == _qoderclicn_session_id_for_job(request.job.job_id)
+    assert session_id == _qodercn_session_id_for_job(request.job.job_id)
     assert session_id != request.job.job_id
     assert config_dir.is_dir()
 
 
-def test_qoderclicn_headless_command_does_not_repeat_explicit_options(
+def test_qodercn_headless_command_does_not_repeat_explicit_options(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    explicit_config = tmp_path / "explicit-qoderclicn"
+    explicit_config = tmp_path / "explicit-qodercn"
     monkeypatch.setenv(
-        "QODERCLICN_START_CMD",
+        "QODERCN_START_CMD",
         f"qoderclicn --config-dir {explicit_config} --yolo",
     )
-    work_dir = tmp_path / "repo-qoderclicn-explicit"
+    work_dir = tmp_path / "repo-qodercn-explicit"
     work_dir.mkdir()
     request = NativeCliExecutionRequest(
-        provider="qoderclicn",
-        job=_job("qoderclicn", work_dir),
+        provider="qodercn",
+        job=_job("qodercn", work_dir),
         work_dir=work_dir,
-        session_data={"qoderclicn_headless_permission_mode": "auto"},
+        session_data={"qodercn_headless_permission_mode": "auto"},
         prompt="test prompt",
         request_anchor="anchor",
     )
 
-    command = build_qoderclicn_command(request)
+    command = build_qodercn_command(request)
 
     assert command.count("--config-dir") == 1
     assert command.count("--yolo") == 1
@@ -321,10 +321,10 @@ def test_qoder_observer_fails_closed_on_stream_result_error(tmp_path: Path) -> N
     assert observed.error == "Not logged in"
 
 
-def test_qoderclicn_observer_uses_result_without_duplicate_assistant_text(
+def test_qodercn_observer_uses_result_without_duplicate_assistant_text(
     tmp_path: Path,
 ) -> None:
-    output = tmp_path / "qoderclicn.jsonl"
+    output = tmp_path / "qodercn.jsonl"
     session_id = "22222222-2222-5222-8222-222222222222"
     output.write_text(
         "\n".join(
@@ -353,7 +353,7 @@ def test_qoderclicn_observer_uses_result_without_duplicate_assistant_text(
         encoding="utf-8",
     )
 
-    observed = observe_qoderclicn_output(output)
+    observed = observe_qodercn_output(output)
 
     assert observed.text == "QODER_CN_OK"
     assert observed.finished is True
@@ -362,8 +362,8 @@ def test_qoderclicn_observer_uses_result_without_duplicate_assistant_text(
     assert observed.error == ""
 
 
-def test_qoderclicn_observer_waits_for_error_result_envelope(tmp_path: Path) -> None:
-    output = tmp_path / "qoderclicn-error.jsonl"
+def test_qodercn_observer_waits_for_error_result_envelope(tmp_path: Path) -> None:
+    output = tmp_path / "qodercn-error.jsonl"
     assistant_error = {
         "type": "assistant",
         "message": {
@@ -374,7 +374,7 @@ def test_qoderclicn_observer_waits_for_error_result_envelope(tmp_path: Path) -> 
     }
     output.write_text(json.dumps(assistant_error) + "\n", encoding="utf-8")
 
-    assistant_only = observe_qoderclicn_output(output)
+    assistant_only = observe_qodercn_output(output)
 
     assert assistant_only.finished is False
     assert assistant_only.text == "Not logged in"
@@ -394,14 +394,14 @@ def test_qoderclicn_observer_waits_for_error_result_envelope(tmp_path: Path) -> 
             + "\n"
         )
 
-    observed = observe_qoderclicn_output(output)
+    observed = observe_qodercn_output(output)
 
     assert observed.finished is True
     assert observed.text == ""
     assert observed.error == "Not logged in"
 
 
-@pytest.mark.parametrize("provider", ("qoder", "qoderclicn"))
+@pytest.mark.parametrize("provider", ("qoder", "qodercn"))
 def test_qoder_provider_requires_native_result_envelope(
     monkeypatch,
     tmp_path: Path,

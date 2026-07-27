@@ -181,7 +181,7 @@ def test_provider_home_classifier_preserves_secret_precedence_and_unknowns(tmp_p
     assert unknown.provider == 'unknownai'
 
 
-@pytest.mark.parametrize('provider', ('qoder', 'qoderclicn'))
+@pytest.mark.parametrize('provider', ('qoder', 'qodercn'))
 def test_qoder_config_auth_root_is_secret_and_cache_is_rebuildable(
     tmp_path: Path,
     provider: str,
@@ -215,6 +215,27 @@ def test_qoder_config_auth_root_is_secret_and_cache_is_rebuildable(
     assert auth.storage_class.value == 'secret'
     assert auth.reason == f'{provider}_auth_state'
     assert cache.storage_class.value == 'rebuildable_cache'
+
+
+@pytest.mark.parametrize('provider', ('qoder', 'qodercn'))
+def test_qoder_ccb_skills_are_projected_config(tmp_path: Path, provider: str) -> None:
+    agent = f'{provider}1'
+    skill_path = (
+        tmp_path / 'repo' / '.ccb' / 'agents' / agent / 'provider-state' / provider / 'home'
+        / 'skills' / 'ask' / 'SKILL.md'
+    )
+
+    entry = classify_provider_home(
+        skill_path,
+        f'agents/{agent}/provider-state/{provider}/home/skills/ask/SKILL.md',
+        provider,
+        agent,
+        ('skills', 'ask', 'SKILL.md'),
+        size=2,
+        root_kind='project',
+    )
+
+    assert entry.storage_class.value == 'projected_config'
 
 
 def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_path: Path) -> None:

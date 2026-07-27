@@ -20,43 +20,43 @@ apply_backend_env()
 def find_project_session_file(work_dir: Path, instance: Optional[str] = None) -> Optional[Path]:
     return find_project_session_file_for_provider(
         work_dir,
-        session_filename=".qoderclicn-session",
+        session_filename=".qodercn-session",
         instance=instance,
     )
 
 
-class QoderCliCnProjectSession(PaneLogProjectSessionBase):
+class QoderCnProjectSession(PaneLogProjectSessionBase):
     @property
-    def qoderclicn_session_id(self) -> str:
-        return str(self.data.get("qoderclicn_session_id") or self.data.get("ccb_session_id") or "").strip()
+    def qodercn_session_id(self) -> str:
+        return str(self.data.get("qodercn_session_id") or self.data.get("ccb_session_id") or "").strip()
 
     @property
-    def qoderclicn_session_path(self) -> str:
+    def qodercn_session_path(self) -> str:
         return str(self.session_file)
 
     def backend(self):
         return get_backend_for_session(self.data)
 
 
-def load_project_session(work_dir: Path, instance: Optional[str] = None) -> Optional[QoderCliCnProjectSession]:
+def load_project_session(work_dir: Path, instance: Optional[str] = None) -> Optional[QoderCnProjectSession]:
     return load_project_session_for_provider(
         work_dir,
-        session_filename=".qoderclicn-session",
-        session_cls=QoderCliCnProjectSession,
+        session_filename=".qodercn-session",
+        session_cls=QoderCnProjectSession,
         instance=instance,
     )
 
 
-def compute_session_key(session: QoderCliCnProjectSession, instance: Optional[str] = None) -> str:
-    return compute_session_key_for_provider(session, provider="qoderclicn", instance=instance)
+def compute_session_key(session: QoderCnProjectSession, instance: Optional[str] = None) -> str:
+    return compute_session_key_for_provider(session, provider="qodercn", instance=instance)
 
 
 def build_session_binding():
-    return build_session_binding_for_provider(provider="qoderclicn", load_session=load_project_session)
+    return build_session_binding_for_provider(provider="qodercn", load_session=load_project_session)
 
 
 __all__ = [
-    "QoderCliCnProjectSession",
+    "QoderCnProjectSession",
     "build_session_binding",
     "compute_session_key",
     "find_project_session_file",
