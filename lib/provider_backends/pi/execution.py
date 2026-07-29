@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,19 @@ from provider_backends.native_cli_support import (
 )
 
 
-def build_execution_adapter() -> NativeCliSubprocessAdapter:
+PI_EXECUTION_MODE_ENV = "CCB_PI_EXECUTION_MODE"
+
+
+def build_execution_adapter():
+    """Pane-driven by default; set CCB_PI_EXECUTION_MODE=headless to roll back."""
+    if (os.environ.get(PI_EXECUTION_MODE_ENV) or "").strip().lower() == "headless":
+        return build_headless_execution_adapter()
+    from .pane_execution import PiProviderAdapter
+
+    return PiProviderAdapter()
+
+
+def build_headless_execution_adapter() -> NativeCliSubprocessAdapter:
     return NativeCliSubprocessAdapter(
         NativeCliExecutionConfig(
             provider="pi",
@@ -306,4 +319,8 @@ def _pi_time(value: Any) -> object | None:
     return None
 
 
-__all__ = ["build_execution_adapter", "observe_pi_json_output"]
+__all__ = [
+    "build_execution_adapter",
+    "build_headless_execution_adapter",
+    "observe_pi_json_output",
+]
