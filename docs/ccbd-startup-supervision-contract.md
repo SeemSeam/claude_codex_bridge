@@ -450,10 +450,12 @@ Managed provider startup mutation rules:
 - managed Qoder and Qoder CLI CN startup must resolve the final explicit or
   managed `--config-dir` before projecting skills; optional system skills, Role
   skills, and packaged `ask`/`ccb-clear` controls target that same effective
-  root for both visible and headless execution. The released provider key
-  `qoderclicn` remains stable. An explicit config root equal to the source
-  account's `.qoder` or `.qoder-cn` root remains external user authority and
-  must not be mutated by CCB projection.
+  root used by the managed visible pane. Ask execution must load the exact
+  agent session, validate the owned pane, and submit through that pane without
+  a hidden-process fallback. The released provider key `qoderclicn` remains
+  stable. An explicit config root equal to the source account's `.qoder` or
+  `.qoder-cn` root remains external user authority and must not be mutated by
+  CCB projection.
 - managed AGY must use private agent-local `.gemini` and `.antigravity`
   directories. It may copy allowlisted authentication/config files from the
   user's Windows provider home, but it must not symlink or junction either

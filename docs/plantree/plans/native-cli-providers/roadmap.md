@@ -14,11 +14,11 @@ Date: 2026-06-13
   in source with ready-gated prompt delivery, pane fallback, and coalesced
   request diagnostics. Kimi restart now uses observation-bound per-agent native
   session ownership and capability-confirmed exact selection rather than
-  workdir-global `--continue`. Qoder's merged provider registration is now
-  corrected to use documented print/config arguments, UUID session identity,
-  agent-local config state, and provider-specific stream terminalization. Qoder
-  CLI CN is registered separately as `qoderclicn` and reuses that corrected
-  contract for `@qodercn-ai/qoderclicn` rather than the retired generic adapter.
+  workdir-global `--continue`. Qoder and Qoder CLI CN now route asks through
+  their exact managed visible panes, using agent-local config state, owned-pane
+  validation, anchored pane transcript completion, and no hidden-process
+  fallback. Qoder CLI CN remains registered separately as `qoderclicn` for
+  `@qodercn-ai/qoderclicn`.
 - Last verified: focused native completion tests, provider catalog tests,
   Kimi/OpenCode skill projection tests, and a real MiMo CCB ask passed after
   switching CCB MiMo execution to `mimo run --pure --format json`; full

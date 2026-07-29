@@ -347,7 +347,19 @@ Evidence:
 - Classified Qoder CN `.auth/` state as secret and added focused command,
   observer, launcher, registry, runtime, and storage regression coverage.
 
-Historical first-slice verification:
+## 2026-07-29 Qoder Visible-Pane Ask Routing
+
+- Qoder and Qoder CLI CN default execution adapters now load the exact
+  agent-named session, require `session.ensure_pane()` ownership/liveness
+  validation, and submit asks to that managed visible pane.
+- Ask completion uses anchored pane transcript evidence with `CCB_REQ_ID` and
+  `CCB_DONE`; cancellation targets the same pane.
+- Missing, dead, or foreign panes fail closed as `pane_unavailable`. Normal ask
+  routing no longer falls back to a per-job `qodercli -p` or `qoderclicn -p`
+  subprocess. Print-mode builders remain isolated compatibility helpers rather
+  than registered ask adapters.
+
+## Historical First-Slice Verification
 
 - `node --version` returned `v22.20.0`.
 - `npm view @moonshot-ai/kimi-code@0.14.2 version bin engines --json` returned

@@ -9,13 +9,23 @@ from provider_backends.native_cli_support import (
     NativeCliSubprocessAdapter,
 )
 from provider_backends.qoder.execution import (
+    QoderPaneExecutionAdapter,
     _build_qoder_command,
     _observe_qoder_output,
     _qoder_session_id_for_job,
+    build_qoder_pane_execution_adapter,
 )
+from provider_backends.qoderclicn.session import load_project_session
 
 
-def build_execution_adapter() -> NativeCliSubprocessAdapter:
+def build_execution_adapter() -> QoderPaneExecutionAdapter:
+    return build_qoder_pane_execution_adapter(
+        provider="qoderclicn",
+        load_project_session_fn=load_project_session,
+    )
+
+
+def build_headless_execution_adapter() -> NativeCliSubprocessAdapter:
     return NativeCliSubprocessAdapter(
         NativeCliExecutionConfig(
             provider="qoderclicn",
@@ -54,4 +64,8 @@ def _qoderclicn_session_id_for_job(job_id: str) -> str:
     return _qoder_session_id_for_job(job_id, provider="qoderclicn")
 
 
-__all__ = ["build_execution_adapter", "observe_qoderclicn_output"]
+__all__ = [
+    "build_execution_adapter",
+    "build_headless_execution_adapter",
+    "observe_qoderclicn_output",
+]

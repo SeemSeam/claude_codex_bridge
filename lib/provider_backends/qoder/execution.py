@@ -1,9 +1,26 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import uuid
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+
+from ccbd.api_models import JobRecord
+from completion.models import CompletionSourceKind
+from provider_core.protocol import request_anchor_for_job
+from provider_core.runtime_shared import provider_start_parts
+from provider_execution.active import PreparedActiveStart, prepare_active_start
+from provider_execution.base import (
+    ProviderPollResult,
+    ProviderRuntimeContext,
+    ProviderSubmission,
+)
+from provider_execution.common import (
+    interrupt_and_clear_runtime_target,
+    send_prompt_to_runtime_target,
+)
+from terminal_runtime import get_backend_for_session
 
 from provider_backends.native_cli_support import (
     NativeCliExecutionConfig,
@@ -11,14 +28,151 @@ from provider_backends.native_cli_support import (
     NativeCliObservation,
     NativeCliSubprocessAdapter,
 )
-from provider_core.runtime_shared import provider_start_parts
+from provider_backends.pane_quiet_support import (
+    PaneSnapshotReader,
+    wrap_pane_quiet_prompt,
+)
+from provider_backends.pane_quiet_support import (
+    poll_submission as poll_pane_submission,
+)
 
+from .session import load_project_session
 
 _NORMAL_STOP_REASONS = {"completed", "end_turn", "stop", "stop_sequence", "success"}
 _PERMISSION_OPTIONS = {"--dangerously-skip-permissions", "--permission-mode", "--yolo"}
 
 
-def build_execution_adapter() -> NativeCliSubprocessAdapter:
+class QoderPaneExecutionAdapter:
+    restart_resume_supported = False
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        load_project_session_fn: Callable,
+        backend_for_session_fn: Callable[[dict], object | None] = get_backend_for_session,
+    ) -> None:
+        self.provider = str(provider or "").strip().lower()
+        self._load_project_session = load_project_session_fn
+        self._backend_for_session = backend_for_session_fn
+
+    def restore_diagnostics(self) -> dict[str, object]:
+        return {
+            "resume_supported": False,
+            "restore_mode": "resubmit_required",
+            "restore_reason": "provider_resume_unsupported",
+            "restore_detail": (
+                f"{self.provider} asks run in the managed visible pane; interrupted "
+                "in-flight jobs should be resubmitted after daemon restart"
+            ),
+        }
+
+    def start(
+        self,
+        job: JobRecord,
+        *,
+        context: ProviderRuntimeContext | None,
+        now: str,
+    ) -> ProviderSubmission:
+        prepared = prepare_active_start(
+            job,
+            context=context,
+            provider=self.provider,
+            source_kind=CompletionSourceKind.TERMINAL_TEXT,
+            now=now,
+            missing_session_reason=f"missing_{self.provider}_session",
+            load_session_fn=self._load_session,
+            backend_for_session_fn=self._backend_for_session,
+        )
+        if not isinstance(prepared, PreparedActiveStart):
+            return prepared
+
+        request_anchor = request_anchor_for_job(job.job_id)
+        prompt = wrap_pane_quiet_prompt(job.request.body or "", request_anchor)
+        reader = PaneSnapshotReader(
+            backend=prepared.backend,
+            pane_id=prepared.pane_id,
+            lines=2000,
+        )
+        try:
+            send_prompt_to_runtime_target(prepared.backend, prepared.pane_id, prompt)
+        except Exception as exc:  # noqa: BLE001 - terminal backends expose provider-specific failures
+            send_error = f"send_text_failed:{exc!r}"
+        else:
+            send_error = None
+
+        return ProviderSubmission(
+            job_id=job.job_id,
+            agent_name=job.agent_name,
+            provider=self.provider,
+            accepted_at=now,
+            ready_at=now,
+            source_kind=CompletionSourceKind.TERMINAL_TEXT,
+            reply="",
+            diagnostics={
+                "provider": self.provider,
+                "mode": "visible_pane",
+                "workspace_path": str(prepared.work_dir),
+                "pane_id": prepared.pane_id,
+                **({"send_error": send_error} if send_error else {}),
+            },
+            runtime_state={
+                "mode": "pane_quiet",
+                "provider": self.provider,
+                "reader": reader,
+                "backend": prepared.backend,
+                "pane_id": prepared.pane_id,
+                "req_id": request_anchor,
+                "request_anchor": request_anchor,
+                "started_at": now,
+                "last_change_at": now,
+                "last_poll_at": now,
+                "last_hash": None,
+                "prompt_sent": send_error is None,
+                "pending_prompt": prompt,
+                "send_error": send_error,
+                "snapshot_errors": 0,
+                "next_seq": 1,
+            },
+        )
+
+    def poll(self, submission: ProviderSubmission, *, now: str) -> ProviderPollResult | None:
+        return poll_pane_submission(submission, now=now)
+
+    def cancel(self, submission: ProviderSubmission) -> None:
+        backend = submission.runtime_state.get("backend")
+        pane_id = str(submission.runtime_state.get("pane_id") or "").strip()
+        if backend is not None and pane_id:
+            interrupt_and_clear_runtime_target(backend, pane_id)
+
+    def _load_session(self, work_dir: Path, *, agent_name: str):
+        instance = str(agent_name or "").strip().lower()
+        if not instance:
+            return None
+        return self._load_project_session(work_dir, instance=instance)
+
+
+def build_qoder_pane_execution_adapter(
+    *,
+    provider: str,
+    load_project_session_fn: Callable,
+    backend_for_session_fn: Callable[[dict], object | None] = get_backend_for_session,
+) -> QoderPaneExecutionAdapter:
+    return QoderPaneExecutionAdapter(
+        provider=provider,
+        load_project_session_fn=load_project_session_fn,
+        backend_for_session_fn=backend_for_session_fn,
+    )
+
+
+def build_execution_adapter() -> QoderPaneExecutionAdapter:
+    return build_qoder_pane_execution_adapter(
+        provider="qoder",
+        load_project_session_fn=load_project_session,
+    )
+
+
+def build_headless_execution_adapter() -> NativeCliSubprocessAdapter:
     return NativeCliSubprocessAdapter(
         NativeCliExecutionConfig(
             provider="qoder",
@@ -240,6 +394,9 @@ def _has_option(parts: list[str], option: str) -> bool:
 
 
 __all__ = [
+    "QoderPaneExecutionAdapter",
     "build_execution_adapter",
+    "build_headless_execution_adapter",
+    "build_qoder_pane_execution_adapter",
     "observe_qoder_output",
 ]
