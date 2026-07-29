@@ -813,15 +813,16 @@ only the explicit CCB update flow owns discovery and mutation.
 
 ### 6.4 Qoder
 
-Qoder must use its documented `--config-dir` option to bind the visible TUI and
-per-job print subprocess to the same agent-local provider-state root. The
-unsupported `QODER_HOME` assumption is not an isolation boundary.
+Qoder must use its documented `--config-dir` option to bind the managed visible
+TUI to the exact agent-local provider-state root. CCB ask execution must reuse
+that owned visible pane; it must not create a hidden per-job print subprocess.
+The unsupported `QODER_HOME` assumption is not an isolation boundary.
 
 Must remain agent-isolated:
 
 - the exact `--config-dir` root
 - `.auth/`, logs, sessions, settings, installation identity, and security state
-- deterministic per-job native session UUIDs
+- the visible provider conversation and its pane/session binding
 
 Must remain secret and agent-local:
 

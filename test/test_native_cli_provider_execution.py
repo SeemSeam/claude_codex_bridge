@@ -25,11 +25,13 @@ from provider_backends.native_cli_support.execution import _native_cli_env
 from provider_backends.qoder.execution import (
     _build_command as build_qoder_command,
     _qoder_session_id_for_job,
+    build_headless_execution_adapter as build_qoder_headless_execution_adapter,
     observe_qoder_output,
 )
 from provider_backends.qoderclicn.execution import (
     _build_command as build_qoderclicn_command,
     _qoderclicn_session_id_for_job,
+    build_headless_execution_adapter as build_qoderclicn_headless_execution_adapter,
     observe_qoderclicn_output,
 )
 from provider_backends.zai.execution import observe_zai_output
@@ -38,7 +40,7 @@ from provider_core.registry import build_default_backend_registry
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 
 
-PROVIDERS = ("qwen", "qoder", "qoderclicn", "cursor", "copilot", "crush", "kiro", "pi", "omp", "zai")
+PROVIDERS = ("qwen", "cursor", "copilot", "crush", "kiro", "pi", "omp", "zai")
 STRUCTURED_PROVIDERS = ("qwen", "cursor", "copilot", "pi", "omp")
 
 
@@ -481,7 +483,11 @@ def test_qoder_provider_requires_native_result_envelope(
     _write_session(provider, work_dir)
     _install_stub(monkeypatch, provider, mode="no_terminal")
 
-    adapter = _adapter(provider)
+    adapter = (
+        build_qoder_headless_execution_adapter()
+        if provider == "qoder"
+        else build_qoderclicn_headless_execution_adapter()
+    )
     submission = adapter.start(
         _job(provider, work_dir),
         context=_runtime_context(provider, work_dir),

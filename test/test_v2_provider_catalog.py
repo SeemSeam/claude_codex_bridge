@@ -76,12 +76,18 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert mimo.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
     assert mimo.supports_observed_completion is True
     assert mimo.supports_anchor_binding is True
-    for provider in ('qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'kiro', 'pi', 'omp', 'zai', 'grok'):
+    for provider in ('qwen', 'cursor', 'copilot', 'crush', 'kiro', 'pi', 'omp', 'zai', 'grok'):
         native = catalog.resolve_completion_manifest(provider, RuntimeMode.PANE_BACKED)
         assert native.completion_family is CompletionFamily.STRUCTURED_RESULT
         assert native.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
         assert native.supports_observed_completion is True
         assert native.supports_anchor_binding is True
+    for provider in ('qoder', 'qoderclicn'):
+        visible = catalog.resolve_completion_manifest(provider, RuntimeMode.PANE_BACKED)
+        assert visible.completion_family is CompletionFamily.TERMINAL_TEXT_QUIET
+        assert visible.completion_source_kind is CompletionSourceKind.TERMINAL_TEXT
+        assert visible.supports_observed_completion is True
+        assert visible.supports_anchor_binding is True
     fake_legacy = catalog.resolve_completion_manifest('fake-legacy', RuntimeMode.PANE_BACKED)
     assert fake_legacy.completion_family is CompletionFamily.TERMINAL_TEXT_QUIET
 

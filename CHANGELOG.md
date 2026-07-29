@@ -38,6 +38,10 @@
 - **Asset Projection Is One-Way And Owned**: managed Provider assets are
   refreshed inside private homes without writable aliases back to user-global
   state, and packaged Qoder `ask` / `ccb-clear` controls are now guaranteed.
+- **Qoder Asks Stay In The Visible Pane**: Qoder and Qoder CLI CN asks now bind
+  to the exact managed agent session, validate its owned tmux pane, and submit
+  through that visible TUI. Missing or foreign panes fail closed instead of
+  starting a hidden per-job print process.
 
 ## v8.4.3 (2026-07-27)
 
