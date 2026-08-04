@@ -10,9 +10,9 @@ _LEGACY_BIN_DIR = Path.home() / '.local' / 'bin'
 
 def build_tmux_backend(socket_path: str):
     try:
-        from terminal_runtime import TmuxBackend
+        from terminal_runtime.backend_selection import make_terminal_backend
 
-        return TmuxBackend(socket_path=socket_path)
+        return make_terminal_backend(socket_path=socket_path)
     except Exception:
         return None
 

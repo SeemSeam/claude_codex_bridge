@@ -59,7 +59,7 @@ def test_prepare_tmux_start_layout_uses_current_pane_as_cmd_anchor(monkeypatch, 
             }
             return mapping[(direction, str(parent_pane_id))]
 
-    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(tmux_start_layout, 'make_terminal_backend', FakeTmuxBackend)
 
     layout = tmux_start_layout.prepare_tmux_start_layout(
         ctx,
@@ -105,7 +105,7 @@ def test_prepare_tmux_start_layout_uses_explicit_percent_hint(monkeypatch, tmp_p
             split_calls.append((parent_pane_id, direction, percent))
             return '%1'
 
-    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(tmux_start_layout, 'make_terminal_backend', FakeTmuxBackend)
 
     layout = tmux_start_layout.prepare_tmux_start_layout(
         ctx,
@@ -161,7 +161,7 @@ def test_prepare_tmux_start_layout_assigns_slot_stable_styles(monkeypatch, tmp_p
             }
             return mapping[(direction, str(parent_pane_id))]
 
-    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(tmux_start_layout, 'make_terminal_backend', FakeTmuxBackend)
 
     layout = tmux_start_layout.prepare_tmux_start_layout(
         ctx,
@@ -212,7 +212,7 @@ def test_prepare_tmux_start_layout_uses_root_pane_for_first_agent_when_cmd_disab
         ) -> str:
             raise AssertionError('single-agent no-cmd layout should reuse root pane')
 
-    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(tmux_start_layout, 'make_terminal_backend', FakeTmuxBackend)
 
     layout = tmux_start_layout.prepare_tmux_start_layout(
         ctx,
@@ -273,7 +273,7 @@ def test_prepare_tmux_start_layout_creates_split_panes_with_placeholder(monkeypa
             live_panes.add(pane_id)
             return pane_id
 
-    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setattr(tmux_start_layout, 'make_terminal_backend', FakeTmuxBackend)
 
     layout = tmux_start_layout.prepare_tmux_start_layout(
         ctx,

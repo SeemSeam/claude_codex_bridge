@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 import terminal_runtime.backend_selection as backend_selection_module
-from terminal_runtime.backend_selection import TerminalBackendSelection, TerminalLayoutService
+from terminal_runtime.backend_selection import (
+    TerminalBackendSelection,
+    TerminalLayoutService,
+    make_terminal_backend,
+)
+from terminal_runtime.tmux_backend import TmuxBackend
 
 
 class _FakeBackend:
@@ -49,6 +56,37 @@ def test_backend_selection_uses_session_terminal_field() -> None:
     assert selection.get_pane_id_from_session({'tmux_session': '%old'}) == '%old'
 
 
+@pytest.mark.parametrize('terminal_type', [None, 'tmux'])
+def test_make_terminal_backend_returns_tmux_backend(terminal_type) -> None:
+    assert isinstance(make_terminal_backend(terminal_type), TmuxBackend)
+
+
+def test_make_terminal_backend_rejects_unimplemented_herdr_backend() -> None:
+    with pytest.raises(
+        NotImplementedError,
+        match='herdr terminal backend lands in PR #2',
+    ):
+        make_terminal_backend('herdr')
+
+
+def test_backend_selection_rejects_unimplemented_herdr_backend() -> None:
+    selection = TerminalBackendSelection(
+        detect_terminal_fn=lambda: 'tmux',
+        tmux_backend_factory=lambda: _FakeBackend('tmux'),
+    )
+
+    with pytest.raises(
+        NotImplementedError,
+        match='herdr terminal backend lands in PR #2',
+    ):
+        selection.get_backend('herdr')
+
+
+def test_tmux_backend_satisfies_terminal_backend_abstract_contract() -> None:
+    assert TmuxBackend.__abstractmethods__ == frozenset()
+    assert isinstance(TmuxBackend(), TmuxBackend)
+
+
 def test_terminal_layout_service_delegates_to_runtime_layout() -> None:
     backend = _FakeBackend('tmux')
     captured: dict[str, object] = {}
@@ -81,3 +119,16 @@ def test_terminal_layout_service_delegates_to_runtime_layout() -> None:
     assert captured['backend'] is backend
     assert captured['detached_session_name'] == 'ccb-demo-1'
     assert captured['inside_tmux'] is True
+
+
+def test_terminal_layout_service_rejects_unimplemented_herdr_backend() -> None:
+    service = TerminalLayoutService(
+        tmux_backend_factory=lambda: _FakeBackend('tmux'),
+        detached_session_name_fn=lambda **kwargs: 'ccb-demo-1',
+    )
+
+    with pytest.raises(
+        NotImplementedError,
+        match='herdr terminal backend lands in PR #2',
+    ):
+        service.create_auto_layout([], cwd='/tmp/demo', terminal_type='herdr')

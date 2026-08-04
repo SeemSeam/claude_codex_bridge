@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from agents.models import ProjectConfig, ProjectLayoutPlan, build_project_layout_plan
 from cli.context import CliContext
 from terminal_runtime import TmuxBackend
+from terminal_runtime.backend_selection import make_terminal_backend
 from terminal_runtime.placeholders import pane_placeholder_cmd
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
 
@@ -28,7 +29,7 @@ def prepare_tmux_start_layout(
     if not targets:
         return TmuxStartLayout(cmd_pane_id=None, agent_panes={})
 
-    backend = tmux_backend or TmuxBackend()
+    backend = tmux_backend or make_terminal_backend()
     resolved_root_pane_id = root_pane_id or backend.get_current_pane_id()
     resolved_layout_plan = layout_plan or build_project_layout_plan(
         config,

@@ -138,7 +138,7 @@ def test_foreground_start_refreshes_sidebar_with_current_cli_when_daemon_is_reus
         lambda config: topology_plan,
     )
     monkeypatch.setattr(
-        'cli.services.start.TmuxBackend',
+        'cli.services.start.make_terminal_backend',
         lambda *, socket_path: seen.setdefault('backend_socket', socket_path) and backend,
     )
 

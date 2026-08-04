@@ -65,7 +65,7 @@ def _app(
 
 def test_project_clear_context_handler_sends_provider_clear_to_all_agent_panes(monkeypatch) -> None:
     backend = _FakeBackend()
-    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    monkeypatch.setattr(project_clear, 'make_terminal_backend', lambda *, socket_path: backend)
     handler = build_project_clear_context_handler(
         _app(
             runtimes={
@@ -97,7 +97,7 @@ def test_project_clear_context_handler_sends_provider_clear_to_all_agent_panes(m
 
 def test_project_clear_context_handler_targets_requested_agents_once(monkeypatch) -> None:
     backend = _FakeBackend()
-    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    monkeypatch.setattr(project_clear, 'make_terminal_backend', lambda *, socket_path: backend)
     handler = build_project_clear_context_handler(
         _app(
             runtimes={
@@ -122,7 +122,7 @@ def test_project_clear_context_handler_targets_requested_agents_once(monkeypatch
 
 def test_project_clear_context_handler_delays_opencode_submit(monkeypatch) -> None:
     backend = _FakeBackend()
-    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    monkeypatch.setattr(project_clear, 'make_terminal_backend', lambda *, socket_path: backend)
     monkeypatch.setattr(
         project_clear.time,
         'sleep',
@@ -162,7 +162,7 @@ def test_project_clear_context_handler_delays_opencode_submit(monkeypatch) -> No
 
 def test_project_clear_context_handler_skips_missing_runtime_or_pane(monkeypatch) -> None:
     backend = _FakeBackend(existing_panes={'%1'})
-    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    monkeypatch.setattr(project_clear, 'make_terminal_backend', lambda *, socket_path: backend)
     handler = build_project_clear_context_handler(
         _app(
             runtimes={
@@ -189,7 +189,7 @@ def test_project_clear_context_handler_rejects_unknown_target() -> None:
 
 def test_project_clear_context_handler_blocks_active_or_queued_agent(monkeypatch) -> None:
     backend = _FakeBackend()
-    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    monkeypatch.setattr(project_clear, 'make_terminal_backend', lambda *, socket_path: backend)
     state = SimpleNamespace(
         active_job=lambda agent_name: 'job_active' if agent_name == 'agent1' else None,
         queue_depth=lambda agent_name: 2 if agent_name == 'agent1' else 0,
