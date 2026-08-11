@@ -439,7 +439,7 @@ def _cursor_pane_status(backend: object, pane_id: str) -> str:
         content = str(get_content(pane_id, lines=120) or "")
     except Exception:
         return "idle"
-    normalized = content.lower()
+    normalized = "\n".join(content.splitlines()[-12:]).lower()
     if any(
         marker in normalized
         for marker in ("ctrl+c to stop", " working", "┌─ follow-ups")

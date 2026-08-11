@@ -340,6 +340,9 @@ def test_cursor_busy_pane_defers_then_dispatches_exactly_once_when_idle(
     assert dispatched.submission.runtime_state["started_at"] == "2026-08-11T00:00:09Z"
     assert len(backend.sent) == 1
 
+    assert adapter.poll(dispatched.submission, now="2026-08-11T00:00:10Z") is None
+    assert len(backend.sent) == 1
+
 
 def test_cursor_working_pane_defers_even_before_user_transcript_is_flushed(
     monkeypatch,
@@ -396,7 +399,24 @@ def test_cursor_working_pane_defers_even_before_user_transcript_is_flushed(
     assert dispatched.submission.runtime_state["pane_busy"] is False
     assert len(backend.sent) == 1
 
-    assert adapter.poll(dispatched.submission, now="2026-08-11T00:00:07Z") is None
+
+def test_cursor_pane_status_ignores_busy_markers_left_only_in_scrollback(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    backend.pane_text = "ctrl+c to stop\n" + "\n".join(
+        f"idle screen line {index}" for index in range(20)
+    )
+
+    submission = CursorPaneExecutionAdapter().start(
+        _pane_job(),
+        context=_pane_context(tmp_path),
+        now="2026-08-11T00:00:00Z",
+    )
+
+    assert submission.runtime_state["pane_status"] == "idle"
+    assert submission.runtime_state["prompt_sent"] is True
     assert len(backend.sent) == 1
 
 
