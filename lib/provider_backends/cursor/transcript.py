@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class CursorPaneTurnState:
+    busy: bool
+    transcript_path: str = ""
+    terminal_status: str = ""
 
 
 def cursor_transcript_root(cursor_home: Path) -> Path:
@@ -55,6 +63,42 @@ def read_new_cursor_transcript_records(
     return records, next_offsets
 
 
+def cursor_pane_turn_state(
+    cursor_home: Path,
+    *,
+    session_started_mtime_ns: int,
+) -> CursorPaneTurnState:
+    eligible: list[Path] = []
+    for path in iter_top_level_cursor_transcripts(cursor_home):
+        try:
+            if path.stat().st_mtime_ns < max(0, int(session_started_mtime_ns)):
+                continue
+        except OSError:
+            continue
+        eligible.append(path)
+    if not eligible:
+        return CursorPaneTurnState(busy=False)
+
+    path = eligible[-1]
+    records = _read_complete_records(path)
+    last_user = -1
+    last_terminal = -1
+    terminal_status = ""
+    for index, record in enumerate(records):
+        if str(record.get("role") or "").strip().lower() == "user":
+            last_user = index
+        if str(record.get("type") or "").strip().lower() == "turn_ended":
+            last_terminal = index
+            terminal_status = str(record.get("status") or "").strip().lower()
+
+    busy = last_user >= 0 and last_user > last_terminal
+    return CursorPaneTurnState(
+        busy=busy,
+        transcript_path=str(path),
+        terminal_status="" if busy else terminal_status,
+    )
+
+
 def cursor_record_text(record: dict) -> str:
     message = record.get("message")
     if not isinstance(message, dict):
@@ -75,6 +119,25 @@ def _content_text(value: object) -> str:
     return str(text) if isinstance(text, str) else ""
 
 
+def _read_complete_records(path: Path) -> list[dict]:
+    try:
+        chunk = path.read_bytes()
+    except OSError:
+        return []
+    complete_end = chunk.rfind(b"\n") + 1
+    if complete_end <= 0:
+        return []
+    records: list[dict] = []
+    for raw_line in chunk[:complete_end].splitlines():
+        try:
+            payload = json.loads(raw_line.decode("utf-8", errors="strict"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
 def _path_order(path: Path) -> tuple[int, str]:
     try:
         mtime_ns = path.stat().st_mtime_ns
@@ -84,7 +147,9 @@ def _path_order(path: Path) -> tuple[int, str]:
 
 
 __all__ = [
+    "CursorPaneTurnState",
     "capture_cursor_transcript_offsets",
+    "cursor_pane_turn_state",
     "cursor_record_text",
     "cursor_transcript_root",
     "iter_top_level_cursor_transcripts",

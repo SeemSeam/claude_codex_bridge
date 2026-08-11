@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from provider_backends.cursor.transcript import (
     capture_cursor_transcript_offsets,
+    cursor_pane_turn_state,
     iter_top_level_cursor_transcripts,
     read_new_cursor_transcript_records,
 )
@@ -99,3 +101,71 @@ def test_cursor_transcript_reader_skips_malformed_complete_records(tmp_path: Pat
 
     assert records == [(str(path), {"type": "turn_ended", "status": "error"})]
     assert offsets[str(path)] == path.stat().st_size
+
+
+def test_cursor_pane_turn_state_without_transcript_is_idle(tmp_path: Path) -> None:
+    state = cursor_pane_turn_state(tmp_path / "managed-home", session_started_mtime_ns=1)
+
+    assert state.busy is False
+    assert state.transcript_path == ""
+    assert state.terminal_status == ""
+
+
+def test_cursor_pane_turn_state_is_busy_until_success_terminal_record(tmp_path: Path) -> None:
+    home = tmp_path / "managed-home"
+    path = _transcript(home, "current-session")
+    _append(path, {"role": "user", "message": {"content": [{"type": "text", "text": "manual"}]}})
+
+    busy = cursor_pane_turn_state(home, session_started_mtime_ns=1)
+
+    assert busy.busy is True
+    assert busy.transcript_path == str(path)
+    assert busy.terminal_status == ""
+
+    _append(path, {"type": "turn_ended", "status": "success"})
+    idle = cursor_pane_turn_state(home, session_started_mtime_ns=1)
+
+    assert idle.busy is False
+    assert idle.transcript_path == str(path)
+    assert idle.terminal_status == "success"
+
+
+def test_cursor_pane_turn_state_error_terminal_record_makes_next_turn_idle(tmp_path: Path) -> None:
+    home = tmp_path / "managed-home"
+    path = _transcript(home, "current-session")
+    _append(
+        path,
+        {"role": "user", "message": {"content": [{"type": "text", "text": "manual"}]}},
+        {"type": "turn_ended", "status": "error"},
+    )
+
+    state = cursor_pane_turn_state(home, session_started_mtime_ns=1)
+
+    assert state.busy is False
+    assert state.terminal_status == "error"
+
+
+def test_cursor_pane_turn_state_ignores_incomplete_legacy_transcript(tmp_path: Path) -> None:
+    home = tmp_path / "managed-home"
+    path = _transcript(home, "legacy-session")
+    _append(path, {"role": "user", "message": {"content": [{"type": "text", "text": "legacy"}]}})
+    os.utime(path, ns=(1_000, 1_000))
+
+    state = cursor_pane_turn_state(home, session_started_mtime_ns=2_000)
+
+    assert state.busy is False
+    assert state.transcript_path == ""
+
+
+def test_cursor_pane_turn_state_ignores_malformed_and_subagent_records(tmp_path: Path) -> None:
+    home = tmp_path / "managed-home"
+    parent = _transcript(home, "current-session")
+    parent.parent.mkdir(parents=True, exist_ok=True)
+    parent.write_text("not-json\n", encoding="utf-8")
+    subagent = parent.parent / "subagents" / "child.jsonl"
+    _append(subagent, {"role": "user", "message": {"content": [{"type": "text", "text": "busy"}]}})
+
+    state = cursor_pane_turn_state(home, session_started_mtime_ns=1)
+
+    assert state.busy is False
+    assert state.transcript_path == str(parent)
