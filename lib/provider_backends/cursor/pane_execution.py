@@ -96,12 +96,14 @@ class CursorPaneExecutionAdapter:
             cursor_home,
             session_started_mtime_ns=session_started_mtime_ns,
         )
-        pane_busy = _cursor_pane_busy(prepared.backend, prepared.pane_id)
+        pane_status = _cursor_pane_status(prepared.backend, prepared.pane_id)
+        pane_busy = pane_status != "idle"
+        readiness_offsets = capture_cursor_transcript_offsets(cursor_home)
         offsets: dict[str, int] = {}
         prompt_sent = False
         if not turn_state.busy and not pane_busy:
             try:
-                offsets = capture_cursor_transcript_offsets(cursor_home)
+                offsets = readiness_offsets
                 send_prompt_to_runtime_target(prepared.backend, prepared.pane_id, prompt)
                 prompt_sent = True
             except Exception as exc:
@@ -138,6 +140,7 @@ class CursorPaneExecutionAdapter:
                 "cursor_home": str(cursor_home),
                 "session_started_mtime_ns": session_started_mtime_ns,
                 "transcript_offsets": offsets,
+                "readiness_transcript_offsets": readiness_offsets,
                 "matched_transcript_path": "",
                 "provider_session_id": "",
                 "reply_buffer": "",
@@ -151,6 +154,11 @@ class CursorPaneExecutionAdapter:
                 "run_timeout_s": _effective_run_timeout_s(),
                 "prompt_sent": prompt_sent,
                 "pane_busy": pane_busy,
+                "pane_status": pane_status,
+                "deferred_requires_terminal": (
+                    not prompt_sent and (turn_state.busy or pane_status == "active")
+                ),
+                "deferred_terminal_seen": False,
                 "pending_prompt": prompt,
                 "reply_delivery_complete_on_dispatch": reply_delivery,
             },
@@ -170,18 +178,33 @@ class CursorPaneExecutionAdapter:
 
         if not bool(state.get("prompt_sent")):
             cursor_home = Path(str(state.get("cursor_home") or ""))
+            readiness_records, readiness_offsets = read_new_cursor_transcript_records(
+                cursor_home,
+                dict(state.get("readiness_transcript_offsets") or {}),
+            )
+            state["readiness_transcript_offsets"] = readiness_offsets
+            if any(
+                str(record.get("type") or "").strip().lower() == "turn_ended"
+                for _, record in readiness_records
+            ):
+                state["deferred_terminal_seen"] = True
             turn_state = cursor_pane_turn_state(
                 cursor_home,
                 session_started_mtime_ns=max(0, int(state.get("session_started_mtime_ns") or 0)),
             )
-            pane_busy = _cursor_pane_busy(backend, pane_id)
+            pane_status = _cursor_pane_status(backend, pane_id)
+            pane_busy = pane_status != "idle"
+            terminal_required = bool(state.get("deferred_requires_terminal"))
+            terminal_seen = bool(state.get("deferred_terminal_seen"))
             accepted_at = str(state.get("accepted_at") or submission.accepted_at or "")
             ready_timeout_s = float(state.get("ready_timeout_s") or _DEFAULT_READY_TIMEOUT_S)
             ready_wait_s = _elapsed_seconds(accepted_at, now)
             state["ready_wait_s"] = ready_wait_s
             state["busy_transcript_path"] = turn_state.transcript_path
             state["pane_busy"] = pane_busy
-            if turn_state.busy or pane_busy:
+            state["pane_status"] = pane_status
+            state["waiting_for_deferred_terminal"] = terminal_required and not terminal_seen
+            if turn_state.busy or pane_busy or (terminal_required and not terminal_seen):
                 state["idle_observed_at"] = ""
                 if ready_wait_s >= ready_timeout_s:
                     updated = replace(submission, runtime_state=state)
@@ -388,25 +411,33 @@ def _pane_prompt(body: str, *, request_anchor: str, no_wrap: bool) -> str:
     return wrap_native_prompt(body, request_anchor)
 
 
-def _cursor_pane_busy(backend: object, pane_id: str) -> bool:
+def _cursor_pane_status(backend: object, pane_id: str) -> str:
     get_content = getattr(backend, "get_pane_content", None)
     if not callable(get_content):
-        return False
+        return "idle"
     try:
         content = str(get_content(pane_id, lines=120) or "")
     except Exception:
-        return False
+        return "idle"
     normalized = content.lower()
-    return any(
+    if any(
+        marker in normalized
+        for marker in ("ctrl+c to stop", " working", "┌─ follow-ups")
+    ):
+        return "active"
+    if any(
         marker in normalized
         for marker in (
-            "ctrl+c to stop",
-            " working",
-            "┌─ follow-ups",
             "do you trust the contents of this directory?",
             "trusting workspace...",
         )
-    )
+    ):
+        return "blocked"
+    return "idle"
+
+
+def _cursor_pane_busy(backend: object, pane_id: str) -> bool:
+    return _cursor_pane_status(backend, pane_id) != "idle"
 
 
 def _reply_delivery_result(
