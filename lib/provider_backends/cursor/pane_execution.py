@@ -1,8 +1,409 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
+from ccbd.api_models import JobRecord
+from completion.models import (
+    CompletionConfidence,
+    CompletionCursor,
+    CompletionDecision,
+    CompletionItemKind,
+    CompletionSourceKind,
+    CompletionStatus,
+)
+from provider_backends.native_cli_support.prompt import clean_native_reply, wrap_native_prompt
+from provider_core.protocol import request_anchor_for_job
+from provider_execution.active import ensure_active_pane_alive, prepare_active_start
+from provider_execution.base import ProviderPollResult, ProviderRuntimeContext, ProviderSubmission
+from provider_execution.common import (
+    build_item,
+    error_submission,
+    interrupt_and_clear_runtime_target,
+    no_wrap_requested,
+    send_prompt_to_runtime_target,
+)
+from terminal_runtime import get_backend_for_session
+
+from .session import load_project_session
+from .transcript import (
+    capture_cursor_transcript_offsets,
+    cursor_pane_turn_state,
+    cursor_record_text,
+    read_new_cursor_transcript_records,
+)
+
+
+_MODE = "cursor_pane"
+
 
 class CursorPaneExecutionAdapter:
     provider = "cursor"
+
+    def restore_diagnostics(self) -> dict[str, object]:
+        return {
+            "resume_supported": False,
+            "restore_mode": "resubmit_required",
+            "restore_reason": "provider_resume_unsupported",
+            "restore_detail": (
+                "Cursor jobs are bound to the managed visible pane and transcript; "
+                "interrupted in-flight jobs should be resubmitted"
+            ),
+        }
+
+    def start(
+        self,
+        job: JobRecord,
+        *,
+        context: ProviderRuntimeContext | None,
+        now: str,
+    ) -> ProviderSubmission:
+        prepared = prepare_active_start(
+            job,
+            context=context,
+            provider=self.provider,
+            source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+            now=now,
+            missing_session_reason="missing_cursor_session",
+            load_session_fn=_load_session,
+            backend_for_session_fn=get_backend_for_session,
+        )
+        if isinstance(prepared, ProviderSubmission):
+            return prepared
+
+        cursor_home = _cursor_home(prepared.session.data)
+        if cursor_home is None:
+            return error_submission(
+                job,
+                provider=self.provider,
+                now=now,
+                source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+                reason="runtime_unavailable",
+                error="cursor_home_missing",
+            )
+
+        request_anchor = request_anchor_for_job(job.job_id)
+        no_wrap = no_wrap_requested(getattr(job, "provider_options", None))
+        prompt = _pane_prompt(job.request.body or "", request_anchor=request_anchor, no_wrap=no_wrap)
+        session_started_mtime_ns = _session_started_mtime_ns(prepared.session)
+        turn_state = cursor_pane_turn_state(
+            cursor_home,
+            session_started_mtime_ns=session_started_mtime_ns,
+        )
+        offsets: dict[str, int] = {}
+        prompt_sent = False
+        if not turn_state.busy:
+            try:
+                offsets = capture_cursor_transcript_offsets(cursor_home)
+                send_prompt_to_runtime_target(prepared.backend, prepared.pane_id, prompt)
+                prompt_sent = True
+            except Exception as exc:
+                return error_submission(
+                    job,
+                    provider=self.provider,
+                    now=now,
+                    source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+                    reason="cursor_pane_send_failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+        reply_delivery = str(job.request.message_type or "").strip().lower() == "reply_delivery"
+        return ProviderSubmission(
+            job_id=job.job_id,
+            agent_name=job.agent_name,
+            provider=self.provider,
+            accepted_at=now,
+            ready_at=now,
+            source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+            reply="",
+            diagnostics={
+                "provider": self.provider,
+                "mode": _MODE,
+                "workspace_path": str(prepared.work_dir),
+                "pane_id": prepared.pane_id,
+                "prompt_deferred_until_ready": not prompt_sent,
+            },
+            runtime_state={
+                "mode": _MODE,
+                "backend": prepared.backend,
+                "pane_id": prepared.pane_id,
+                "request_anchor": request_anchor,
+                "cursor_home": str(cursor_home),
+                "session_started_mtime_ns": session_started_mtime_ns,
+                "transcript_offsets": offsets,
+                "matched_transcript_path": "",
+                "provider_session_id": "",
+                "reply_buffer": "",
+                "next_seq": 1,
+                "anchor_seen": no_wrap,
+                "no_wrap": no_wrap,
+                "accepted_at": now,
+                "started_at": now if prompt_sent else "",
+                "prompt_sent": prompt_sent,
+                "pending_prompt": prompt,
+                "reply_delivery_complete_on_dispatch": reply_delivery,
+            },
+        )
+
+    def poll(self, submission: ProviderSubmission, *, now: str) -> ProviderPollResult | None:
+        if str(submission.runtime_state.get("mode") or "") != _MODE:
+            return None
+        state = dict(submission.runtime_state)
+        backend = state.get("backend")
+        pane_id = str(state.get("pane_id") or "")
+        if backend is None or not pane_id:
+            return _runtime_error(submission, state, now=now, reason="runtime_state_corrupt")
+        pane_dead = ensure_active_pane_alive(submission, backend=backend, pane_id=pane_id, now=now)
+        if pane_dead is not None:
+            return pane_dead
+
+        if not bool(state.get("prompt_sent")):
+            return None
+        if bool(state.get("reply_delivery_complete_on_dispatch")):
+            return _reply_delivery_result(submission, state, now=now)
+
+        cursor_home = Path(str(state.get("cursor_home") or ""))
+        records, offsets = read_new_cursor_transcript_records(
+            cursor_home,
+            dict(state.get("transcript_offsets") or {}),
+        )
+        state["transcript_offsets"] = offsets
+        items = []
+        matched_path = str(state.get("matched_transcript_path") or "")
+        request_anchor = str(state.get("request_anchor") or submission.job_id)
+        terminal_status = ""
+
+        for record_path, record in records:
+            role = str(record.get("role") or "").strip().lower()
+            if not matched_path:
+                if role != "user" or request_anchor not in cursor_record_text(record):
+                    continue
+                matched_path = record_path
+                state["matched_transcript_path"] = matched_path
+                state["provider_session_id"] = Path(matched_path).parent.name
+                if not bool(state.get("anchor_seen")):
+                    items.append(
+                        build_item(
+                            submission,
+                            kind=CompletionItemKind.ANCHOR_SEEN,
+                            timestamp=now,
+                            seq=_next_seq(state),
+                            payload={
+                                "turn_id": request_anchor,
+                                "source": "cursor_visible_session_user_message",
+                                "provider_session_id": str(state.get("provider_session_id") or ""),
+                            },
+                        )
+                    )
+                    state["anchor_seen"] = True
+                continue
+            if record_path != matched_path:
+                continue
+            if role == "assistant":
+                text = cursor_record_text(record)
+                if text:
+                    state["reply_buffer"] = str(state.get("reply_buffer") or "") + text
+                continue
+            if str(record.get("type") or "").strip().lower() == "turn_ended":
+                terminal_status = str(record.get("status") or "").strip().lower() or "unknown"
+                break
+
+        reply = clean_native_reply(
+            str(state.get("reply_buffer") or ""),
+            request_anchor,
+        )
+        if reply and reply != submission.reply:
+            items.append(
+                build_item(
+                    submission,
+                    kind=CompletionItemKind.ASSISTANT_FINAL,
+                    timestamp=now,
+                    seq=_next_seq(state),
+                    payload={
+                        "text": reply,
+                        "reply": reply,
+                        "final_answer": reply,
+                        "turn_id": request_anchor,
+                        "provider_turn_ref": str(state.get("provider_session_id") or ""),
+                        "finish_reason": terminal_status,
+                    },
+                )
+            )
+
+        updated = replace(submission, reply=reply, runtime_state=state)
+        if terminal_status:
+            items.append(
+                build_item(
+                    updated,
+                    kind=CompletionItemKind.TURN_BOUNDARY,
+                    timestamp=now,
+                    seq=_next_seq(state),
+                    payload={
+                        "turn_id": request_anchor,
+                        "provider_turn_ref": str(state.get("provider_session_id") or ""),
+                        "finish_reason": terminal_status,
+                        "reason": (
+                            "cursor_run_stop"
+                            if terminal_status == "success"
+                            else f"cursor_run_finished:{terminal_status}"
+                        ),
+                    },
+                )
+            )
+            updated = replace(updated, runtime_state=state)
+            return ProviderPollResult(
+                submission=updated,
+                items=tuple(items),
+                decision=_terminal_decision(
+                    updated,
+                    state,
+                    reply=reply,
+                    terminal_status=terminal_status,
+                    now=now,
+                ),
+            )
+
+        if items or updated != submission:
+            return ProviderPollResult(submission=updated, items=tuple(items), decision=None)
+        return None
+
+    def cancel(self, submission: ProviderSubmission) -> None:
+        if not bool(submission.runtime_state.get("prompt_sent")):
+            return
+        backend = submission.runtime_state.get("backend")
+        pane_id = str(submission.runtime_state.get("pane_id") or "")
+        if backend is not None and pane_id:
+            interrupt_and_clear_runtime_target(backend, pane_id)
+
+
+def _load_session(work_dir: Path, *, agent_name: str):
+    return load_project_session(work_dir, instance=agent_name)
+
+
+def _cursor_home(session_data: dict) -> Path | None:
+    raw = str(session_data.get("cursor_home") or "").strip()
+    return Path(raw).expanduser() if raw else None
+
+
+def _session_started_mtime_ns(session: object) -> int:
+    session_file = getattr(session, "session_file", None)
+    if session_file is None:
+        return 0
+    try:
+        return Path(session_file).stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def _pane_prompt(body: str, *, request_anchor: str, no_wrap: bool) -> str:
+    if no_wrap:
+        return body
+    return wrap_native_prompt(body, request_anchor)
+
+
+def _reply_delivery_result(
+    submission: ProviderSubmission,
+    state: dict[str, object],
+    *,
+    now: str,
+) -> ProviderPollResult:
+    decision = CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.COMPLETED,
+        reason="reply_delivery_sent",
+        confidence=CompletionConfidence.OBSERVED,
+        reply="",
+        anchor_seen=True,
+        reply_started=False,
+        reply_stable=True,
+        provider_turn_ref=str(state.get("pane_id") or submission.job_id),
+        source_cursor=None,
+        finished_at=now,
+        diagnostics={
+            "reply_delivery": True,
+            "delivery_status": "sent",
+            "submission_mode": _MODE,
+            "provider": submission.provider,
+        },
+    )
+    return ProviderPollResult(submission=submission, decision=decision)
+
+
+def _terminal_decision(
+    submission: ProviderSubmission,
+    state: dict[str, object],
+    *,
+    reply: str,
+    terminal_status: str,
+    now: str,
+) -> CompletionDecision:
+    if terminal_status == "success" and reply:
+        status = CompletionStatus.COMPLETED
+        reason = "cursor_run_stop"
+        confidence = CompletionConfidence.OBSERVED
+    elif terminal_status == "success":
+        status = CompletionStatus.INCOMPLETE
+        reason = "cursor_empty_reply"
+        confidence = CompletionConfidence.DEGRADED
+    else:
+        status = CompletionStatus.INCOMPLETE
+        reason = f"cursor_run_finished:{terminal_status or 'unknown'}"
+        confidence = CompletionConfidence.DEGRADED
+    return CompletionDecision(
+        terminal=True,
+        status=status,
+        reason=reason,
+        confidence=confidence,
+        reply=reply,
+        anchor_seen=bool(state.get("anchor_seen")),
+        reply_started=bool(reply),
+        reply_stable=True,
+        provider_turn_ref=str(state.get("provider_session_id") or submission.job_id),
+        source_cursor=CompletionCursor(
+            source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+            event_seq=max(0, int(state.get("next_seq") or 1) - 1),
+            updated_at=now,
+        ),
+        finished_at=now,
+        diagnostics={
+            "mode": _MODE,
+            "finish_reason": terminal_status,
+            "transcript_path": str(state.get("matched_transcript_path") or ""),
+            "provider_session_id": str(state.get("provider_session_id") or ""),
+        },
+    )
+
+
+def _runtime_error(
+    submission: ProviderSubmission,
+    state: dict[str, object],
+    *,
+    now: str,
+    reason: str,
+) -> ProviderPollResult:
+    return ProviderPollResult(
+        submission=replace(submission, runtime_state=state),
+        decision=CompletionDecision(
+            terminal=True,
+            status=CompletionStatus.INCOMPLETE,
+            reason=reason,
+            confidence=CompletionConfidence.DEGRADED,
+            reply=submission.reply,
+            anchor_seen=bool(state.get("anchor_seen")),
+            reply_started=bool(submission.reply),
+            reply_stable=False,
+            provider_turn_ref=submission.job_id,
+            source_cursor=None,
+            finished_at=now,
+            diagnostics={"mode": _MODE},
+        ),
+    )
+
+
+def _next_seq(state: dict[str, object]) -> int:
+    seq = max(1, int(state.get("next_seq") or 1))
+    state["next_seq"] = seq + 1
+    return seq
 
 
 __all__ = ["CursorPaneExecutionAdapter"]
