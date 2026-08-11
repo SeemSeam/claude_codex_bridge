@@ -294,11 +294,17 @@ def test_cursor_busy_pane_defers_then_dispatches_exactly_once_when_idle(
     assert backend.sent == []
 
     _append_cursor_records(manual, {"type": "turn_ended", "status": "success"})
-    dispatched = adapter.poll(waiting.submission, now="2026-08-11T00:00:06Z")
+    idle_observed = adapter.poll(waiting.submission, now="2026-08-11T00:00:06Z")
+
+    assert idle_observed is not None and idle_observed.decision is None
+    assert idle_observed.submission.runtime_state["prompt_sent"] is False
+    assert backend.sent == []
+
+    dispatched = adapter.poll(idle_observed.submission, now="2026-08-11T00:00:09Z")
 
     assert dispatched is not None and dispatched.decision is None
     assert dispatched.submission.runtime_state["prompt_sent"] is True
-    assert dispatched.submission.runtime_state["started_at"] == "2026-08-11T00:00:06Z"
+    assert dispatched.submission.runtime_state["started_at"] == "2026-08-11T00:00:09Z"
     assert len(backend.sent) == 1
 
 
@@ -326,7 +332,23 @@ def test_cursor_working_pane_defers_even_before_user_transcript_is_flushed(
     assert backend.sent == []
 
     backend.pane_text = "→ Add a follow-up\nGPT-5.6 Sol 1M"
-    dispatched = adapter.poll(waiting.submission, now="2026-08-11T00:00:02Z")
+    transient_idle = adapter.poll(waiting.submission, now="2026-08-11T00:00:02Z")
+
+    assert transient_idle is not None and transient_idle.decision is None
+    assert transient_idle.submission.runtime_state["prompt_sent"] is False
+    assert backend.sent == []
+
+    backend.pane_text = "⠘⠤ Working\n→ Add a follow-up                    ctrl+c to stop"
+    busy_again = adapter.poll(transient_idle.submission, now="2026-08-11T00:00:03Z")
+    assert busy_again is not None and busy_again.decision is None
+    assert busy_again.submission.runtime_state["idle_observed_at"] == ""
+
+    backend.pane_text = "→ Add a follow-up\nGPT-5.6 Sol 1M"
+    idle_again = adapter.poll(busy_again.submission, now="2026-08-11T00:00:04Z")
+    assert idle_again is not None and idle_again.decision is None
+    assert idle_again.submission.runtime_state["prompt_sent"] is False
+
+    dispatched = adapter.poll(idle_again.submission, now="2026-08-11T00:00:07Z")
 
     assert dispatched is not None and dispatched.decision is None
     assert dispatched.submission.runtime_state["prompt_sent"] is True
@@ -429,8 +451,10 @@ def test_cursor_cancel_interrupts_only_after_prompt_delivery(monkeypatch, tmp_pa
     assert backend.keys == []
 
     _append_cursor_records(manual, {"type": "turn_ended", "status": "success"})
-    dispatched = adapter.poll(deferred, now="2026-08-11T00:00:01Z")
-    assert dispatched is not None
+    idle_observed = adapter.poll(deferred, now="2026-08-11T00:00:01Z")
+    assert idle_observed is not None
+    dispatched = adapter.poll(idle_observed.submission, now="2026-08-11T00:00:04Z")
+    assert dispatched is not None and dispatched.submission.runtime_state["prompt_sent"] is True
 
     adapter.cancel(dispatched.submission)
 

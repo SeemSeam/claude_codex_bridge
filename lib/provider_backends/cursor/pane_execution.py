@@ -38,6 +38,7 @@ from .transcript import (
 
 
 _MODE = "cursor_pane"
+_IDLE_CONFIRM_S = 2.0
 _DEFAULT_READY_TIMEOUT_S = 300.0
 _DEFAULT_RUN_TIMEOUT_S = 900.0
 
@@ -145,6 +146,7 @@ class CursorPaneExecutionAdapter:
                 "no_wrap": no_wrap,
                 "accepted_at": now,
                 "started_at": now if prompt_sent else "",
+                "idle_observed_at": "",
                 "ready_timeout_s": _effective_ready_timeout_s(),
                 "run_timeout_s": _effective_run_timeout_s(),
                 "prompt_sent": prompt_sent,
@@ -180,6 +182,7 @@ class CursorPaneExecutionAdapter:
             state["busy_transcript_path"] = turn_state.transcript_path
             state["pane_busy"] = pane_busy
             if turn_state.busy or pane_busy:
+                state["idle_observed_at"] = ""
                 if ready_wait_s >= ready_timeout_s:
                     updated = replace(submission, runtime_state=state)
                     return ProviderPollResult(
@@ -192,6 +195,21 @@ class CursorPaneExecutionAdapter:
                             timeout_s=ready_timeout_s,
                         ),
                     )
+                return ProviderPollResult(
+                    submission=replace(submission, runtime_state=state),
+                    items=(),
+                    decision=None,
+                )
+
+            idle_observed_at = str(state.get("idle_observed_at") or "")
+            if not idle_observed_at:
+                state["idle_observed_at"] = now
+                return ProviderPollResult(
+                    submission=replace(submission, runtime_state=state),
+                    items=(),
+                    decision=None,
+                )
+            if _elapsed_seconds(idle_observed_at, now) < _IDLE_CONFIRM_S:
                 return ProviderPollResult(
                     submission=replace(submission, runtime_state=state),
                     items=(),
