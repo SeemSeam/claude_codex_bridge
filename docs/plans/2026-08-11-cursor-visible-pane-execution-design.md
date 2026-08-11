@@ -42,16 +42,16 @@ Set `CCB_CURSOR_EXECUTION_MODE=headless` to select the previous subprocess behav
 
 1. CCB accepts a job for a named Cursor agent.
 2. The Cursor pane adapter loads the exact `.cursor-session` binding and validates the pane and workspace.
-3. The adapter inspects the most recently active top-level transcript in the agent's isolated Cursor home.
-4. If the transcript contains a user turn without a following `turn_ended`, the job remains accepted but unsent. Polling repeats the idle check until the pane becomes ready.
+3. The adapter inspects both the most recently active top-level transcript and the visible Cursor pane state in the agent's isolated runtime.
+4. If the transcript contains an unfinished turn, or the pane reports `Working`/`ctrl+c to stop`, the job remains accepted but unsent. A job that observed an active pane must see a new top-level `turn_ended` and then a stable idle interval before delivery. This covers Cursor versions that do not flush the user transcript until the active turn ends.
 5. Once idle, the adapter snapshots transcript offsets and sends a prompt containing the unique `CCB_REQ_ID` anchor to the exact tmux pane.
-6. Polling scans only new or changed top-level transcripts and binds the job to the file containing that exact anchor. Subagent transcript directories are excluded.
+6. Until the unique anchor appears, polling scans complete top-level transcripts and excludes files that already contained that anchor before dispatch. After binding, polling becomes incremental. This handles Cursor replacing the previous terminal record when appending a new turn. Subagent transcript directories are excluded.
 7. Assistant text after the anchored user message is accumulated while the Cursor TUI shows the live reasoning state and tool activity.
 8. A following `turn_ended` with `status=success` completes the CCB job. `status=error` fails it. No terminal event means the job remains active.
 
 ## Concurrency and Manual Use
 
-CCB continues to serialize jobs per named agent. A job arriving while the target pane is in a manual turn waits rather than becoming a steering message or corrupting the user's input.
+CCB continues to serialize jobs per named agent. A job arriving while the target pane is in a manual turn waits rather than becoming a Cursor follow-up/steering message or corrupting the user's input. Transcript evidence is authoritative for the transition out of an observed active turn; pane text is used as an early busy/not-ready signal.
 
 Waiting and execution have bounded timeouts. A dead pane, missing session, malformed transcript, or wait timeout fails closed with a specific diagnostic reason. The adapter never retries or duplicates a prompt after it has observed the request anchor in a transcript.
 
@@ -64,6 +64,8 @@ The observed Cursor transcript format uses:
 - `{role: "user", message: {content: [...]}}`
 - `{role: "assistant", message: {content: [...]}}`
 - `{type: "turn_ended", status: "success" | "error"}`
+
+For a continuing session, Cursor may remove the prior trailing `turn_ended` before writing the next user record, then write a new terminal record at the end of the combined transcript. The pre-anchor scanner therefore cannot rely on a monotonic old EOF offset.
 
 The parser treats unknown records as ignorable and malformed JSON as incomplete while the file may still be growing. It does not infer completion from pane text, elapsed time, or the presence of an assistant message alone.
 
@@ -84,6 +86,8 @@ Automated tests will cover:
 - Cursor selects pane execution by default and headless execution only through the rollback switch.
 - A ready pane receives exactly one anchored prompt.
 - A busy pane waits and sends only after a terminal event makes it idle.
+- An active pane whose user record has not yet been flushed still waits for new terminal evidence.
+- Replacing the prior terminal record does not hide the new request anchor.
 - The adapter binds only to the transcript containing the exact request anchor.
 - Subagent and stale transcript records do not complete the parent job.
 - Assistant text is accumulated and returned on `turn_ended: success`.
