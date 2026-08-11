@@ -99,6 +99,17 @@ class CursorPaneExecutionAdapter:
         pane_status = _cursor_pane_status(prepared.backend, prepared.pane_id)
         pane_busy = pane_status != "idle"
         readiness_offsets = capture_cursor_transcript_offsets(cursor_home)
+        existing_records, _ = read_new_cursor_transcript_records(cursor_home, {})
+        excluded_anchor_paths = tuple(
+            sorted(
+                {
+                    record_path
+                    for record_path, record in existing_records
+                    if str(record.get("role") or "").strip().lower() == "user"
+                    and request_anchor in cursor_record_text(record)
+                }
+            )
+        )
         offsets: dict[str, int] = {}
         prompt_sent = False
         if not turn_state.busy and not pane_busy:
@@ -142,6 +153,7 @@ class CursorPaneExecutionAdapter:
                 "transcript_offsets": offsets,
                 "readiness_transcript_offsets": readiness_offsets,
                 "matched_transcript_path": "",
+                "excluded_anchor_paths": excluded_anchor_paths,
                 "provider_session_id": "",
                 "reply_buffer": "",
                 "next_seq": 1,
@@ -259,23 +271,31 @@ class CursorPaneExecutionAdapter:
             return _reply_delivery_result(submission, state, now=now)
 
         cursor_home = Path(str(state.get("cursor_home") or ""))
+        matched_path = str(state.get("matched_transcript_path") or "")
+        scan_from_start = not matched_path
         records, offsets = read_new_cursor_transcript_records(
             cursor_home,
-            dict(state.get("transcript_offsets") or {}),
+            {} if scan_from_start else dict(state.get("transcript_offsets") or {}),
         )
-        state["transcript_offsets"] = offsets
+        if not scan_from_start:
+            state["transcript_offsets"] = offsets
         items = []
-        matched_path = str(state.get("matched_transcript_path") or "")
         request_anchor = str(state.get("request_anchor") or submission.job_id)
         terminal_status = ""
+        excluded_anchor_paths = {
+            str(path) for path in (state.get("excluded_anchor_paths") or ())
+        }
 
         for record_path, record in records:
             role = str(record.get("role") or "").strip().lower()
             if not matched_path:
+                if record_path in excluded_anchor_paths:
+                    continue
                 if role != "user" or request_anchor not in cursor_record_text(record):
                     continue
                 matched_path = record_path
                 state["matched_transcript_path"] = matched_path
+                state["transcript_offsets"] = offsets
                 state["provider_session_id"] = Path(matched_path).parent.name
                 if not bool(state.get("anchor_seen")):
                     items.append(

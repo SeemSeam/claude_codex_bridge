@@ -218,6 +218,39 @@ def test_cursor_pane_adapter_assistant_text_does_not_complete_without_turn_ended
     assert finished.decision.reply == "still running"
 
 
+def test_cursor_pane_adapter_finds_anchor_when_cursor_replaces_previous_terminal_record(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    transcript = _cursor_transcript(home)
+    manual_records = [
+        {"role": "user", "message": {"content": [{"type": "text", "text": "manual"}]}},
+        {"role": "assistant", "message": {"content": [{"type": "text", "text": "manual reply"}]}},
+        {"type": "turn_ended", "status": "success"},
+    ]
+    _append_cursor_records(transcript, *manual_records)
+    adapter = CursorPaneExecutionAdapter()
+    submission = adapter.start(_pane_job(), context=_pane_context(tmp_path), now="2026-08-11T00:00:00Z")
+
+    transcript.write_text(
+        "".join(json.dumps(record, ensure_ascii=True) + "\n" for record in manual_records[:-1]),
+        encoding="utf-8",
+    )
+    _append_cursor_records(
+        transcript,
+        {"role": "user", "message": {"content": [{"type": "text", "text": backend.sent[0][1]}]}},
+        {"role": "assistant", "message": {"content": [{"type": "text", "text": "rewritten reply"}]}},
+        {"type": "turn_ended", "status": "success"},
+    )
+
+    result = adapter.poll(submission, now="2026-08-11T00:00:03Z")
+
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert result.decision.reply == "rewritten reply"
+
+
 def test_cursor_pane_adapter_error_turn_fails_closed(monkeypatch, tmp_path: Path) -> None:
     home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
     adapter = CursorPaneExecutionAdapter()
