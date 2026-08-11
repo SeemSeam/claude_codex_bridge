@@ -95,9 +95,10 @@ class CursorPaneExecutionAdapter:
             cursor_home,
             session_started_mtime_ns=session_started_mtime_ns,
         )
+        pane_busy = _cursor_pane_busy(prepared.backend, prepared.pane_id)
         offsets: dict[str, int] = {}
         prompt_sent = False
-        if not turn_state.busy:
+        if not turn_state.busy and not pane_busy:
             try:
                 offsets = capture_cursor_transcript_offsets(cursor_home)
                 send_prompt_to_runtime_target(prepared.backend, prepared.pane_id, prompt)
@@ -147,6 +148,7 @@ class CursorPaneExecutionAdapter:
                 "ready_timeout_s": _effective_ready_timeout_s(),
                 "run_timeout_s": _effective_run_timeout_s(),
                 "prompt_sent": prompt_sent,
+                "pane_busy": pane_busy,
                 "pending_prompt": prompt,
                 "reply_delivery_complete_on_dispatch": reply_delivery,
             },
@@ -170,12 +172,14 @@ class CursorPaneExecutionAdapter:
                 cursor_home,
                 session_started_mtime_ns=max(0, int(state.get("session_started_mtime_ns") or 0)),
             )
+            pane_busy = _cursor_pane_busy(backend, pane_id)
             accepted_at = str(state.get("accepted_at") or submission.accepted_at or "")
             ready_timeout_s = float(state.get("ready_timeout_s") or _DEFAULT_READY_TIMEOUT_S)
             ready_wait_s = _elapsed_seconds(accepted_at, now)
             state["ready_wait_s"] = ready_wait_s
             state["busy_transcript_path"] = turn_state.transcript_path
-            if turn_state.busy:
+            state["pane_busy"] = pane_busy
+            if turn_state.busy or pane_busy:
                 if ready_wait_s >= ready_timeout_s:
                     updated = replace(submission, runtime_state=state)
                     return ProviderPollResult(
@@ -364,6 +368,27 @@ def _pane_prompt(body: str, *, request_anchor: str, no_wrap: bool) -> str:
     if no_wrap:
         return body
     return wrap_native_prompt(body, request_anchor)
+
+
+def _cursor_pane_busy(backend: object, pane_id: str) -> bool:
+    get_content = getattr(backend, "get_pane_content", None)
+    if not callable(get_content):
+        return False
+    try:
+        content = str(get_content(pane_id, lines=120) or "")
+    except Exception:
+        return False
+    normalized = content.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "ctrl+c to stop",
+            " working",
+            "┌─ follow-ups",
+            "do you trust the contents of this directory?",
+            "trusting workspace...",
+        )
+    )
 
 
 def _reply_delivery_result(

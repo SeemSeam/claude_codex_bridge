@@ -63,6 +63,7 @@ class _FakeCursorBackend:
         self.sent: list[tuple[str, str]] = []
         self.keys: list[tuple[str, str]] = []
         self.alive = True
+        self.pane_text = ""
 
     def send_text_to_pane(self, pane_id: str, text: str) -> None:
         self.sent.append((pane_id, text))
@@ -72,6 +73,11 @@ class _FakeCursorBackend:
 
     def send_key(self, pane_id: str, key: str) -> None:
         self.keys.append((pane_id, key))
+
+    def get_pane_content(self, pane_id: str, lines: int = 20) -> str:
+        assert pane_id == "%9"
+        assert lines >= 80
+        return self.pane_text
 
 
 def _pane_job(*, message_type: str = "ask", no_wrap: bool = False):
@@ -293,6 +299,38 @@ def test_cursor_busy_pane_defers_then_dispatches_exactly_once_when_idle(
     assert dispatched is not None and dispatched.decision is None
     assert dispatched.submission.runtime_state["prompt_sent"] is True
     assert dispatched.submission.runtime_state["started_at"] == "2026-08-11T00:00:06Z"
+    assert len(backend.sent) == 1
+
+
+def test_cursor_working_pane_defers_even_before_user_transcript_is_flushed(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    backend.pane_text = "⠘⠤ Working\n→ Add a follow-up                    ctrl+c to stop"
+    adapter = CursorPaneExecutionAdapter()
+
+    submission = adapter.start(
+        _pane_job(),
+        context=_pane_context(tmp_path),
+        now="2026-08-11T00:00:00Z",
+    )
+
+    assert submission.runtime_state["prompt_sent"] is False
+    assert submission.runtime_state["pane_busy"] is True
+    assert backend.sent == []
+
+    waiting = adapter.poll(submission, now="2026-08-11T00:00:01Z")
+    assert waiting is not None and waiting.decision is None
+    assert waiting.submission.runtime_state["prompt_sent"] is False
+    assert backend.sent == []
+
+    backend.pane_text = "→ Add a follow-up\nGPT-5.6 Sol 1M"
+    dispatched = adapter.poll(waiting.submission, now="2026-08-11T00:00:02Z")
+
+    assert dispatched is not None and dispatched.decision is None
+    assert dispatched.submission.runtime_state["prompt_sent"] is True
+    assert dispatched.submission.runtime_state["pane_busy"] is False
     assert len(backend.sent) == 1
 
     assert adapter.poll(dispatched.submission, now="2026-08-11T00:00:07Z") is None
