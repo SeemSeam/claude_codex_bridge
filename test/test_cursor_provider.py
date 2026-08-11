@@ -257,3 +257,143 @@ def test_cursor_pane_restore_requires_resubmission() -> None:
 
     assert diagnostics["resume_supported"] is False
     assert diagnostics["restore_mode"] == "resubmit_required"
+
+
+def test_cursor_busy_pane_defers_then_dispatches_exactly_once_when_idle(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    manual = _cursor_transcript(home, "manual-session")
+    _append_cursor_records(
+        manual,
+        {"role": "user", "message": {"content": [{"type": "text", "text": "manual work"}]}},
+    )
+    adapter = CursorPaneExecutionAdapter()
+
+    submission = adapter.start(
+        _pane_job(),
+        context=_pane_context(tmp_path),
+        now="2026-08-11T00:00:00Z",
+    )
+
+    assert submission.runtime_state["prompt_sent"] is False
+    assert submission.runtime_state["started_at"] == ""
+    assert backend.sent == []
+
+    waiting = adapter.poll(submission, now="2026-08-11T00:00:05Z")
+
+    assert waiting is not None and waiting.decision is None
+    assert waiting.submission.runtime_state["prompt_sent"] is False
+    assert backend.sent == []
+
+    _append_cursor_records(manual, {"type": "turn_ended", "status": "success"})
+    dispatched = adapter.poll(waiting.submission, now="2026-08-11T00:00:06Z")
+
+    assert dispatched is not None and dispatched.decision is None
+    assert dispatched.submission.runtime_state["prompt_sent"] is True
+    assert dispatched.submission.runtime_state["started_at"] == "2026-08-11T00:00:06Z"
+    assert len(backend.sent) == 1
+
+    assert adapter.poll(dispatched.submission, now="2026-08-11T00:00:07Z") is None
+    assert len(backend.sent) == 1
+
+
+def test_cursor_busy_pane_ready_timeout_never_sends(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("CCB_CURSOR_READY_TIMEOUT_S", "2")
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    manual = _cursor_transcript(home, "manual-session")
+    _append_cursor_records(
+        manual,
+        {"role": "user", "message": {"content": [{"type": "text", "text": "manual work"}]}},
+    )
+    adapter = CursorPaneExecutionAdapter()
+    submission = adapter.start(_pane_job(), context=_pane_context(tmp_path), now="2026-08-11T00:00:00Z")
+
+    result = adapter.poll(submission, now="2026-08-11T00:00:03Z")
+
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.INCOMPLETE
+    assert result.decision.reason == "cursor_input_not_ready"
+    assert result.decision.diagnostics["prompt_sent"] is False
+    assert backend.sent == []
+
+
+def test_cursor_run_timeout_preserves_observed_reply_without_resending(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("CCB_CURSOR_RUN_TIMEOUT_S", "2")
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    adapter = CursorPaneExecutionAdapter()
+    submission = adapter.start(_pane_job(), context=_pane_context(tmp_path), now="2026-08-11T00:00:00Z")
+    transcript = _cursor_transcript(home)
+    _append_cursor_records(
+        transcript,
+        {"role": "user", "message": {"content": [{"type": "text", "text": backend.sent[0][1]}]}},
+        {"role": "assistant", "message": {"content": [{"type": "text", "text": "partial reply"}]}},
+    )
+    active = adapter.poll(submission, now="2026-08-11T00:00:01Z")
+    assert active is not None and active.decision is None
+
+    result = adapter.poll(active.submission, now="2026-08-11T00:00:03Z")
+
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.INCOMPLETE
+    assert result.decision.reason == "cursor_run_timeout"
+    assert result.decision.reply == "partial reply"
+    assert result.decision.anchor_seen is True
+    assert len(backend.sent) == 1
+
+
+def test_cursor_timeout_configuration_requires_positive_finite_values(monkeypatch) -> None:
+    monkeypatch.setenv("CCB_CURSOR_READY_TIMEOUT_S", "nan")
+    monkeypatch.setenv("CCB_CURSOR_RUN_TIMEOUT_S", "inf")
+
+    assert pane_execution._effective_ready_timeout_s() == pane_execution._DEFAULT_READY_TIMEOUT_S
+    assert pane_execution._effective_run_timeout_s() == pane_execution._DEFAULT_RUN_TIMEOUT_S
+
+    monkeypatch.setenv("CCB_CURSOR_READY_TIMEOUT_S", "2.5")
+    monkeypatch.setenv("CCB_CURSOR_RUN_TIMEOUT_S", "7")
+
+    assert pane_execution._effective_ready_timeout_s() == 2.5
+    assert pane_execution._effective_run_timeout_s() == 7.0
+
+
+def test_cursor_dead_pane_fails_promptly(monkeypatch, tmp_path: Path) -> None:
+    _, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    adapter = CursorPaneExecutionAdapter()
+    submission = adapter.start(_pane_job(), context=_pane_context(tmp_path), now="2026-08-11T00:00:00Z")
+    backend.alive = False
+
+    result = adapter.poll(submission, now="2026-08-11T00:00:01Z")
+
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.FAILED
+    assert result.decision.reason == "pane_dead"
+
+
+def test_cursor_cancel_interrupts_only_after_prompt_delivery(monkeypatch, tmp_path: Path) -> None:
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    manual = _cursor_transcript(home, "manual-session")
+    _append_cursor_records(
+        manual,
+        {"role": "user", "message": {"content": [{"type": "text", "text": "manual work"}]}},
+    )
+    adapter = CursorPaneExecutionAdapter()
+    deferred = adapter.start(_pane_job(), context=_pane_context(tmp_path), now="2026-08-11T00:00:00Z")
+
+    adapter.cancel(deferred)
+
+    assert backend.keys == []
+
+    _append_cursor_records(manual, {"type": "turn_ended", "status": "success"})
+    dispatched = adapter.poll(deferred, now="2026-08-11T00:00:01Z")
+    assert dispatched is not None
+
+    adapter.cancel(dispatched.submission)
+
+    assert backend.keys == [("%9", "C-c"), ("%9", "Escape"), ("%9", "C-u")]

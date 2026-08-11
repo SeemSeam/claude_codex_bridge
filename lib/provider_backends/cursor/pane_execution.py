@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
+import math
+import os
 from pathlib import Path
 
 from ccbd.api_models import JobRecord
@@ -35,6 +38,8 @@ from .transcript import (
 
 
 _MODE = "cursor_pane"
+_DEFAULT_READY_TIMEOUT_S = 300.0
+_DEFAULT_RUN_TIMEOUT_S = 900.0
 
 
 class CursorPaneExecutionAdapter:
@@ -139,6 +144,8 @@ class CursorPaneExecutionAdapter:
                 "no_wrap": no_wrap,
                 "accepted_at": now,
                 "started_at": now if prompt_sent else "",
+                "ready_timeout_s": _effective_ready_timeout_s(),
+                "run_timeout_s": _effective_run_timeout_s(),
                 "prompt_sent": prompt_sent,
                 "pending_prompt": prompt,
                 "reply_delivery_complete_on_dispatch": reply_delivery,
@@ -158,7 +165,51 @@ class CursorPaneExecutionAdapter:
             return pane_dead
 
         if not bool(state.get("prompt_sent")):
-            return None
+            cursor_home = Path(str(state.get("cursor_home") or ""))
+            turn_state = cursor_pane_turn_state(
+                cursor_home,
+                session_started_mtime_ns=max(0, int(state.get("session_started_mtime_ns") or 0)),
+            )
+            accepted_at = str(state.get("accepted_at") or submission.accepted_at or "")
+            ready_timeout_s = float(state.get("ready_timeout_s") or _DEFAULT_READY_TIMEOUT_S)
+            ready_wait_s = _elapsed_seconds(accepted_at, now)
+            state["ready_wait_s"] = ready_wait_s
+            state["busy_transcript_path"] = turn_state.transcript_path
+            if turn_state.busy:
+                if ready_wait_s >= ready_timeout_s:
+                    updated = replace(submission, runtime_state=state)
+                    return ProviderPollResult(
+                        submission=updated,
+                        decision=_timeout_decision(
+                            updated,
+                            state,
+                            now=now,
+                            reason="cursor_input_not_ready",
+                            timeout_s=ready_timeout_s,
+                        ),
+                    )
+                return ProviderPollResult(
+                    submission=replace(submission, runtime_state=state),
+                    items=(),
+                    decision=None,
+                )
+
+            pending_prompt = str(state.get("pending_prompt") or "")
+            if not pending_prompt:
+                return _runtime_error(submission, state, now=now, reason="runtime_state_corrupt")
+            try:
+                state["transcript_offsets"] = capture_cursor_transcript_offsets(cursor_home)
+                send_prompt_to_runtime_target(backend, pane_id, pending_prompt)
+            except Exception:
+                return _runtime_error(submission, state, now=now, reason="cursor_pane_send_failed")
+            state["prompt_sent"] = True
+            state["prompt_sent_at"] = now
+            state["started_at"] = now
+            state["prompt_deferred_until_ready"] = False
+            updated = replace(submission, runtime_state=state)
+            if bool(state.get("reply_delivery_complete_on_dispatch")):
+                return _reply_delivery_result(updated, state, now=now)
+            return ProviderPollResult(submission=updated, items=(), decision=None)
         if bool(state.get("reply_delivery_complete_on_dispatch")):
             return _reply_delivery_result(submission, state, now=now)
 
@@ -260,6 +311,20 @@ class CursorPaneExecutionAdapter:
                     reply=reply,
                     terminal_status=terminal_status,
                     now=now,
+                ),
+            )
+
+        run_timeout_s = float(state.get("run_timeout_s") or _DEFAULT_RUN_TIMEOUT_S)
+        if _timeout_elapsed(str(state.get("started_at") or ""), now, run_timeout_s):
+            return ProviderPollResult(
+                submission=updated,
+                items=tuple(items),
+                decision=_timeout_decision(
+                    updated,
+                    state,
+                    now=now,
+                    reason="cursor_run_timeout",
+                    timeout_s=run_timeout_s,
                 ),
             )
 
@@ -398,6 +463,69 @@ def _runtime_error(
             diagnostics={"mode": _MODE},
         ),
     )
+
+
+def _timeout_decision(
+    submission: ProviderSubmission,
+    state: dict[str, object],
+    *,
+    now: str,
+    reason: str,
+    timeout_s: float,
+) -> CompletionDecision:
+    return CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.INCOMPLETE,
+        reason=reason,
+        confidence=CompletionConfidence.DEGRADED,
+        reply=submission.reply,
+        anchor_seen=bool(state.get("anchor_seen")),
+        reply_started=bool(submission.reply),
+        reply_stable=False,
+        provider_turn_ref=str(state.get("provider_session_id") or submission.job_id),
+        source_cursor=None,
+        finished_at=now,
+        diagnostics={
+            "mode": _MODE,
+            "timeout_s": timeout_s,
+            "prompt_sent": bool(state.get("prompt_sent")),
+            "transcript_path": str(state.get("matched_transcript_path") or ""),
+        },
+    )
+
+
+def _effective_ready_timeout_s() -> float:
+    return _positive_finite_env("CCB_CURSOR_READY_TIMEOUT_S", _DEFAULT_READY_TIMEOUT_S)
+
+
+def _effective_run_timeout_s() -> float:
+    return _positive_finite_env("CCB_CURSOR_RUN_TIMEOUT_S", _DEFAULT_RUN_TIMEOUT_S)
+
+
+def _positive_finite_env(name: str, default: float) -> float:
+    raw = str(os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0.0 and math.isfinite(value) else default
+
+
+def _elapsed_seconds(started_at: str, now: str) -> float:
+    if not started_at or not now:
+        return 0.0
+    try:
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        current = datetime.fromisoformat(now.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max(0.0, (current - started).total_seconds())
+
+
+def _timeout_elapsed(started_at: str, now: str, timeout_s: float) -> bool:
+    return timeout_s > 0.0 and _elapsed_seconds(started_at, now) >= timeout_s
 
 
 def _next_seq(state: dict[str, object]) -> int:
