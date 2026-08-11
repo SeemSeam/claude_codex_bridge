@@ -10,6 +10,9 @@ import pytest
 from ccbd.api_models import DeliveryScope, JobRecord, JobStatus, MessageEnvelope
 from completion.models import CompletionItemKind, CompletionSourceKind, CompletionStatus
 from provider_backends.copilot.execution import _build_env as build_copilot_env
+from provider_backends.cursor.execution import (
+    build_headless_execution_adapter as build_cursor_headless_execution_adapter,
+)
 from provider_backends.grok import home as grok_home
 from provider_backends.grok.execution import (
     _grok_session_id_for_job,
@@ -107,6 +110,8 @@ def _write_session(provider: str, work_dir: Path) -> None:
 
 
 def _adapter(provider: str):
+    if provider == "cursor":
+        return build_cursor_headless_execution_adapter()
     if provider == "pi":
         return build_pi_headless_execution_adapter()
     backend = build_default_backend_registry(include_optional=True, include_test_doubles=False).get(provider)

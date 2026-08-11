@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from provider_backends.native_cli_support import (
@@ -10,7 +11,18 @@ from provider_backends.native_cli_support import (
 from provider_core.runtime_shared import provider_start_parts
 
 
-def build_execution_adapter() -> NativeCliSubprocessAdapter:
+def build_execution_adapter():
+    mode = str(os.environ.get("CCB_CURSOR_EXECUTION_MODE") or "").strip().lower()
+    if mode in ("", "pane"):
+        from .pane_execution import CursorPaneExecutionAdapter
+
+        return CursorPaneExecutionAdapter()
+    if mode == "headless":
+        return build_headless_execution_adapter()
+    raise ValueError(f"unsupported CCB_CURSOR_EXECUTION_MODE: {mode}")
+
+
+def build_headless_execution_adapter() -> NativeCliSubprocessAdapter:
     return NativeCliSubprocessAdapter(
         NativeCliExecutionConfig(
             provider="cursor",
@@ -61,4 +73,4 @@ def _state_path(request: NativeCliExecutionRequest, key: str, *, fallback: str) 
     return state_dir / fallback
 
 
-__all__ = ["build_execution_adapter"]
+__all__ = ["build_execution_adapter", "build_headless_execution_adapter"]
