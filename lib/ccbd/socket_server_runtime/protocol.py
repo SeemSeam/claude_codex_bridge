@@ -18,6 +18,12 @@ def handle_connection(server, conn) -> str | None:
         if not raw:
             return None
         message = json.loads(raw.split(b'\n', 1)[0].decode('utf-8'))
+        desktop_adapter = getattr(server, '_desktop_adapter', None)
+        if desktop_adapter is not None and isinstance(message, dict) and 'protocol_version' in message:
+            # Keep desktop.v1 envelope validation independent from api_version=2.
+            response = desktop_adapter.handle(message, peer=conn)
+            conn.sendall((json.dumps(response, ensure_ascii=False) + '\n').encode('utf-8'))
+            return f"desktop.v1:{str(message.get('method') or '').strip()}"
         request = RpcRequest.from_record(message)
         # Final lifecycle publication and opening the runtime-bootstrap gate are
         # one request-dispatch boundary.  Keep the gate through handler start so

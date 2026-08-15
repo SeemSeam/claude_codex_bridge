@@ -34,6 +34,7 @@ from ccbd.handlers import (
     build_watch_handler,
 )
 from ccbd.frontdesk_handler import build_frontdesk_forward_planner_handler
+from ccbd.desktop_api import DesktopApiAdapter
 
 
 def register_handlers(app) -> None:
@@ -170,6 +171,15 @@ def register_handlers(app) -> None:
     app.socket_server.register_handler('restore', _graph_request(graph_source, build_restore_handler(runtime_service)))
     app.socket_server.register_handler('stop-all', build_stop_all_handler(app))
     app.socket_server.register_handler('shutdown', build_shutdown_handler(app))
+    app.socket_server.set_desktop_adapter(
+        DesktopApiAdapter(
+            app,
+            project_id=app.project_id,
+            project_root=app.project_root,
+            dispatcher=dispatcher,
+            clock=app.clock,
+        )
+    )
 
 
 class _GraphSource:

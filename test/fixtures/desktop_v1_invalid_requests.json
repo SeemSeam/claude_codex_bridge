@@ -1,0 +1,24 @@
+[
+  {
+    "name": "tcp_is_not_desktop_transport",
+    "request": {
+      "protocol_version": "desktop.v1",
+      "request_id": "req_tcp",
+      "project_id": "project_fixture_1",
+      "method": "handshake",
+      "params": {"endpoint": "tcp://127.0.0.1:1"}
+    },
+    "expected_error_code": "CCBDSK_INVALID_REQUEST"
+  },
+  {
+    "name": "project_mismatch",
+    "request": {
+      "protocol_version": "desktop.v1",
+      "request_id": "req_project",
+      "project_id": "foreign_project",
+      "method": "handshake",
+      "params": {}
+    },
+    "expected_error_code": "CCBDSK_PROJECT_ID_MISMATCH"
+  }
+]

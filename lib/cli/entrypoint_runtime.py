@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import TextIO
+import json
 
 from cli.ask_usage import write_ask_usage
 from cli.auxiliary import cmd_droid_subcommand
@@ -29,6 +30,7 @@ from cli.tools_runtime.workbench import (
     rich_auto_start_allowed,
     uninstall_workbench,
 )
+from ccbd.desktop_api import build_discovery
 
 
 def _should_print_version(tokens: list[str]) -> bool:
@@ -140,6 +142,52 @@ def _handle_removed_commands(tokens: list[str], *, stderr: TextIO) -> int | None
             guidance="💡 Use: ccb update rich",
         )
     return None
+
+
+def _dispatch_desktop_discover(
+    tokens: list[str],
+    *,
+    version: str,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int | None:
+    if not tokens or tokens[0] != 'desktop-discover':
+        return None
+    project: str | None = None
+    json_requested = False
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == '--json':
+            if json_requested:
+                print('desktop-discover: duplicate --json', file=stderr)
+                return 2
+            json_requested = True
+            index += 1
+            continue
+        if token == '--project' and index + 1 < len(tokens):
+            if project is not None:
+                print('desktop-discover: duplicate --project', file=stderr)
+                return 2
+            project = tokens[index + 1]
+            index += 2
+            continue
+        if token.startswith('--project=') and project is None:
+            project = token.split('=', 1)[1]
+            index += 1
+            continue
+        print('desktop-discover: expected --project <absolute-root> --json', file=stderr)
+        return 2
+    if not json_requested or project is None:
+        print('usage: ccb desktop-discover --project <canonical-root> --json', file=stderr)
+        return 2
+    payload = build_discovery(project, ccb_version=version)
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True), file=stdout)
+    # A valid project with a stopped/degraded runtime is still a successful
+    # discovery result; the structured diagnostics tell Desktop why its
+    # endpoint/capabilities are unavailable.  Invalid project identity remains
+    # a command failure.
+    return 0 if payload.get('project_id') else 1
 
 
 def _dispatch_auxiliary(tokens: list[str], *, script_root: Path) -> int | None:
@@ -270,6 +318,15 @@ def run_cli_entrypoint(
         return help_result
 
     tokens = _rewrite_version_alias(tokens)
+
+    desktop_discover_result = _dispatch_desktop_discover(
+        tokens,
+        version=version,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    if desktop_discover_result is not None:
+        return desktop_discover_result
 
     removed_result = _handle_removed_commands(tokens, stderr=stderr)
     if removed_result is not None:

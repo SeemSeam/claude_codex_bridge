@@ -60,6 +60,7 @@ class CcbdSocketServer:
             else endpoint_from_legacy_socket_path(self._socket_path)
         )
         self._handlers: dict[str, callable] = {}
+        self._desktop_adapter = None
         self._request_guard = None
         self._server = None
         self._connection_queue = queue.Queue(maxsize=_CONNECTION_QUEUE_MAXSIZE)
@@ -90,6 +91,12 @@ class CcbdSocketServer:
         if op in self._handlers:
             raise ValueError(f'duplicate handler for op {op!r}')
         self._handlers[op] = handler
+
+    def set_desktop_adapter(self, adapter) -> None:
+        """Install the independent desktop.v1 JSONL adapter."""
+        if adapter is None or not callable(getattr(adapter, 'handle', None)):
+            raise TypeError('desktop adapter must provide handle(request, peer=...)')
+        self._desktop_adapter = adapter
 
     def set_request_guard(self, guard) -> None:
         self._request_guard = guard
@@ -166,6 +173,9 @@ class CcbdSocketServer:
         stop_maintenance_worker(self)
 
     def request_maintenance_ticks(self, handled_op: str | None) -> int:
+        if str(handled_op or '').startswith('desktop.v1:'):
+            method = str(handled_op).split(':', 1)[1]
+            return 1 if method in {'job.submit', 'job.cancel', 'job.retry'} else 0
         if handled_op not in self._MUTATING_OPS:
             return 0
         return 1

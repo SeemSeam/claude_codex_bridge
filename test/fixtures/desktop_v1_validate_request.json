@@ -1,0 +1,7 @@
+{
+  "protocol_version": "desktop.v1",
+  "request_id": "req_fixture_1",
+  "project_id": "project_fixture_1",
+  "method": "handshake",
+  "params": {}
+}

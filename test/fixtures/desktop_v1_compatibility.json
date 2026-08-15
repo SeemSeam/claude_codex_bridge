@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "protocol_version": "desktop.v1",
+  "transport": "unix-domain-socket",
+  "minimum_ccb_version": null,
+  "validated_ccb_version": null,
+  "release_status": "m0-contract-only",
+  "compatibility_claim": "none",
+  "windows_tcp_compatible": false,
+  "notes": [
+    "minimum_ccb_version remains unset until a release containing desktop.v1 is published and tested",
+    "8.6.2 is the repository baseline, not a Desktop compatibility claim"
+  ]
+}
