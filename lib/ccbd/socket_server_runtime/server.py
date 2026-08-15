@@ -78,6 +78,8 @@ class CcbdSocketServer:
         self._pending_maintenance_ticks = 0
         self._maintenance_pending_event = threading.Event()
         self._stop_event = threading.Event()
+        self._desktop_stream_lock = threading.Lock()
+        self._desktop_streams: set[object] = set()
 
     @property
     def socket_path(self) -> Path:
@@ -97,6 +99,34 @@ class CcbdSocketServer:
         if adapter is None or not callable(getattr(adapter, 'handle', None)):
             raise TypeError('desktop adapter must provide handle(request, peer=...)')
         self._desktop_adapter = adapter
+
+    def start_desktop_stream(self, conn, stream) -> None:
+        """Run a Desktop event stream outside the legacy request worker."""
+        with self._desktop_stream_lock:
+            self._desktop_streams.add(conn)
+
+        def run() -> None:
+            try:
+                stream.run(conn)
+            finally:
+                with self._desktop_stream_lock:
+                    self._desktop_streams.discard(conn)
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+
+        threading.Thread(target=run, name='ccbd-desktop-stream', daemon=True).start()
+
+    def close_desktop_streams(self) -> None:
+        with self._desktop_stream_lock:
+            streams = tuple(self._desktop_streams)
+            self._desktop_streams.clear()
+        for conn in streams:
+            try:
+                conn.close()
+            except OSError:
+                pass
 
     def set_request_guard(self, guard) -> None:
         self._request_guard = guard
@@ -169,6 +199,7 @@ class CcbdSocketServer:
 
     def shutdown(self) -> None:
         self.request_shutdown()
+        self.close_desktop_streams()
         stop_worker(self)
         stop_maintenance_worker(self)
 

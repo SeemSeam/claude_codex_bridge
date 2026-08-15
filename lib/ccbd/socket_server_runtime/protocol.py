@@ -21,8 +21,25 @@ def handle_connection(server, conn) -> str | None:
         desktop_adapter = getattr(server, '_desktop_adapter', None)
         if desktop_adapter is not None and isinstance(message, dict) and 'protocol_version' in message:
             # Keep desktop.v1 envelope validation independent from api_version=2.
-            response = desktop_adapter.handle(message, peer=conn)
-            conn.sendall((json.dumps(response, ensure_ascii=False) + '\n').encode('utf-8'))
+            if str(message.get('method') or '').strip() == 'events.subscribe':
+                stream = desktop_adapter.open_event_stream(
+                    message,
+                    peer=conn,
+                    stop_event=getattr(server, '_stop_event', None),
+                )
+                if hasattr(stream, 'run'):
+                    try:
+                        stream_conn = conn.dup()
+                    except (AttributeError, OSError):
+                        response = desktop_adapter.handle(message, peer=conn)
+                        conn.sendall((json.dumps(response, ensure_ascii=False) + '\n').encode('utf-8'))
+                    else:
+                        server.start_desktop_stream(stream_conn, stream)
+                else:
+                    conn.sendall((json.dumps(stream, ensure_ascii=False) + '\n').encode('utf-8'))
+            else:
+                response = desktop_adapter.handle(message, peer=conn)
+                conn.sendall((json.dumps(response, ensure_ascii=False) + '\n').encode('utf-8'))
             return f"desktop.v1:{str(message.get('method') or '').strip()}"
         request = RpcRequest.from_record(message)
         # Final lifecycle publication and opening the runtime-bootstrap gate are

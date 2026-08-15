@@ -77,6 +77,9 @@ def start_maintenance_worker(server, *, interval: float, on_tick) -> None:
 
 
 def stop_worker(server) -> None:
+    close_streams = getattr(server, 'close_desktop_streams', None)
+    if callable(close_streams):
+        close_streams()
     worker = getattr(server, '_worker_thread', None)
     if worker is None:
         return
