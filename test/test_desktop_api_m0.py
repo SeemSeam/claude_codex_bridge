@@ -14,6 +14,7 @@ from ccbd.desktop_api import (
     DESKTOP_PROTOCOL_VERSION,
     DesktopApiAdapter,
     DesktopApiError,
+    DesktopEventGapError,
     DesktopEventAuthority,
     build_discovery,
     redacted_display_root,
@@ -365,6 +366,89 @@ class DesktopApiM0ContractTests(unittest.TestCase):
             with self.assertRaises(DesktopApiError) as raised:
                 authority.read_since(0)
             self.assertEqual(raised.exception.code, "CCBDSK_AUTHORITY_INCONSISTENT")
+
+    def test_future_event_revision_fails_cursor_read_and_handshake_closed(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-future-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [10]
+            revision = [30]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            authority.publish({"type": "job.accepted", "project_id": layout.project_id, "payload": {}})
+            row = json.loads(layout.ccbd_desktop_events_path.read_text(encoding="utf-8").splitlines()[0])
+            row["revision"] = 31
+            layout.ccbd_desktop_events_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            with self.assertRaises(DesktopApiError) as raised:
+                authority.cursor()
+            self.assertEqual(raised.exception.code, "CCBDSK_AUTHORITY_INCONSISTENT")
+            reopened = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            with self.assertRaises(DesktopApiError) as read_error:
+                reopened.read_since(0)
+            self.assertEqual(read_error.exception.code, "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+            adapter = self._adapter(authority=reopened, app=_App(generation=generation[0]))
+            handshake = adapter.handle(_request("handshake"))
+            self.assertFalse(handshake["ok"])
+            self.assertEqual(handshake["error_code"], "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+
+    def test_retention_gap_is_recoverable_and_stream_closes_with_gap_error(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-gap-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [11]
+            revision = [40]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+                retention=1,
+            )
+            authority.publish({"type": "job.accepted", "project_id": layout.project_id, "payload": {"seq": 1}})
+            revision[0] = 41
+            authority.publish({"type": "job.updated", "project_id": layout.project_id, "payload": {"seq": 2}})
+            with self.assertRaises(DesktopEventGapError) as gap:
+                authority.read_since(0)
+            self.assertEqual(gap.exception.details["recovery"], "snapshot")
+            self.assertEqual(gap.exception.details["first_event_seq"], 2)
+            self.assertEqual(gap.exception.details["last_event_seq"], 2)
+            self.assertIsNone(authority.failure_code)
+
+            adapter = self._adapter(authority=authority, app=_App(generation=generation[0]))
+            stream = adapter.open_event_stream(
+                _request("events.subscribe", params={"after_seq": 1, "server_generation": generation[0]}),
+            )
+            left, right = socket.socketpair()
+            try:
+                thread = threading.Thread(target=stream.run, args=(left,), daemon=True)
+                thread.start()
+                self.assertTrue(json.loads(_readline(right))["ok"])
+                revision[0] = 42
+                authority.publish({"type": "job.updated", "project_id": layout.project_id, "payload": {"seq": 3}})
+                error = json.loads(_readline(right))
+                self.assertFalse(error["ok"])
+                self.assertEqual(error["error_code"], "CCBDSK_EVENT_GAP")
+                self.assertTrue(error["retryable"])
+                self.assertEqual(error["details"]["recovery"], "snapshot")
+                self.assertEqual(error["details"]["first_event_seq"], 3)
+                self.assertEqual(error["details"]["last_event_seq"], 3)
+                thread.join(2)
+                self.assertFalse(thread.is_alive())
+            finally:
+                right.close()
 
     def test_same_generation_failure_marker_blocks_reopen_until_generation_changes(self):
         with tempfile.TemporaryDirectory(prefix="ccb-authority-failure-", dir="/tmp") as temp_dir:

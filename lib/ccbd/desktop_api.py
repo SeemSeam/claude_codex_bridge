@@ -214,6 +214,13 @@ class DesktopEventAuthority:
             state = self._state_for_generation_locked(generation, revision)
             rows = self._read_rows_locked()
             self._validate_rows_locked(state, rows)
+            first_event_seq = int(state["first_event_seq"])
+            if after_seq < first_event_seq - 1:
+                raise DesktopEventGapError(
+                    after_seq=after_seq,
+                    first_event_seq=first_event_seq,
+                    last_event_seq=int(state["last_event_seq"]),
+                )
             expected = after_seq + 1
             selected: list[dict[str, Any]] = []
             for row in rows:
@@ -451,6 +458,13 @@ class DesktopEventAuthority:
                     retryable=True,
                     details={"evidence": "event_revision_rollback", "recovery": "snapshot"},
                 )
+            if event_revision > int(state["snapshot_revision"]):
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event revision is ahead of the snapshot authority",
+                    retryable=True,
+                    details={"evidence": "event_revision_future", "recovery": "snapshot"},
+                )
             if str(row.get("type") or "") not in _SUPPORTED_DESKTOP_EVENT_TYPES:
                 raise DesktopApiError(
                     "CCBDSK_EVENT_TYPE_UNSUPPORTED",
@@ -604,6 +618,22 @@ class DesktopApiError(ValueError):
         super().__init__(self.message)
 
 
+class DesktopEventGapError(ValueError):
+    """A valid event log no longer retains the requested cursor."""
+
+    def __init__(self, *, after_seq: int, first_event_seq: int, last_event_seq: int) -> None:
+        self.after_seq = int(after_seq)
+        self.first_event_seq = int(first_event_seq)
+        self.last_event_seq = int(last_event_seq)
+        self.details = {
+            "recovery": "snapshot",
+            "after_seq": self.after_seq,
+            "first_event_seq": self.first_event_seq,
+            "last_event_seq": self.last_event_seq,
+        }
+        super().__init__("Requested event cursor is outside the retained window")
+
+
 @dataclass(frozen=True)
 class PeerCredentials:
     uid: int
@@ -682,7 +712,11 @@ class DesktopEventStream:
                             "CCBDSK_EVENT_GAP",
                             "Event authority returned a non-contiguous sequence",
                             retryable=True,
-                            details={"recovery": "snapshot", "last_event_seq": cursor["last_event_seq"]},
+                            details={
+                                "recovery": "snapshot",
+                                "first_event_seq": cursor["first_event_seq"],
+                                "last_event_seq": cursor["last_event_seq"],
+                            },
                         )
                     self._write(conn, normalized)
                     self._after_seq = seq
@@ -1133,6 +1167,13 @@ class DesktopApiAdapter:
             )
         try:
             events = reader(int(after_seq))
+        except DesktopEventGapError as exc:
+            raise DesktopApiError(
+                "CCBDSK_EVENT_GAP",
+                "Requested event cursor is outside the retained window",
+                retryable=True,
+                details=dict(exc.details),
+            ) from exc
         except DesktopApiError:
             raise
         except Exception as exc:
@@ -1343,7 +1384,11 @@ class DesktopApiAdapter:
                 "CCBDSK_EVENT_GAP",
                 "Requested event cursor is outside the retained window",
                 retryable=True,
-                details={"recovery": "snapshot", "last_event_seq": cursor["last_event_seq"]},
+                details={
+                    "recovery": "snapshot",
+                    "first_event_seq": first_seq,
+                    "last_event_seq": cursor["last_event_seq"],
+                },
             )
         if after_seq > cursor["last_event_seq"]:
             raise DesktopApiError(
@@ -1856,6 +1901,7 @@ __all__ = [
     "DISCOVERY_SCHEMA_VERSION",
     "DesktopApiAdapter",
     "DesktopApiError",
+    "DesktopEventGapError",
     "DesktopEventAuthority",
     "PeerCredentials",
     "build_discovery",
