@@ -213,11 +213,11 @@ class DesktopApiM0ContractTests(unittest.TestCase):
             client.settimeout(0.1)
             with self.assertRaises((socket.timeout, TimeoutError)):
                 client.recv(1)
-            authority.publish({"type": "diagnostic.created", "project_id": "project_fixture_1", "server_generation": 1, "payload": {"code": "A"}})
+            authority.publish({"type": "job.accepted", "project_id": "project_fixture_1", "server_generation": 1, "payload": {"job_id": "job-stream"}})
             client.settimeout(2.0)
             event = json.loads(_readline(client))
             self.assertEqual(event["seq"], 1)
-            self.assertEqual(event["type"], "diagnostic.created")
+            self.assertEqual(event["type"], "job.accepted")
         finally:
             client.close()
             server.close_desktop_streams()
@@ -288,6 +288,131 @@ class DesktopApiM0ContractTests(unittest.TestCase):
             self.assertEqual(reopened.cursor()["last_event_seq"], 0)
             self.assertEqual(reopened.read_since(0), [])
 
+    def test_historical_event_revision_can_lag_current_snapshot_revision(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-revision-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [3]
+            revision = [10]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            authority.publish({"type": "job.accepted", "project_id": layout.project_id, "payload": {}})
+            revision[0] = 11
+            authority.cursor()
+            self.assertEqual(authority.read_since(0)[0]["revision"], 10)
+            self.assertEqual(authority.cursor()["snapshot_revision"], 11)
+
+    def test_corrupt_sequence_fails_closed_and_persists_for_same_generation(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-corrupt-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [4]
+            revision = [1]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            authority.publish({"type": "job.updated", "project_id": layout.project_id, "payload": {}})
+            rows = json.loads(layout.ccbd_desktop_events_path.read_text(encoding="utf-8").splitlines()[0])
+            rows["seq"] = 3
+            layout.ccbd_desktop_events_path.write_text(json.dumps(rows) + "\n", encoding="utf-8")
+            with self.assertRaises(DesktopApiError) as raised:
+                authority.cursor()
+            self.assertEqual(raised.exception.code, "CCBDSK_AUTHORITY_INCONSISTENT")
+            reopened = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            with self.assertRaises(DesktopApiError) as reopened_error:
+                reopened.read_since(0)
+            self.assertEqual(reopened_error.exception.code, "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+            generation[0] = 5
+            self.assertTrue(reopened.events_capability_enabled)
+            self.assertEqual(reopened.cursor()["last_event_seq"], 0)
+
+    def test_event_revision_rollback_fails_closed_without_partial_rows(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-rollback-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [6]
+            revision = [20]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            authority.publish({"type": "job.accepted", "project_id": layout.project_id, "payload": {}})
+            revision[0] = 21
+            authority.publish({"type": "job.updated", "project_id": layout.project_id, "payload": {}})
+            rows = [json.loads(line) for line in layout.ccbd_desktop_events_path.read_text(encoding="utf-8").splitlines()]
+            rows[1]["revision"] = 19
+            layout.ccbd_desktop_events_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            with self.assertRaises(DesktopApiError) as raised:
+                authority.read_since(0)
+            self.assertEqual(raised.exception.code, "CCBDSK_AUTHORITY_INCONSISTENT")
+
+    def test_same_generation_failure_marker_blocks_reopen_until_generation_changes(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-failure-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [8]
+            revision = [1]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            authority.record_failure(RuntimeError("publish failed"))
+            self.assertFalse(authority.events_capability_enabled)
+            authority.record_recovery()
+            self.assertFalse(authority.events_capability_enabled)
+            reopened = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+            )
+            with self.assertRaises(DesktopApiError) as raised:
+                reopened.cursor()
+            self.assertEqual(raised.exception.code, "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+            generation[0] = 9
+            self.assertEqual(reopened.cursor()["server_generation"], 9)
+
+    def test_unsupported_event_type_never_enters_desktop_authority(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-type-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: 1,
+                revision_getter=lambda: 1,
+            )
+            with self.assertRaises(DesktopApiError) as raised:
+                authority.publish({"type": "agent.updated", "project_id": layout.project_id, "payload": {}})
+            self.assertEqual(raised.exception.code, "CCBDSK_EVENT_TYPE_UNSUPPORTED")
+            self.assertEqual(authority.read_since(0), [])
+
     def test_dispatcher_core_transitions_publish_only_reviewed_desktop_events(self):
         published = []
 
@@ -337,8 +462,8 @@ class DesktopApiM0ContractTests(unittest.TestCase):
                 del event
                 raise RuntimeError("projection unavailable")
 
-            def record_failure(self, code):
-                self.failure_code = code
+            def record_failure(self, error):
+                self.failure_code = "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
                 self.events_capability_enabled = False
 
             def record_recovery(self):
@@ -470,7 +595,7 @@ class DesktopApiM0ContractTests(unittest.TestCase):
 
     def test_sequence_gap_is_not_repaired_or_guessed(self):
         authority = _EventAuthority()
-        authority.events.append({"seq": 2, "revision": 1, "type": "diagnostic.created", "project_id": "project_fixture_1", "server_generation": 1, "payload": {}})
+        authority.events.append({"seq": 2, "revision": 1, "type": "job.updated", "project_id": "project_fixture_1", "server_generation": 1, "payload": {}})
         authority.cursor = lambda: {
             "server_generation": 1,
             "snapshot_revision": 1,

@@ -47,7 +47,8 @@ _EVENT_TYPES = frozenset(
         "diagnostic.created",
     }
 )
-_SUPPORTED_DESKTOP_EVENT_TYPES = ("job.accepted", "job.updated")
+_SUPPORTED_DESKTOP_EVENT_TYPES = frozenset({"job.accepted", "job.updated"})
+_SUPPORTED_DESKTOP_EVENT_TYPE_LIST = ("job.accepted", "job.updated")
 _TOP_LEVEL_FIELDS = frozenset(
     {
         "protocol_version",
@@ -95,8 +96,7 @@ class DesktopEventAuthority:
     _RECORD_TYPE = "ccbd_desktop_event_cursor"
     # M0 exposes only the reviewed job transition projection.  Other Core
     # event families remain deliberately outside this capability.
-    events_capability_enabled = True
-    supported_event_types = _SUPPORTED_DESKTOP_EVENT_TYPES
+    supported_event_types = _SUPPORTED_DESKTOP_EVENT_TYPE_LIST
 
     def __init__(
         self,
@@ -114,28 +114,95 @@ class DesktopEventAuthority:
         self._retention = max(1, int(retention))
         self._lock = threading.RLock()
         self._failure_code: str | None = None
+        self._events_capability_enabled = True
         if not self._project_id:
             raise ValueError("Desktop event authority requires project_id")
 
     @property
     def failure_code(self) -> str | None:
+        self._load_durable_failure_marker()
         return self._failure_code
 
-    def record_failure(self, code: str = "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE") -> None:
+    @property
+    def events_capability_enabled(self) -> bool:
+        self._load_durable_failure_marker()
+        return self._events_capability_enabled
+
+    def record_failure(self, error: Any = "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE") -> None:
         """Record a stable projection failure without affecting legacy Core writes."""
-        normalized = str(code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE").strip()
+        with self._locked():
+            self._record_failure_locked(error)
+
+    def _record_failure_locked(self, error: Any) -> None:
+        normalized = (
+            str(getattr(error, "code", "") or "").strip()
+            if isinstance(error, DesktopApiError)
+            else "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
+        )
+        normalized = normalized or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
         self._failure_code = normalized or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
-        self.events_capability_enabled = False
+        self._events_capability_enabled = False
+        try:
+            try:
+                state = self._load_state_locked()
+            except Exception:
+                # A corrupt marker must be replaced with an explicit durable
+                # failure state, never treated as an empty healthy cursor.
+                state = None
+            if state is None:
+                generation = self._required_value(self._generation_getter, "server_generation")
+                revision = self._required_value(self._revision_getter, "snapshot_revision")
+                state = self._new_state(generation, revision)
+            state["failure_code"] = self._failure_code
+            state["failure_evidence"] = "desktop_event_authority_failed"
+            self._save_state_locked(state)
+        except Exception:
+            # The in-memory state still fails closed when metadata itself is
+            # unavailable; no failure detail from the exception is persisted.
+            self._events_capability_enabled = False
+            return
 
     def record_recovery(self) -> None:
-        self._failure_code = None
-        self.events_capability_enabled = True
+        """Keep a failed generation blocked until the generation changes."""
+        with self._locked():
+            try:
+                generation = self._required_value(self._generation_getter, "server_generation")
+                state = self._load_state_locked()
+            except Exception:
+                self._events_capability_enabled = False
+                return
+            if state is not None and _strict_nonnegative_int(state.get("server_generation")) == generation:
+                marker = str(state.get("failure_code") or "").strip()
+                if marker:
+                    self._failure_code = marker
+                    self._events_capability_enabled = False
+                    return
+            self._failure_code = None
+            self._events_capability_enabled = True
+
+    def _load_durable_failure_marker(self) -> None:
+        try:
+            generation = self._required_value(self._generation_getter, "server_generation")
+            with self._locked():
+                state = self._load_state_locked()
+                if state is not None and _strict_nonnegative_int(state.get("server_generation")) == generation:
+                    marker = str(state.get("failure_code") or "").strip()
+                    if marker:
+                        self._failure_code = marker
+                        self._events_capability_enabled = False
+                elif state is not None:
+                    self._failure_code = None
+                    self._events_capability_enabled = True
+        except Exception:
+            self._events_capability_enabled = False
+            return
 
     def cursor(self) -> dict[str, int]:
         with self._locked():
             generation = self._required_value(self._generation_getter, "server_generation")
             revision = self._required_value(self._revision_getter, "snapshot_revision")
             state = self._state_for_generation_locked(generation, revision)
+            self._validate_rows_locked(state, self._read_rows_locked())
             return self._cursor_from_state(state)
 
     def read_since(self, after_seq: int) -> list[dict[str, Any]]:
@@ -146,25 +213,7 @@ class DesktopEventAuthority:
             revision = self._required_value(self._revision_getter, "snapshot_revision")
             state = self._state_for_generation_locked(generation, revision)
             rows = self._read_rows_locked()
-            current_rows = [
-                row
-                for row in rows
-                if str(row.get("project_id") or "") == self._project_id
-                and _strict_nonnegative_int(row.get("server_generation")) == generation
-            ]
-            if int(state["last_event_seq"]) == 0:
-                if current_rows:
-                    raise RuntimeError("Desktop event cursor has an unexpected durable event")
-            else:
-                if not current_rows:
-                    raise RuntimeError("Desktop event cursor points past the durable event log")
-                expected_current = int(state["first_event_seq"])
-                for row in current_rows:
-                    if _strict_positive_int(row.get("seq")) != expected_current:
-                        raise RuntimeError("Desktop event log sequence is not contiguous")
-                    expected_current += 1
-                if expected_current - 1 != int(state["last_event_seq"]):
-                    raise RuntimeError("Desktop event cursor disagrees with durable event log")
+            self._validate_rows_locked(state, rows)
             expected = after_seq + 1
             selected: list[dict[str, Any]] = []
             for row in rows:
@@ -201,8 +250,18 @@ class DesktopEventAuthority:
                 raise ValueError("Desktop event generation mismatch")
             event_type = str(event.get("type") or "").strip()
             payload = event.get("payload")
-            if event_type not in _EVENT_TYPES or not isinstance(payload, dict):
-                raise ValueError("Desktop event fields are incomplete")
+            if event_type not in _SUPPORTED_DESKTOP_EVENT_TYPES:
+                raise DesktopApiError(
+                    "CCBDSK_EVENT_TYPE_UNSUPPORTED",
+                    "Unknown Desktop event type cannot be published",
+                    details={"evidence": "unknown_event_type"},
+                )
+            if not isinstance(payload, dict):
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event payload is invalid",
+                    details={"evidence": "event_payload_invalid"},
+                )
             json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             event_revision = event.get("revision")
             if event_revision is None:
@@ -221,25 +280,25 @@ class DesktopEventAuthority:
                 "server_generation": generation,
                 "payload": dict(payload),
             }
+            rows = self._read_rows_locked()
+            self._validate_rows_locked(state, rows)
             rows = [
                 row
-                for row in self._read_rows_locked()
+                for row in rows
                 if str(row.get("project_id") or "") == self._project_id
                 and _strict_nonnegative_int(row.get("server_generation")) == generation
             ]
-            if int(state["last_event_seq"]) == 0 and rows:
-                raise RuntimeError("Desktop event cursor has an unexpected durable event")
-            if int(state["last_event_seq"]) > 0:
-                if not rows or _strict_positive_int(rows[-1].get("seq")) != int(state["last_event_seq"]):
-                    raise RuntimeError("Desktop event cursor disagrees with durable event log")
             rows.append(record)
             rows = rows[-self._retention :]
             self._write_rows_locked(rows)
             state["first_event_seq"] = int(rows[0]["seq"]) if rows else seq + 1
             state["last_event_seq"] = seq
             state["snapshot_revision"] = event_revision
+            state.pop("failure_code", None)
+            state.pop("failure_evidence", None)
             self._save_state_locked(state)
-            self.record_recovery()
+            self._failure_code = None
+            self._events_capability_enabled = True
             return dict(record)
 
     @staticmethod
@@ -254,27 +313,176 @@ class DesktopEventAuthority:
         return normalized
 
     def _state_for_generation_locked(self, generation: int, revision: int) -> dict[str, int | str]:
-        state = self._load_state_locked()
+        try:
+            state = self._load_state_locked()
+        except DesktopApiError as exc:
+            self._record_failure_locked(exc)
+            raise
+        except Exception as exc:
+            error = DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event cursor metadata is invalid",
+                retryable=True,
+                details={"evidence": "event_cursor_metadata_invalid", "recovery": "generation_restart"},
+            )
+            self._record_failure_locked(error)
+            raise error from exc
         if state is None:
             state = self._new_state(generation, revision)
             self._save_state_locked(state)
             return state
         if state.get("project_id") != self._project_id:
-            raise RuntimeError("Desktop event cursor project identity mismatch")
+            error = DesktopApiError(
+                "CCBDSK_PROJECT_ID_MISMATCH",
+                "Desktop event cursor project identity mismatch",
+                retryable=True,
+                details={"evidence": "event_cursor_project_mismatch", "recovery": "generation_restart"},
+            )
+            self._record_failure_locked(error)
+            raise error
         stored_generation = _strict_nonnegative_int(state.get("server_generation"))
         stored_revision = _strict_nonnegative_int(state.get("snapshot_revision"))
         first = _strict_positive_int(state.get("first_event_seq"))
         last = _strict_nonnegative_int(state.get("last_event_seq"))
         if stored_generation is None or stored_revision is None or first is None or last is None or first > last + 1:
-            raise RuntimeError("Desktop event cursor metadata is invalid")
+            error = DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event cursor metadata is invalid",
+                retryable=True,
+                details={"evidence": "event_cursor_metadata_invalid", "recovery": "generation_restart"},
+            )
+            self._record_failure_locked(error)
+            raise error
         if stored_generation != generation:
             state = self._new_state(generation, revision)
             self._save_state_locked(state)
+            self._failure_code = None
+            self._events_capability_enabled = True
             return state
+        marker = str(state.get("failure_code") or "").strip()
+        if marker or self._failure_code:
+            self._failure_code = marker or self._failure_code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
+            self._events_capability_enabled = False
+            raise DesktopApiError(
+                "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE",
+                "CCB Core event authority is unavailable",
+                retryable=True,
+                details={"evidence": str(state.get("failure_evidence") or "desktop_event_authority_failed"), "recovery": "generation_restart"},
+            )
+        if revision < stored_revision:
+            error = DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "CCB snapshot revision moved backwards",
+                retryable=True,
+                details={"evidence": "snapshot_revision_rollback", "recovery": "generation_restart"},
+            )
+            self._record_failure_locked(error)
+            raise error
         if stored_revision != revision:
             state["snapshot_revision"] = revision
             self._save_state_locked(state)
         return state
+
+    def _validate_rows_locked(self, state: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+        try:
+            self._validate_rows_impl_locked(state, rows)
+        except DesktopApiError as exc:
+            self._record_failure_locked(exc)
+            raise
+        except Exception as exc:
+            error = DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event log is invalid",
+                retryable=True,
+                details={"evidence": "event_log_invalid", "recovery": "snapshot"},
+            )
+            self._record_failure_locked(error)
+            raise error from exc
+
+    def _validate_rows_impl_locked(self, state: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+        """Validate the complete current-generation projection before any read/write."""
+        current_rows = [
+            row
+            for row in rows
+            if str(row.get("project_id") or "") == self._project_id
+            and _strict_nonnegative_int(row.get("server_generation")) == int(state["server_generation"])
+        ]
+        first = int(state["first_event_seq"])
+        last = int(state["last_event_seq"])
+        if last == 0:
+            if current_rows:
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event cursor has an unexpected durable event",
+                    retryable=True,
+                    details={"evidence": "event_cursor_log_mismatch", "recovery": "generation_restart"},
+                )
+            return
+        if not current_rows:
+            raise DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event cursor points past the durable event log",
+                retryable=True,
+                details={"evidence": "event_cursor_log_missing", "recovery": "generation_restart"},
+            )
+        expected_seq = first
+        previous_revision = -1
+        for row in current_rows:
+            if row.get("record_type") != "ccbd_desktop_event":
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event log contains an invalid record",
+                    retryable=True,
+                    details={"evidence": "event_record_invalid", "recovery": "generation_restart"},
+                )
+            seq = _strict_positive_int(row.get("seq"))
+            event_revision = _strict_nonnegative_int(row.get("revision"))
+            if seq != expected_seq:
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event log sequence is not contiguous",
+                    retryable=True,
+                    details={"evidence": "event_sequence_corrupt", "recovery": "snapshot"},
+                )
+            if event_revision is None or event_revision < previous_revision:
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event revision moved backwards",
+                    retryable=True,
+                    details={"evidence": "event_revision_rollback", "recovery": "snapshot"},
+                )
+            if str(row.get("type") or "") not in _SUPPORTED_DESKTOP_EVENT_TYPES:
+                raise DesktopApiError(
+                    "CCBDSK_EVENT_TYPE_UNSUPPORTED",
+                    "Unknown Desktop event type cannot be published",
+                    retryable=True,
+                    details={"evidence": "unknown_event_type", "recovery": "snapshot"},
+                )
+            if not isinstance(row.get("payload"), dict):
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event payload is invalid",
+                    retryable=True,
+                    details={"evidence": "event_payload_invalid", "recovery": "snapshot"},
+                )
+            try:
+                json.dumps(row["payload"], ensure_ascii=False, separators=(",", ":"))
+            except (TypeError, ValueError) as exc:
+                raise DesktopApiError(
+                    "CCBDSK_AUTHORITY_INCONSISTENT",
+                    "Desktop event payload is not JSON serializable",
+                    retryable=True,
+                    details={"evidence": "event_payload_invalid", "recovery": "snapshot"},
+                ) from exc
+            expected_seq += 1
+            previous_revision = event_revision
+        if expected_seq - 1 != last:
+            raise DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event cursor disagrees with durable event log",
+                retryable=True,
+                details={"evidence": "event_cursor_log_mismatch", "recovery": "generation_restart"},
+            )
 
     def _new_state(self, generation: int, revision: int) -> dict[str, int | str]:
         return {
@@ -312,15 +520,27 @@ class DesktopEventAuthority:
         if not path.exists():
             return []
         rows: list[dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                text = line.strip()
-                if not text:
-                    continue
-                value = json.loads(text)
-                if not isinstance(value, dict):
-                    raise RuntimeError("Desktop event log contains a non-object row")
-                rows.append(value)
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    text = line.strip()
+                    if not text:
+                        continue
+                    value = json.loads(text)
+                    if not isinstance(value, dict):
+                        raise ValueError("Desktop event log contains a non-object row")
+                    rows.append(value)
+        except DesktopApiError:
+            raise
+        except Exception as exc:
+            error = DesktopApiError(
+                "CCBDSK_AUTHORITY_INCONSISTENT",
+                "Desktop event log cannot be read",
+                retryable=True,
+                details={"evidence": "event_log_read_failed", "recovery": "snapshot"},
+            )
+            self._record_failure_locked(error)
+            raise error from exc
         return rows
 
     def _write_rows_locked(self, rows: list[dict[str, Any]]) -> None:
@@ -775,7 +995,7 @@ class DesktopApiAdapter:
         server_generation: int | None = None,
     ) -> dict[str, Any]:
         event_type = str(event_type or "").strip()
-        if event_type not in _EVENT_TYPES:
+        if event_type not in _SUPPORTED_DESKTOP_EVENT_TYPES:
             raise DesktopApiError(
                 "CCBDSK_EVENT_TYPE_UNSUPPORTED",
                 "Unknown Desktop event type cannot be published",
@@ -863,6 +1083,8 @@ class DesktopApiAdapter:
             )
         try:
             raw = reader()
+        except DesktopApiError:
+            raise
         except Exception as exc:
             raise DesktopApiError(
                 "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE",
@@ -911,6 +1133,8 @@ class DesktopApiAdapter:
             )
         try:
             events = reader(int(after_seq))
+        except DesktopApiError:
+            raise
         except Exception as exc:
             raise DesktopApiError(
                 "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE",
@@ -936,7 +1160,7 @@ class DesktopApiAdapter:
         generation = _strict_nonnegative_int(event.get("server_generation"))
         project_id = str(event.get("project_id") or "").strip()
         payload = event.get("payload")
-        if event_type not in _EVENT_TYPES:
+        if event_type not in _SUPPORTED_DESKTOP_EVENT_TYPES:
             raise DesktopApiError("CCBDSK_EVENT_TYPE_UNSUPPORTED", "Unknown Desktop event type cannot be published", retryable=True, details={"evidence": "unknown_event_type", "recovery": "snapshot"})
         if seq is None or revision is None or generation is None or seq > cursor["last_event_seq"] or project_id != self.project_id or generation != cursor["server_generation"] or not isinstance(payload, dict):
             raise DesktopApiError("CCBDSK_AUTHORITY_INCONSISTENT", "CCB event authority returned an invalid event", retryable=True, details={"evidence": "event_fields_invalid", "recovery": "snapshot"})
@@ -1278,12 +1502,10 @@ class DesktopApiAdapter:
     def _event_coverage(self) -> dict[str, Any]:
         authority = self._event_authority
         raw_types = getattr(authority, "supported_event_types", _SUPPORTED_DESKTOP_EVENT_TYPES)
-        event_types = tuple(
-            event_type for event_type in (str(value).strip() for value in raw_types)
-            if event_type in _SUPPORTED_DESKTOP_EVENT_TYPES
-        )
+        available = {str(value).strip() for value in raw_types}
+        event_types = tuple(event_type for event_type in _SUPPORTED_DESKTOP_EVENT_TYPE_LIST if event_type in available)
         if not event_types:
-            event_types = _SUPPORTED_DESKTOP_EVENT_TYPES
+            event_types = _SUPPORTED_DESKTOP_EVENT_TYPE_LIST
         return {
             "scope": "scoped",
             "complete": False,
@@ -1305,11 +1527,7 @@ class DesktopApiAdapter:
             and bool(getattr(self._event_authority, "events_capability_enabled", True))
         )
         failure_code = str(getattr(self._event_authority, "failure_code", "") or "").strip()
-        events_reason = (
-            failure_code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
-            if authority_ready and not bool(getattr(self._event_authority, "events_capability_enabled", True))
-            else "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
-        )
+        events_reason = failure_code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
         job_ready, job_reason = self._job_submit_readiness()
         event_coverage = self._event_coverage()
         event_capability = {
