@@ -34,7 +34,7 @@ from ccbd.handlers import (
     build_watch_handler,
 )
 from ccbd.frontdesk_handler import build_frontdesk_forward_planner_handler
-from ccbd.desktop_api import DesktopApiAdapter
+from ccbd.desktop_api import DesktopApiAdapter, DesktopEventAuthority
 
 
 def register_handlers(app) -> None:
@@ -171,6 +171,29 @@ def register_handlers(app) -> None:
     app.socket_server.register_handler('restore', _graph_request(graph_source, build_restore_handler(runtime_service)))
     app.socket_server.register_handler('stop-all', build_stop_all_handler(app))
     app.socket_server.register_handler('shutdown', build_shutdown_handler(app))
+    authority = getattr(app, 'desktop_event_authority', None)
+    if authority is None:
+        def snapshot_revision() -> int | None:
+            service = getattr(app, 'project_view_service', None)
+            builder = getattr(service, 'build_response', None)
+            if not callable(builder):
+                return None
+            response = builder(schema_version=1)
+            cache = response.get('cache') if isinstance(response, dict) else None
+            return cache.get('sequence') if isinstance(cache, dict) else None
+
+        authority = DesktopEventAuthority(
+            app.paths,
+            project_id=app.project_id,
+            generation_getter=lambda: (
+                app.lease.generation if getattr(app, 'lease', None) is not None else None
+            ),
+            revision_getter=snapshot_revision,
+        )
+        app.desktop_event_authority = authority
+    # Dispatcher transitions and the adapter must share this exact durable
+    # authority.  This also rebinds a newly published service graph.
+    setattr(app.dispatcher, '_desktop_event_authority', authority)
     app.socket_server.set_desktop_adapter(
         DesktopApiAdapter(
             app,
@@ -178,6 +201,7 @@ def register_handlers(app) -> None:
             project_root=app.project_root,
             dispatcher=dispatcher,
             clock=app.clock,
+            event_authority=authority,
         )
     )
 

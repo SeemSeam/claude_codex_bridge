@@ -176,6 +176,20 @@ class CcbdMountPathMixin:
 
 class CcbdOpsPathMixin:
     @property
+    def ccbd_desktop_events_path(self):
+        """Durable Desktop V1 event log under the protected CCB runtime root."""
+        return self.ccbd_dir / 'desktop-events.jsonl'
+
+    @property
+    def ccbd_desktop_cursor_path(self):
+        """Durable Desktop V1 cursor metadata under the protected CCB runtime root."""
+        return self.ccbd_dir / 'desktop-cursor.json'
+
+    @property
+    def ccbd_desktop_lock_path(self):
+        return self.ccbd_dir / 'desktop-events.lock'
+
+    @property
     def ccbd_supervision_path(self):
         return self.ccbd_dir / 'supervision.jsonl'
 

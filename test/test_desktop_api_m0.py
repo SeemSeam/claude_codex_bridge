@@ -14,10 +14,16 @@ from ccbd.desktop_api import (
     DESKTOP_PROTOCOL_VERSION,
     DesktopApiAdapter,
     DesktopApiError,
+    DesktopEventAuthority,
     build_discovery,
     redacted_display_root,
     validate_unix_endpoint_descriptor,
 )
+from ccbd.api_models import TargetKind
+from ccbd.services.mount import MountManager
+from ccbd.services.dispatcher_runtime.records import append_event
+from project.identity_store import ensure_project_identity
+from storage.paths import PathLayout
 from ccbd.socket_server_runtime.loop import start_worker
 from ccbd.socket_server_runtime.server import CcbdSocketServer
 
@@ -217,6 +223,162 @@ class DesktopApiM0ContractTests(unittest.TestCase):
                     if not server._desktop_streams:
                         break
                 time.sleep(0.01)
+
+    def test_stream_exits_promptly_when_client_closes(self):
+        adapter = self._adapter()
+        stream = adapter.open_event_stream(
+            _request("events.subscribe", params={"after_seq": 0, "server_generation": 1}),
+        )
+        left, right = socket.socketpair()
+        thread = threading.Thread(target=stream.run, args=(left,), daemon=True)
+        try:
+            thread.start()
+            self.assertTrue(json.loads(_readline(right))["ok"])
+            right.close()
+            thread.join(1.0)
+            self.assertFalse(thread.is_alive())
+        finally:
+            try:
+                right.close()
+            except OSError:
+                pass
+            try:
+                left.close()
+            except OSError:
+                pass
+
+    def test_durable_event_authority_survives_reopen_and_resets_generation(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-authority-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            generation = [7]
+            revision = [3]
+            authority = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+                retention=4,
+            )
+            self.assertEqual(authority.cursor()["last_event_seq"], 0)
+            event = authority.publish({
+                "type": "job.accepted",
+                "project_id": layout.project_id,
+                "payload": {"job_id": "job-1"},
+            })
+            self.assertEqual(event["seq"], 1)
+            reopened = DesktopEventAuthority(
+                layout,
+                project_id=layout.project_id,
+                generation_getter=lambda: generation[0],
+                revision_getter=lambda: revision[0],
+                retention=4,
+            )
+            self.assertEqual(reopened.cursor()["last_event_seq"], 1)
+            self.assertEqual(reopened.read_since(0)[0]["type"], "job.accepted")
+            generation[0] = 8
+            revision[0] = 1
+            self.assertEqual(reopened.cursor()["last_event_seq"], 0)
+            self.assertEqual(reopened.read_since(0), [])
+
+    def test_dispatcher_core_transitions_publish_only_reviewed_desktop_events(self):
+        published = []
+
+        class Authority:
+            def publish(self, event):
+                published.append(event)
+
+        class EventStore:
+            def append(self, event):
+                return None
+
+        class Dispatcher:
+            _event_store = EventStore()
+            _desktop_event_authority = Authority()
+            _layout = type("Layout", (), {"project_id": "project_fixture_1"})()
+
+            def mark_project_view_dirty(self):
+                return None
+
+            def _new_id(self, prefix):
+                return f"{prefix}-1"
+
+        record = type(
+            "Record",
+            (),
+            {
+                "job_id": "job-1",
+                "agent_name": "agent1",
+                "target_kind": TargetKind.AGENT,
+                "target_name": "agent1",
+            },
+        )()
+        append_event(Dispatcher(), record, "job_accepted", {"status": "accepted"}, timestamp="now")
+        append_event(Dispatcher(), record, "completion_item", {"status": "unknown"}, timestamp="now")
+        self.assertEqual(len(published), 1)
+        self.assertEqual(published[0]["type"], "job.accepted")
+        self.assertEqual(published[0]["payload"]["job_id"], "job-1")
+
+    def test_discovery_returns_connectable_locator_without_root_in_display_or_diagnostics(self):
+        with tempfile.TemporaryDirectory(prefix="ccb-discovery-", dir="/tmp") as temp_dir:
+            base = Path(temp_dir)
+            root = base / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            (root / ".ccb" / "ccb.config").write_text("agent1:codex\n", encoding="utf-8")
+            ensure_project_identity(root)
+            layout = PathLayout(root)
+            layout.ensure_runtime_state_root()
+            socket_path = base / "ccbd.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                listener.bind(str(socket_path))
+            except PermissionError as exc:
+                listener.close()
+                self.skipTest(f"AF_UNIX listener unavailable in sandbox: {exc}")
+            listener.listen(2)
+            try:
+                MountManager(layout).mark_mounted(
+                    project_id=layout.project_id,
+                    pid=os.getpid(),
+                    socket_path=socket_path,
+                    generation=4,
+                )
+                payload = build_discovery(str(root.resolve()))
+                descriptor = payload["endpoint_descriptor"]
+                self.assertIsNotNone(descriptor)
+                self.assertEqual(descriptor["socket_path"], str(socket_path.resolve()))
+                self.assertEqual(payload["project_root_display"], "<project>")
+                self.assertNotIn(str(root), payload["project_root_display"])
+                self.assertNotIn(str(root), json.dumps(payload["diagnostics"]))
+                self.assertEqual(payload["runtime"]["server_generation"], 4)
+            finally:
+                listener.close()
+
+    def test_production_ccbd_app_wires_one_authority_and_missing_authority_fails_closed(self):
+        try:
+            from ccbd.app import CcbdApp
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"CcbdApp dependency unavailable: {exc}")
+        with tempfile.TemporaryDirectory(prefix="ccb-app-", dir="/tmp") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            (root / ".ccb").mkdir(parents=True)
+            (root / ".ccb" / "ccb.config").write_text("agent1:codex\n", encoding="utf-8")
+            app = CcbdApp(root, clock=lambda: "2026-08-16T00:00:00Z", pid=os.getpid())
+            app.lease = type("Lease", (), {"generation": 9})()
+            adapter = app.socket_server._desktop_adapter
+            self.assertIs(adapter._event_authority, app.desktop_event_authority)
+            self.assertIs(app.dispatcher._desktop_event_authority, app.desktop_event_authority)
+            request = _request("handshake", project_id=app.project_id)
+            self.assertTrue(adapter.handle(request)["ok"])
+            missing = DesktopApiAdapter(
+                app,
+                project_id=app.project_id,
+                generation_getter=lambda: 9,
+                snapshot_getter=lambda: {},
+            )
+            self.assertEqual(missing.handle(request)["error_code"], "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
 
     def test_unknown_event_and_gap_close_stream_with_snapshot_recovery(self):
         authority = _EventAuthority()

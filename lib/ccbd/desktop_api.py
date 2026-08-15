@@ -13,14 +13,18 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import select
 import socket
 import stat
 import struct
+import threading
 import time
 from typing import Any, Callable
 
 from ccbd.services.mount import MountManager
 from project.identity_store import load_project_identity
+from storage.atomic import atomic_write_text, ensure_durable_directory
+from storage.json_store import JsonStore
 from storage.paths import PathLayout
 
 DESKTOP_PROTOCOL_VERSION = "desktop.v1"
@@ -74,6 +78,275 @@ _ACTION_METHODS = frozenset(
         "config.reload",
     }
 )
+
+
+class DesktopEventAuthority:
+    """Durable, project-scoped Desktop event cursor owned by CCB Core.
+
+    The authority is deliberately backed by the protected ``PathLayout`` runtime
+    root rather than adapter memory.  A process-local lock protects the common
+    daemon path and the Unix file lock serializes a second CCB process if one
+    races during recovery.  Records are filtered by project and generation so
+    an old daemon's sequence can never be presented as the current stream.
+    """
+
+    _SCHEMA_VERSION = 1
+    _RECORD_TYPE = "ccbd_desktop_event_cursor"
+    # M0 projects only the reviewed job transitions.  Until the remaining
+    # Core event families have explicit mappings, discovery/handshake must not
+    # claim a complete Desktop events capability.
+    events_capability_enabled = False
+
+    def __init__(
+        self,
+        layout: PathLayout,
+        *,
+        project_id: str,
+        generation_getter: Callable[[], int | None],
+        revision_getter: Callable[[], int | None],
+        retention: int = MAX_EVENT_RETENTION,
+    ) -> None:
+        self._layout = layout
+        self._project_id = str(project_id or "").strip()
+        self._generation_getter = generation_getter
+        self._revision_getter = revision_getter
+        self._retention = max(1, int(retention))
+        self._lock = threading.RLock()
+        if not self._project_id:
+            raise ValueError("Desktop event authority requires project_id")
+
+    def cursor(self) -> dict[str, int]:
+        with self._locked():
+            generation = self._required_value(self._generation_getter, "server_generation")
+            revision = self._required_value(self._revision_getter, "snapshot_revision")
+            state = self._state_for_generation_locked(generation, revision)
+            return self._cursor_from_state(state)
+
+    def read_since(self, after_seq: int) -> list[dict[str, Any]]:
+        if isinstance(after_seq, bool) or not isinstance(after_seq, int) or after_seq < 0:
+            raise ValueError("after_seq must be a non-negative integer")
+        with self._locked():
+            generation = self._required_value(self._generation_getter, "server_generation")
+            revision = self._required_value(self._revision_getter, "snapshot_revision")
+            state = self._state_for_generation_locked(generation, revision)
+            rows = self._read_rows_locked()
+            current_rows = [
+                row
+                for row in rows
+                if str(row.get("project_id") or "") == self._project_id
+                and _strict_nonnegative_int(row.get("server_generation")) == generation
+            ]
+            if int(state["last_event_seq"]) == 0:
+                if current_rows:
+                    raise RuntimeError("Desktop event cursor has an unexpected durable event")
+            else:
+                if not current_rows:
+                    raise RuntimeError("Desktop event cursor points past the durable event log")
+                expected_current = int(state["first_event_seq"])
+                for row in current_rows:
+                    if _strict_positive_int(row.get("seq")) != expected_current:
+                        raise RuntimeError("Desktop event log sequence is not contiguous")
+                    expected_current += 1
+                if expected_current - 1 != int(state["last_event_seq"]):
+                    raise RuntimeError("Desktop event cursor disagrees with durable event log")
+            expected = after_seq + 1
+            selected: list[dict[str, Any]] = []
+            for row in rows:
+                if str(row.get("project_id") or "") != self._project_id:
+                    continue
+                if _strict_nonnegative_int(row.get("server_generation")) != generation:
+                    continue
+                seq = _strict_positive_int(row.get("seq"))
+                if seq is None:
+                    raise ValueError("Desktop event record has invalid seq")
+                if seq <= after_seq:
+                    continue
+                if seq != expected:
+                    raise ValueError("Desktop event record sequence is not contiguous")
+                selected.append(dict(row))
+                expected = seq + 1
+            if selected and selected[-1]["seq"] > state["last_event_seq"]:
+                raise ValueError("Desktop event cursor is behind durable event log")
+            return selected
+
+    def publish(self, event: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(event, dict):
+            raise ValueError("Desktop event must be an object")
+        with self._locked():
+            generation = self._required_value(self._generation_getter, "server_generation")
+            revision = self._required_value(self._revision_getter, "snapshot_revision")
+            state = self._state_for_generation_locked(generation, revision)
+            if str(event.get("project_id") or "") != self._project_id:
+                raise ValueError("Desktop event project identity mismatch")
+            event_generation = event.get("server_generation")
+            if event_generation is None:
+                event_generation = generation
+            if _strict_nonnegative_int(event_generation) != generation:
+                raise ValueError("Desktop event generation mismatch")
+            event_type = str(event.get("type") or "").strip()
+            payload = event.get("payload")
+            if event_type not in _EVENT_TYPES or not isinstance(payload, dict):
+                raise ValueError("Desktop event fields are incomplete")
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            event_revision = event.get("revision")
+            if event_revision is None:
+                event_revision = revision
+            event_revision = _strict_nonnegative_int(event_revision)
+            if event_revision is None or event_revision != revision:
+                raise ValueError("Desktop event revision does not match snapshot authority")
+            seq = int(state["last_event_seq"]) + 1
+            record = {
+                "schema_version": self._SCHEMA_VERSION,
+                "record_type": "ccbd_desktop_event",
+                "seq": seq,
+                "revision": event_revision,
+                "type": event_type,
+                "project_id": self._project_id,
+                "server_generation": generation,
+                "payload": dict(payload),
+            }
+            rows = [
+                row
+                for row in self._read_rows_locked()
+                if str(row.get("project_id") or "") == self._project_id
+                and _strict_nonnegative_int(row.get("server_generation")) == generation
+            ]
+            if int(state["last_event_seq"]) == 0 and rows:
+                raise RuntimeError("Desktop event cursor has an unexpected durable event")
+            if int(state["last_event_seq"]) > 0:
+                if not rows or _strict_positive_int(rows[-1].get("seq")) != int(state["last_event_seq"]):
+                    raise RuntimeError("Desktop event cursor disagrees with durable event log")
+            rows.append(record)
+            rows = rows[-self._retention :]
+            self._write_rows_locked(rows)
+            state["first_event_seq"] = int(rows[0]["seq"]) if rows else seq + 1
+            state["last_event_seq"] = seq
+            state["snapshot_revision"] = event_revision
+            self._save_state_locked(state)
+            return dict(record)
+
+    @staticmethod
+    def _required_value(getter: Callable[[], int | None], name: str) -> int:
+        try:
+            value = getter()
+        except Exception as exc:
+            raise RuntimeError(f"{name} authority unavailable") from exc
+        normalized = _strict_nonnegative_int(value)
+        if normalized is None:
+            raise RuntimeError(f"{name} authority unavailable")
+        return normalized
+
+    def _state_for_generation_locked(self, generation: int, revision: int) -> dict[str, int | str]:
+        state = self._load_state_locked()
+        if state is None:
+            state = self._new_state(generation, revision)
+            self._save_state_locked(state)
+            return state
+        if state.get("project_id") != self._project_id:
+            raise RuntimeError("Desktop event cursor project identity mismatch")
+        stored_generation = _strict_nonnegative_int(state.get("server_generation"))
+        stored_revision = _strict_nonnegative_int(state.get("snapshot_revision"))
+        first = _strict_positive_int(state.get("first_event_seq"))
+        last = _strict_nonnegative_int(state.get("last_event_seq"))
+        if stored_generation is None or stored_revision is None or first is None or last is None or first > last + 1:
+            raise RuntimeError("Desktop event cursor metadata is invalid")
+        if stored_generation != generation:
+            state = self._new_state(generation, revision)
+            self._save_state_locked(state)
+            return state
+        if stored_revision != revision:
+            state["snapshot_revision"] = revision
+            self._save_state_locked(state)
+        return state
+
+    def _new_state(self, generation: int, revision: int) -> dict[str, int | str]:
+        return {
+            "schema_version": self._SCHEMA_VERSION,
+            "record_type": self._RECORD_TYPE,
+            "project_id": self._project_id,
+            "server_generation": generation,
+            "snapshot_revision": revision,
+            "first_event_seq": 1,
+            "last_event_seq": 0,
+        }
+
+    def _cursor_from_state(self, state: dict[str, Any]) -> dict[str, int]:
+        return {
+            "server_generation": int(state["server_generation"]),
+            "snapshot_revision": int(state["snapshot_revision"]),
+            "first_event_seq": int(state["first_event_seq"]),
+            "last_event_seq": int(state["last_event_seq"]),
+        }
+
+    def _load_state_locked(self) -> dict[str, Any] | None:
+        path = self._layout.ccbd_desktop_cursor_path
+        if not path.exists():
+            return None
+        value = JsonStore().load(path)
+        if not isinstance(value, dict):
+            raise RuntimeError("Desktop event cursor metadata is invalid")
+        return value
+
+    def _save_state_locked(self, state: dict[str, Any]) -> None:
+        JsonStore().save(self._layout.ccbd_desktop_cursor_path, dict(state))
+
+    def _read_rows_locked(self) -> list[dict[str, Any]]:
+        path = self._layout.ccbd_desktop_events_path
+        if not path.exists():
+            return []
+        rows: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                text = line.strip()
+                if not text:
+                    continue
+                value = json.loads(text)
+                if not isinstance(value, dict):
+                    raise RuntimeError("Desktop event log contains a non-object row")
+                rows.append(value)
+        return rows
+
+    def _write_rows_locked(self, rows: list[dict[str, Any]]) -> None:
+        ensure_durable_directory(self._layout.ccbd_desktop_events_path.parent)
+        text = "".join(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n" for row in rows)
+        atomic_write_text(self._layout.ccbd_desktop_events_path, text)
+
+    def _locked(self):
+        class _Lock:
+            def __init__(self, authority):
+                self.authority = authority
+                self.handle = None
+
+            def __enter__(self):
+                self.authority._lock.acquire()
+                try:
+                    ensure_durable_directory(self.authority._layout.ccbd_desktop_lock_path.parent)
+                    self.handle = self.authority._layout.ccbd_desktop_lock_path.open("a+", encoding="utf-8")
+                    try:
+                        import fcntl
+
+                        fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+                    except (ImportError, OSError):
+                        pass
+                    return self
+                except Exception:
+                    self.authority._lock.release()
+                    raise
+
+            def __exit__(self, exc_type, exc, tb):
+                try:
+                    if self.handle is not None:
+                        try:
+                            import fcntl
+
+                            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+                        except (ImportError, OSError):
+                            pass
+                        self.handle.close()
+                finally:
+                    self.authority._lock.release()
+
+        return _Lock(self)
 
 
 class DesktopApiError(ValueError):
@@ -130,6 +403,28 @@ class DesktopEventStream:
             )
             expected = self._after_seq + 1
             while self._stop_event is None or not self._stop_event.is_set():
+                try:
+                    readable, _writable, _exceptional = select.select(
+                        [conn], [], [], EVENT_POLL_INTERVAL_S
+                    )
+                except (OSError, ValueError):
+                    break
+                if readable:
+                    try:
+                        # Peek only: a Desktop stream never consumes a second
+                        # request frame.  EOF is the only client-side input
+                        # that is meaningful after subscribe.
+                        probe = conn.recv(1, socket.MSG_PEEK)
+                    except (BlockingIOError, InterruptedError):
+                        probe = None
+                    except (OSError, TimeoutError):
+                        break
+                    if probe == b"":
+                        break
+                    if probe:
+                        # Do not swallow a frame that belongs to the peer.  A
+                        # client that sends after subscribing must reconnect.
+                        break
                 cursor = self._adapter._authority_cursor()
                 if cursor["server_generation"] != self._generation:
                     raise DesktopApiError(
@@ -157,7 +452,7 @@ class DesktopEventStream:
                     expected = seq + 1
                     sent = True
                 if not sent:
-                    time.sleep(EVENT_POLL_INTERVAL_S)
+                    continue
         except DesktopApiError as exc:
             try:
                 self._write(
@@ -969,11 +1264,20 @@ class DesktopApiAdapter:
             except DesktopApiError:
                 cursor = None
         snapshot_ready = authority_ready and callable(self._snapshot_getter)
-        events_ready = authority_ready and callable(getattr(self._event_authority, "read_since", None))
+        events_ready = (
+            authority_ready
+            and callable(getattr(self._event_authority, "read_since", None))
+            and bool(getattr(self._event_authority, "events_capability_enabled", True))
+        )
+        events_reason = (
+            "CCBDSK_EVENT_COVERAGE_INCOMPLETE"
+            if authority_ready and not bool(getattr(self._event_authority, "events_capability_enabled", True))
+            else "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
+        )
         job_ready, job_reason = self._job_submit_readiness()
         values = [
             {"name": "snapshot", "enabled": snapshot_ready, **({} if snapshot_ready else {"reason_code": "CCBDSK_SNAPSHOT_UNAVAILABLE"})},
-            {"name": "events", "enabled": events_ready, **({"limits": {"retention": self._event_retention}} if events_ready else {"reason_code": "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"})},
+            {"name": "events", "enabled": events_ready, **({"limits": {"retention": self._event_retention}} if events_ready else {"reason_code": events_reason})},
             {"name": "job.submit", "enabled": job_ready, **({} if job_ready else {"reason_code": job_reason})},
         ]
         for name in ("project.open", "job.cancel", "job.retry", "terminal", "files", "git", "health", "config"):
@@ -1123,7 +1427,7 @@ def build_discovery(
     if lease is not None and generation is None:
         diagnostics.append({"code": "CCBDSK_AUTHORITY_UNAVAILABLE", "category": "generation_missing"})
     endpoint: dict[str, Any] | None = None
-    if lease is not None:
+    if lease is not None and generation is not None:
         try:
             endpoint = validate_unix_endpoint_descriptor(
                 {
@@ -1199,13 +1503,17 @@ def _jobs_from_view(view: dict[str, Any]) -> list[Any]:
 def _redacted_endpoint_descriptor(endpoint: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(endpoint, dict):
         return None
-    # Discovery is safe to print and log.  The actual locator remains inside
-    # the trusted CCB connection boundary and is never exposed as a path.
+    # Rust is the trusted Desktop transport client and needs a real locator to
+    # connect.  The descriptor is deliberately a transport-only object; it is
+    # not a React DTO and contains no project root or diagnostic text.
+    socket_path = endpoint.get("socket_path")
+    if not isinstance(socket_path, str) or not Path(socket_path).is_absolute():
+        return None
     return {
         key: value
         for key, value in endpoint.items()
-        if key not in {"socket_path", "legacy_socket_path", "address"}
-    } | {"socket_locator": "<redacted-unix-socket>"}
+        if key not in {"legacy_socket_path", "address"}
+    }
 
 
 def _probe_endpoint_peer_uid(path: str, *, timeout_s: float) -> tuple[int, str]:
@@ -1283,6 +1591,7 @@ __all__ = [
     "DISCOVERY_SCHEMA_VERSION",
     "DesktopApiAdapter",
     "DesktopApiError",
+    "DesktopEventAuthority",
     "PeerCredentials",
     "build_discovery",
     "current_peer_credentials",

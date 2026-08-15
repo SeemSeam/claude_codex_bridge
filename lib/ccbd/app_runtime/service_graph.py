@@ -210,6 +210,9 @@ def _publish_service_graph_fields(app, graph: CcbdServiceGraph) -> None:
     app.runtime_supervision = graph.runtime_supervision
     app.completion_tracker = graph.completion_tracker
     app.dispatcher = graph.dispatcher
+    desktop_authority = getattr(app, 'desktop_event_authority', None)
+    if desktop_authority is not None:
+        setattr(graph.dispatcher, '_desktop_event_authority', desktop_authority)
     app.project_view_service = graph.project_view_service
     app.project_focus_service = graph.project_focus_service
     app.health_monitor = graph.health_monitor
