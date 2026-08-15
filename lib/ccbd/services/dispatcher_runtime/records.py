@@ -97,6 +97,12 @@ def _publish_desktop_event(dispatcher, record: JobRecord, event_type: str, paylo
         # Legacy dispatcher writes remain authoritative even if the optional
         # Desktop projection is temporarily unavailable; Desktop then fails
         # closed on its durable cursor rather than fabricating a sequence.
+        record_failure = getattr(authority, 'record_failure', None)
+        if callable(record_failure):
+            try:
+                record_failure('CCBDSK_EVENT_AUTHORITY_UNAVAILABLE')
+            except Exception:
+                pass
         return
 
 

@@ -134,9 +134,14 @@ class DesktopApiM0ContractTests(unittest.TestCase):
         handshake = adapter.handle(_request("handshake"))
         self.assertTrue(handshake["ok"])
         self.assertEqual(handshake["payload"]["snapshot_revision"], 1)
+        self.assertEqual(
+            handshake["payload"]["event_coverage"],
+            {"scope": "scoped", "complete": False, "event_types": ["job.accepted", "job.updated"]},
+        )
         snapshot = adapter.handle(_request("snapshot", request_id="req_snapshot"))
         self.assertTrue(snapshot["ok"])
         self.assertEqual(snapshot["payload"]["revision"], 1)
+        self.assertEqual(snapshot["payload"]["event_coverage"]["scope"], "scoped")
         self.assertEqual(snapshot["payload"]["project"]["project_root_display"], "<project>")
         self.assertNotIn(str(adapter.project_root), json.dumps(snapshot))
 
@@ -321,6 +326,69 @@ class DesktopApiM0ContractTests(unittest.TestCase):
         self.assertEqual(published[0]["type"], "job.accepted")
         self.assertEqual(published[0]["payload"]["job_id"], "job-1")
 
+    def test_publish_failure_records_diagnostic_and_disables_events_without_losing_core_event(self):
+        class FailingAuthority(_EventAuthority):
+            def __init__(self):
+                super().__init__()
+                self.failure_code = None
+                self.events_capability_enabled = True
+
+            def publish(self, event):
+                del event
+                raise RuntimeError("projection unavailable")
+
+            def record_failure(self, code):
+                self.failure_code = code
+                self.events_capability_enabled = False
+
+            def record_recovery(self):
+                self.failure_code = None
+                self.events_capability_enabled = True
+
+        class EventStore:
+            def __init__(self):
+                self.events = []
+
+            def append(self, event):
+                self.events.append(event)
+
+        class Dispatcher:
+            _layout = type("Layout", (), {"project_id": "project_fixture_1"})()
+
+            def mark_project_view_dirty(self):
+                return None
+
+            def _new_id(self, prefix):
+                return f"{prefix}-failure"
+
+        authority = FailingAuthority()
+        dispatcher = Dispatcher()
+        dispatcher._event_store = EventStore()
+        dispatcher._desktop_event_authority = authority
+        record = type(
+            "Record",
+            (),
+            {
+                "job_id": "job-failure",
+                "agent_name": "agent1",
+                "target_kind": TargetKind.AGENT,
+                "target_name": "agent1",
+            },
+        )()
+        append_event(dispatcher, record, "job_accepted", {"status": "accepted"}, timestamp="now")
+        self.assertEqual(len(dispatcher._event_store.events), 1)
+        self.assertEqual(authority.failure_code, "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+        adapter = self._adapter(authority=authority)
+        handshake = adapter.handle(_request("handshake"))
+        events = next(item for item in handshake["payload"]["capabilities"] if item["name"] == "events")
+        self.assertFalse(events["enabled"])
+        self.assertEqual(events["event_types"], ["job.accepted", "job.updated"])
+        self.assertEqual(events["reason_code"], "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE")
+        authority.record_recovery()
+        recovered = adapter.handle(_request("handshake", request_id="recovered"))
+        recovered_events = next(item for item in recovered["payload"]["capabilities"] if item["name"] == "events")
+        self.assertTrue(recovered_events["enabled"])
+
     def test_discovery_returns_connectable_locator_without_root_in_display_or_diagnostics(self):
         with tempfile.TemporaryDirectory(prefix="ccb-discovery-", dir="/tmp") as temp_dir:
             base = Path(temp_dir)
@@ -330,7 +398,9 @@ class DesktopApiM0ContractTests(unittest.TestCase):
             ensure_project_identity(root)
             layout = PathLayout(root)
             layout.ensure_runtime_state_root()
-            socket_path = base / "ccbd.sock"
+            socket_path = Path(layout.ccbd_socket_path).resolve()
+            socket_path.parent.mkdir(parents=True, exist_ok=True)
+            socket_path.parent.chmod(0o700)
             listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 listener.bind(str(socket_path))

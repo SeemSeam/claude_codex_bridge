@@ -47,6 +47,7 @@ _EVENT_TYPES = frozenset(
         "diagnostic.created",
     }
 )
+_SUPPORTED_DESKTOP_EVENT_TYPES = ("job.accepted", "job.updated")
 _TOP_LEVEL_FIELDS = frozenset(
     {
         "protocol_version",
@@ -92,10 +93,10 @@ class DesktopEventAuthority:
 
     _SCHEMA_VERSION = 1
     _RECORD_TYPE = "ccbd_desktop_event_cursor"
-    # M0 projects only the reviewed job transitions.  Until the remaining
-    # Core event families have explicit mappings, discovery/handshake must not
-    # claim a complete Desktop events capability.
-    events_capability_enabled = False
+    # M0 exposes only the reviewed job transition projection.  Other Core
+    # event families remain deliberately outside this capability.
+    events_capability_enabled = True
+    supported_event_types = _SUPPORTED_DESKTOP_EVENT_TYPES
 
     def __init__(
         self,
@@ -112,8 +113,23 @@ class DesktopEventAuthority:
         self._revision_getter = revision_getter
         self._retention = max(1, int(retention))
         self._lock = threading.RLock()
+        self._failure_code: str | None = None
         if not self._project_id:
             raise ValueError("Desktop event authority requires project_id")
+
+    @property
+    def failure_code(self) -> str | None:
+        return self._failure_code
+
+    def record_failure(self, code: str = "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE") -> None:
+        """Record a stable projection failure without affecting legacy Core writes."""
+        normalized = str(code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE").strip()
+        self._failure_code = normalized or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
+        self.events_capability_enabled = False
+
+    def record_recovery(self) -> None:
+        self._failure_code = None
+        self.events_capability_enabled = True
 
     def cursor(self) -> dict[str, int]:
         with self._locked():
@@ -223,6 +239,7 @@ class DesktopEventAuthority:
             state["last_event_seq"] = seq
             state["snapshot_revision"] = event_revision
             self._save_state_locked(state)
+            self.record_recovery()
             return dict(record)
 
     @staticmethod
@@ -996,6 +1013,7 @@ class DesktopApiAdapter:
             "server_generation": cursor["server_generation"],
             "snapshot_revision": cursor["snapshot_revision"],
             "last_event_seq": cursor["last_event_seq"],
+            "event_coverage": self._event_coverage(),
             "capabilities": self.capabilities(cursor=cursor),
         }
         if self.ccb_version:
@@ -1052,6 +1070,7 @@ class DesktopApiAdapter:
             "jobs": list(view.get("jobs") or _jobs_from_view(view)),
             "activities": list(view.get("activities") or []),
             "health": self._health(view),
+            "event_coverage": self._event_coverage(),
             "capabilities": self.capabilities(cursor=cursor),
             "last_event_seq": cursor["last_event_seq"],
         }
@@ -1256,6 +1275,21 @@ class DesktopApiAdapter:
                     details={"evidence": "unknown_event_fields"},
                 )
 
+    def _event_coverage(self) -> dict[str, Any]:
+        authority = self._event_authority
+        raw_types = getattr(authority, "supported_event_types", _SUPPORTED_DESKTOP_EVENT_TYPES)
+        event_types = tuple(
+            event_type for event_type in (str(value).strip() for value in raw_types)
+            if event_type in _SUPPORTED_DESKTOP_EVENT_TYPES
+        )
+        if not event_types:
+            event_types = _SUPPORTED_DESKTOP_EVENT_TYPES
+        return {
+            "scope": "scoped",
+            "complete": False,
+            "event_types": list(event_types),
+        }
+
     def capabilities(self, *, cursor: dict[str, int] | None = None) -> list[dict[str, Any]]:
         authority_ready = cursor is not None
         if cursor is None:
@@ -1267,17 +1301,30 @@ class DesktopApiAdapter:
         events_ready = (
             authority_ready
             and callable(getattr(self._event_authority, "read_since", None))
+            and callable(getattr(self._event_authority, "publish", None))
             and bool(getattr(self._event_authority, "events_capability_enabled", True))
         )
+        failure_code = str(getattr(self._event_authority, "failure_code", "") or "").strip()
         events_reason = (
-            "CCBDSK_EVENT_COVERAGE_INCOMPLETE"
+            failure_code or "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
             if authority_ready and not bool(getattr(self._event_authority, "events_capability_enabled", True))
             else "CCBDSK_EVENT_AUTHORITY_UNAVAILABLE"
         )
         job_ready, job_reason = self._job_submit_readiness()
+        event_coverage = self._event_coverage()
+        event_capability = {
+            "name": "events",
+            "enabled": events_ready,
+            "coverage": event_coverage,
+            "event_types": event_coverage["event_types"],
+        }
+        if events_ready:
+            event_capability["limits"] = {"retention": self._event_retention}
+        else:
+            event_capability["reason_code"] = events_reason
         values = [
             {"name": "snapshot", "enabled": snapshot_ready, **({} if snapshot_ready else {"reason_code": "CCBDSK_SNAPSHOT_UNAVAILABLE"})},
-            {"name": "events", "enabled": events_ready, **({"limits": {"retention": self._event_retention}} if events_ready else {"reason_code": events_reason})},
+            event_capability,
             {"name": "job.submit", "enabled": job_ready, **({} if job_ready else {"reason_code": job_reason})},
         ]
         for name in ("project.open", "job.cancel", "job.retry", "terminal", "files", "git", "health", "config"):
