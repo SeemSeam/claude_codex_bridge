@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -84,6 +85,7 @@ def test_workspace_status_keeps_other_untracked_file_dirty_even_with_owned_bindi
     assert workspace_is_dirty(plan.workspace_path, binding_authority=authority) is True
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='Windows does not permit newline in file names')
 def test_workspace_status_handles_unusual_untracked_filename_without_losing_it(tmp_path: Path) -> None:
     _project_root, plan, authority = _managed_worktree(tmp_path)
     (plan.workspace_path / 'user\nartifact.txt').write_text('keep me\n', encoding='utf-8')
