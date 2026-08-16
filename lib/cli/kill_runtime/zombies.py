@@ -35,6 +35,8 @@ def _list_tmux_sessions() -> list[str]:
             ["tmux", "list-sessions", "-F", "#{session_name}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
     except Exception:

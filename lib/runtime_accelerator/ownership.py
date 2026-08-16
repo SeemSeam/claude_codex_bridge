@@ -465,6 +465,8 @@ def _read_process_start_token(pid: int) -> str:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except Exception:
         return ""
@@ -479,6 +481,8 @@ def _read_process_cwd_via_lsof(pid: int) -> Path | None:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except Exception:
         return None
@@ -497,6 +501,8 @@ def _read_process_executable_via_lsof(pid: int) -> Path | None:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except Exception:
         return None
