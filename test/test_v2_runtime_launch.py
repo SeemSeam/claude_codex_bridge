@@ -3347,6 +3347,40 @@ def test_claude_launcher_provider_command_template_wraps_command_after_env_prefi
     assert 'sandbox=1 unset ANTHROPIC_BASE_URL' not in start_cmd
 
 
+def test_claude_launcher_uses_exec_inside_herdr_shell_wrapper(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runtime_dir = tmp_path / 'runtime-claude-herdr-exec'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec(
+        'reviewer',
+        provider='claude',
+        provider_command_template='sandbox=1 {command} omx',
+    )
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=False, auto_permission=False)
+    prepared_state = _claude_prepared_state(runtime_dir)
+    prepared_state['ccb_backend_impl'] = 'herdr'
+
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: False)
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=runtime_dir, has_history=False),
+    )
+
+    start_cmd = claude_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'claude-sess-herdr-exec',
+        prepared_state=prepared_state,
+    )
+
+    assert '; sandbox=1 exec claude --setting-sources user,project,local omx' in start_cmd
+    assert 'exec sandbox=1' not in start_cmd
+
+
 def test_claude_launcher_build_start_cmd_forks_linked_continuation(
     monkeypatch,
     tmp_path: Path,
@@ -5006,6 +5040,44 @@ def test_gemini_launcher_build_start_cmd_uses_isolated_profile_api_env(tmp_path:
     assert 'unset GEMINI_API_KEY' in start_cmd
     assert f'GEMINI_API_KEY={shlex.quote("gemini-key")}' in start_cmd
     assert start_cmd.endswith('gemini')
+
+
+@pytest.mark.parametrize(
+    ('backend_impl', 'expects_exec'),
+    (
+        ('herdr', True),
+        (None, False),
+    ),
+)
+def test_gemini_launcher_uses_exec_only_inside_herdr_shell_wrapper(
+    backend_impl: str | None,
+    expects_exec: bool,
+    tmp_path: Path,
+) -> None:
+    runtime_dir = tmp_path / 'runtime-gemini-herdr-exec'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec(
+        'reviewer',
+        provider='gemini',
+        provider_command_template='sandbox=1 {command} omx',
+    )
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=False, auto_permission=False)
+    prepared_state: dict[str, object] = {'project_root': tmp_path}
+    if backend_impl is not None:
+        prepared_state['ccb_backend_impl'] = backend_impl
+
+    start_cmd = gemini_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'gemini-sess-herdr-exec',
+        prepared_state=prepared_state,
+    )
+
+    expected_command = '; sandbox=1 exec gemini omx' if expects_exec else '; sandbox=1 gemini omx'
+    assert expected_command in start_cmd
+    assert ('exec gemini' in start_cmd) is expects_exec
+    assert 'exec sandbox=1' not in start_cmd
 
 
 def test_gemini_launcher_build_start_cmd_exports_user_session_transport_without_runtime_leaks(

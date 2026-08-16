@@ -82,6 +82,13 @@ def build_start_cmd(
         cmd_parts.extend(["--resume", "latest"])
     cmd_parts.extend(spec.startup_args)
     cmd = " ".join(shlex.quote(str(part)) for part in cmd_parts)
+    # Herdr starts a PowerShell wrapper which invokes sh.exe. Replace that
+    # shell from inside the POSIX command so Herdr sees Gemini as the pane's
+    # foreground process. Apply this before a provider template is expanded:
+    # e.g. `sandbox=1 {command}` becomes `sandbox=1 exec gemini`, not
+    # `exec sandbox=1 gemini`.
+    if str(launch_context.get('ccb_backend_impl') or '').strip() == 'herdr':
+        cmd = f'exec {cmd}'
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     env_prefix = join_env_prefix(
         build_gemini_env_prefix(profile=profile, extra_env=spec.env),
