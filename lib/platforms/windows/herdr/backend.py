@@ -213,6 +213,22 @@ class HerdrBackend(TerminalBackend):
             session_path=session_path,
         )
 
+    def release_pane_agent(
+        self,
+        pane: MuxPaneRefV2,
+        *,
+        provider_kind: str,
+        seq: int | None = None,
+    ) -> MuxOperationEvidenceV2:
+        pane_ref = self._pane_ref(pane, operation="release_pane_agent")
+        self._capability_gate.require_supported("release_pane_agent")
+        self._client.server_info()
+        return self._client.release_pane_agent(
+            pane_ref,
+            provider_kind=provider_kind,
+            seq=seq,
+        )
+
     def describe_pane(
         self,
         pane_id: str,

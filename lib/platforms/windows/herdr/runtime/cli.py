@@ -75,6 +75,8 @@ class HerdrCliRequestAdapter:
             return self._set_pane_identity(payload)
         if operation == "report_pane_agent":
             return self._report_pane_agent(payload)
+        if operation == "release_pane_agent":
+            return self._release_pane_agent(payload)
         if operation == "respawn_pane":
             return self._respawn_pane(payload)
         if operation == "pane_process_info":
@@ -573,6 +575,40 @@ class HerdrCliRequestAdapter:
             "pane_id": pane_id,
             "provider_kind": provider_kind,
             "state": state,
+        }
+
+    def _release_pane_agent(self, payload: Mapping[str, object]) -> Mapping[str, object]:
+        # 释放 CCB 对该面板生命周期状态的“权威”，把状态判定交还 Herdr 原生检测。
+        # 用于方案 A：CCB 不再用 report-agent 钉死 state，避免侧栏冻结在陈旧状态。
+        pane_id = str(payload.get("pane_id") or "").strip()
+        session_name = _session_name_from_payload(payload, fallback_session_name=self._session_name)
+        provider_kind = str(payload.get("provider_kind") or "").strip()
+        if not pane_id:
+            raise self._failed("release_pane_agent", "requires pane_id", session_name=session_name)
+        if not provider_kind:
+            raise self._failed("release_pane_agent", "requires provider_kind", session_name=session_name)
+        args = [
+            "pane",
+            "release-agent",
+            pane_id,
+            "--source",
+            _METADATA_SOURCE,
+            "--agent",
+            provider_kind,
+        ]
+        seq = payload.get("seq")
+        if seq is not None and str(seq).strip():
+            args.extend(["--seq", str(seq).strip()])
+        self._command(
+            "release_pane_agent",
+            args,
+            expect_json=False,
+            session_name=session_name,
+        )
+        return {
+            "status": "ok",
+            "pane_id": pane_id,
+            "provider_kind": provider_kind,
         }
 
     def _respawn_pane(self, payload: Mapping[str, object]) -> Mapping[str, object]:
