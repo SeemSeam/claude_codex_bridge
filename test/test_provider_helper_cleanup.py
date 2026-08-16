@@ -20,6 +20,16 @@ def _write_helper(path, *, runtime_generation: int = 1, leader_pid: int = 777, p
     )
 
 
+def _patch_posix_os(monkeypatch, killed: list[tuple[int, int]]) -> None:
+    os_proxy = SimpleNamespace(
+        name='posix',
+        getpgrp=lambda: 999,
+        killpg=lambda pgid, sig: killed.append((pgid, int(sig))) or None,
+        kill=lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None,
+    )
+    monkeypatch.setattr('provider_runtime.helper_cleanup.os', os_proxy)
+
+
 def test_save_helper_manifest_skips_identical_atomic_rewrite(tmp_path) -> None:
     path = tmp_path / 'helper.json'
     manifest = ProviderHelperManifest(
@@ -46,13 +56,7 @@ def test_cleanup_stale_runtime_helper_reaps_superseded_manifest(tmp_path, monkey
     _write_helper(helper_path, runtime_generation=1, leader_pid=777, pgid=888)
     killed: list[tuple[int, int]] = []
 
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.name', 'posix')
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.getpgrp', lambda: 999)
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.killpg', lambda pgid, sig: killed.append((pgid, int(sig))) or None)
-    monkeypatch.setattr(
-        'provider_runtime.helper_cleanup.os.kill',
-        lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None,
-    )
+    _patch_posix_os(monkeypatch, killed)
 
     reaped = cleanup_stale_runtime_helper(
         layout,
@@ -96,13 +100,7 @@ def test_cleanup_stale_runtime_helper_requires_canonical_runtime_generation(tmp_
     _write_helper(helper_path, runtime_generation=3, leader_pid=777, pgid=888)
     killed: list[tuple[int, int]] = []
 
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.name', 'posix')
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.getpgrp', lambda: 999)
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.killpg', lambda pgid, sig: killed.append((pgid, int(sig))) or None)
-    monkeypatch.setattr(
-        'provider_runtime.helper_cleanup.os.kill',
-        lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None,
-    )
+    _patch_posix_os(monkeypatch, killed)
 
     reaped = cleanup_stale_runtime_helper(
         layout,
@@ -127,13 +125,7 @@ def test_terminate_helper_manifest_path_clears_file_when_leader_is_gone(tmp_path
     _write_helper(helper_path, leader_pid=501, pgid=601)
     killed: list[tuple[int, int]] = []
 
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.name', 'posix')
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.getpgrp', lambda: 999)
-    monkeypatch.setattr('provider_runtime.helper_cleanup.os.killpg', lambda pgid, sig: killed.append((pgid, int(sig))) or None)
-    monkeypatch.setattr(
-        'provider_runtime.helper_cleanup.os.kill',
-        lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None,
-    )
+    _patch_posix_os(monkeypatch, killed)
 
     assert terminate_helper_manifest_path(helper_path) is True
     assert helper_path.exists() is False
