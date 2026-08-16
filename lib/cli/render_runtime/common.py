@@ -93,6 +93,10 @@ def render_worktree_retirements(items: Sequence[object]) -> tuple[str, ...]:
             f'reason={getattr(item, "reason", "")} '
             f'branch={branch_name} '
             f'removed_agent_state={_tri_state(getattr(item, "removed_agent_state", None))} '
+            f'cleanup_deferred={_tri_state(getattr(item, "cleanup_deferred", None))} '
+            f'cleanup_deferred_persisted={_tri_state(getattr(item, "cleanup_deferred_persisted", None))} '
+            f'cleanup_marker_cleared={_tri_state(getattr(item, "cleanup_marker_cleared", None))} '
+            f'cleanup_reason={cleanup_field(getattr(item, "cleanup_reason", None), default="-")} '
             f'path={workspace_path}'
         )
     return tuple(lines)
