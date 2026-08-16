@@ -11,13 +11,13 @@ def test_current_workspace_versions_match() -> None:
 
     assert admission["status"] == "ready"
     assert admission["baseline_version_status"] == "matching"
-    assert admission["version"] == "8.6.6"
+    assert admission["version"] == "8.6.7"
 
 
 def test_mismatched_version_blocks_release_route(tmp_path: Path) -> None:
-    (tmp_path / "VERSION").write_text("8.6.6-beta.1\n", encoding="utf-8")
+    (tmp_path / "VERSION").write_text("8.6.7-beta.1\n", encoding="utf-8")
     (tmp_path / "package.json").write_text(
-        json.dumps({"version": "8.6.6"}), encoding="utf-8"
+        json.dumps({"version": "8.6.7"}), encoding="utf-8"
     )
 
     admission = windows_x64_release_surface_baseline_version_admission(tmp_path)

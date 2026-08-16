@@ -4,4 +4,4 @@ version = 4
 
 [[package]]
 name = "ccb-windows-launcher"
-version = "8.6.6"
+version = "8.6.7"

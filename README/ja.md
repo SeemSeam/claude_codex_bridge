@@ -6,7 +6,7 @@
 **Codex、Claude、Gemini などの CLI Agent を、見える・制御できる・直接引き継げるワークフローで連携**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -182,9 +182,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App の詳細、安全境界、ソース</b></summary>
 
-CCB 8.6.6 では Flutter 版 CCB Mobile のソースが [`mobile/`](../mobile/) に含まれ、Android APK は GitHub Releases で公開されています。
+CCB 8.6.7 では Flutter 版 CCB Mobile のソースが [`mobile/`](../mobile/) に含まれ、Android APK は GitHub Releases で公開されています。
 
-- [CCB Mobile v8.6.6 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [CCB Mobile v8.6.7 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.7/ccb-mobile-v8.6.7.apk)
 - App ソース：[`mobile/app`](../mobile/app)
 - サーバー gateway ソース：[`lib/mobile_gateway`](../lib/mobile_gateway)
 

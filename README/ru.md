@@ -6,7 +6,7 @@
 **Координируйте Codex, Claude, Gemini и другие CLI Agent в видимых и управляемых процессах, которые можно напрямую взять под контроль**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -182,9 +182,9 @@ ccb update mobile
 <details>
 <summary><b>Детали Mobile App, граница безопасности и исходники</b></summary>
 
-CCB 8.6.6 включает Flutter source CCB Mobile в [`mobile/`](../mobile/) и публикует Android APK через GitHub Releases:
+CCB 8.6.7 включает Flutter source CCB Mobile в [`mobile/`](../mobile/) и публикует Android APK через GitHub Releases:
 
-- [Скачать CCB Mobile v8.6.6 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [Скачать CCB Mobile v8.6.7 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.7/ccb-mobile-v8.6.7.apk)
 - Исходники app: [`mobile/app`](../mobile/app)
 - Исходники server gateway: [`lib/mobile_gateway`](../lib/mobile_gateway)
 

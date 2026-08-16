@@ -103,7 +103,7 @@ def compute_projection(
 
     # -- metadata -----------------------------------------------------------
     ccb_version = _str_or(matrix.get("ccb_version"), None)
-    release_version_matches = ccb_version == "8.6.6"
+    release_version_matches = ccb_version == "8.6.7"
     source_status = _source_status(str(matrix.get("ccb_source_status") or ""))
     release_source_matches = source_status == "matching-release"
 
@@ -452,7 +452,7 @@ def _relative_artifact_ref(
 
 def ccb_version_gate(raw: str | None) -> str | None:
     """Gate the support matrix to the Windows beta release under test."""
-    if raw == "8.6.6":
+    if raw == "8.6.7":
         return raw
     return None
 

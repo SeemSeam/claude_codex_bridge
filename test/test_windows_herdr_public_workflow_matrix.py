@@ -60,7 +60,7 @@ def _supported_matrix() -> dict[str, object]:
         "backend_impl": "herdr",
         "os_platform": "win32",
         "cpu_arch": "x64",
-        "ccb_version": "8.6.6",
+        "ccb_version": "8.6.7",
         "ccb_source_status": "matching-release",
         "herdr_version": "0.1.0",
         "herdr_auto_restore_mode": "disabled",

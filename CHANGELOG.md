@@ -1,5 +1,19 @@
 # Changelog
 
+## v8.6.7 (2026-08-16)
+
+- Added the first CCB Desktop API v1 contract slice for project-scoped
+  discovery, same-UID Unix descriptor validation, handshake, snapshot,
+  supported job events, generation recovery, and action receipts.
+- Added fail-closed authority checks for project root, UID, permissions,
+  protocol version, event capability, and request scope; stale generations do
+  not silently mutate desktop state.
+- Preserved the existing API v2 path and isolated Desktop API behavior from
+  the existing CLI and Mobile release surfaces.
+- Focused Desktop API contract tests pass (`25 passed`); no Desktop application,
+  Rust/Tauri integration, signing/notarization, or installed-client
+  compatibility promise is included in this release.
+
 ## v8.6.6 (2026-08-15)
 
 - Restarted an already-running installed Mobile Host after a successful

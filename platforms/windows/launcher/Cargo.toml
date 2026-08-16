@@ -1,6 +1,6 @@
 [package]
 name = "ccb-windows-launcher"
-version = "8.6.6"
+version = "8.6.7"
 edition = "2021"
 publish = false
 

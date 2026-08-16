@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -240,9 +240,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.6.6 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.6.7 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.6.6 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [Download CCB Mobile v8.6.7 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.7/ccb-mobile-v8.6.7.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -331,6 +331,15 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.6.7</b> - First CCB Desktop API v1 contract slice</summary>
+
+- Add project-scoped Desktop API discovery, same-UID Unix descriptor validation, handshake, snapshot, supported job events, generation recovery, and action receipts for a future macOS desktop client.
+- Fail closed on project root, UID, permissions, protocol version, event capability, request scope, and stale generations; preserve the existing API v2 path and existing CLI/Mobile release surfaces.
+- Focused Desktop API contract tests pass (`25 passed`). This release does not include a Desktop application, Rust/Tauri integration, signing/notarization, or an installed-client compatibility promise.
+
+</details>
+
+<details>
 <summary><b>v8.6.6</b> - Mobile continuity and Provider-safe recovery</summary>
 
 - Restart an active installed Mobile Host after `ccb update` without rotating pairing, and prevent valid large Relay terminal-history snapshots from stalling before the first credit update.

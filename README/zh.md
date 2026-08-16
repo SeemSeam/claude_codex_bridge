@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.7-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -211,9 +211,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.6 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.7 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.6 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [下载 CCB Mobile v8.6.7 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.7/ccb-mobile-v8.6.7.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -302,6 +302,15 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.6.7</b> - 首个 CCB Desktop API v1 契约切片</summary>
+
+- 为未来 macOS 桌面端新增项目范围 Desktop API discovery、同 UID Unix descriptor 校验、handshake、snapshot、受支持 job 事件、generation 恢复和 action receipt。
+- 对 project root、UID、权限、协议版本、事件 capability、请求范围及过期 generation 执行 fail-closed；保留既有 API v2 路径与 CLI/Mobile 发布面。
+- Desktop API focused contract tests 为 `25 passed`。本版本不包含完整 Desktop 应用、Rust/Tauri 集成、签名/公证或已安装客户端兼容承诺。
+
+</details>
+
+<details>
 <summary><b>v8.6.6</b> - Mobile 连续性与 Provider 安全恢复</summary>
 
 - `ccb update` 后自动重启正在运行的已安装版 Mobile Host，保留配对信息；同时避免合法的大型 Relay 终端历史快照在首次额度更新前卡住。
