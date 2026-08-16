@@ -651,8 +651,15 @@ class DesktopApiM0ContractTests(unittest.TestCase):
             self.assertIs(app.dispatcher._desktop_event_authority, app.desktop_event_authority)
             request = _request("handshake", project_id=app.project_id)
             self.assertTrue(adapter.handle(request)["ok"])
+            missing_app = SimpleNamespace(
+                project_id=app.project_id,
+                project_root=app.project_root,
+                lease=app.lease,
+                clock=app.clock,
+                desktop_event_authority=None,
+            )
             missing = DesktopApiAdapter(
-                app,
+                missing_app,
                 project_id=app.project_id,
                 generation_getter=lambda: 9,
                 snapshot_getter=lambda: {},
