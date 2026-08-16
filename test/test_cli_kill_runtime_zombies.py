@@ -85,6 +85,24 @@ def test_find_all_zombie_sessions_filters_dead_parents() -> None:
     ]
 
 
+def test_list_tmux_sessions_uses_utf8_replacement(monkeypatch) -> None:
+    os_proxy = SimpleNamespace(name='posix')
+    calls: list[dict] = []
+
+    monkeypatch.setattr(zombies, 'os', os_proxy)
+    monkeypatch.setattr(zombies.shutil, 'which', lambda name: 'tmux')
+
+    def fake_run(*args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(returncode=0, stdout='gemini-123-worker\n')
+
+    monkeypatch.setattr(zombies.subprocess, 'run', fake_run)
+
+    assert zombies._list_tmux_sessions() == ['gemini-123-worker']
+    assert calls[0]['encoding'] == 'utf-8'
+    assert calls[0]['errors'] == 'replace'
+
+
 def test_kill_global_zombies_reports_partial_failures(capsys) -> None:
     code = zombies.kill_global_zombies(
         yes=True,
