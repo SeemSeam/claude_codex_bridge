@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import sys
+import time
 
-from agents.models import AgentSpec, WorkspaceMode
-from agents.store import AgentSpecStore
+from agents.models import AgentRuntime, AgentSpec, AgentState, WorkspaceMode, normalize_agent_name
+from agents.store import AgentRuntimeStore, AgentSpecStore
+from cli.kill_runtime.processes import is_pid_alive
 from project.ids import compute_project_id
 from project.resolver import ProjectContext
+from storage.atomic import atomic_write_json
 from storage.paths import PathLayout
 
 from .git_worktree import (
@@ -22,6 +27,10 @@ from .git_worktree import (
     workspace_is_dirty,
 )
 from .planner import WorkspacePlanner
+
+
+_RMTREE_RETRY_DELAYS_S = (0.05, 0.1, 0.2)
+_CLEANUP_DEFERRED_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -47,6 +56,27 @@ class WorkspaceRetirement:
     workspace_path: str
     reason: str
     removed_agent_state: bool = False
+    cleanup_deferred: bool = False
+    cleanup_reason: str | None = None
+    cleanup_deferred_persisted: bool | None = None
+    cleanup_marker_cleared: bool | None = None
+
+
+@dataclass(frozen=True)
+class AgentStateCleanupResult:
+    removed: bool
+    deferred: bool = False
+    reason: str | None = None
+    deferred_persisted: bool | None = None
+    marker_cleared: bool | None = None
+
+
+@dataclass(frozen=True)
+class _AgentStateCleanupDecision:
+    can_remove: bool
+    reason: str | None = None
+    runtime_state: str | None = None
+    live_pids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -62,11 +92,13 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
     project_ctx = _project_context(root)
     persisted_specs = _load_persisted_specs(paths)
     desired_specs = dict(config.agents)
+    deferred_cleanup = _load_deferred_cleanup(paths)
 
     warnings: list[WorktreeAlert] = []
     blockers: list[WorktreeAlert] = []
     pending_worktree_retirements: list[tuple[AgentSpec, str, bool, bool]] = []
     pending_state_cleanup: list[tuple[str, str]] = []
+    pending_state_cleanup_names: set[str] = set()
 
     for agent_name, persisted_spec in persisted_specs.items():
         desired_spec = desired_specs.get(agent_name)
@@ -78,6 +110,7 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
             if persisted_plan.workspace_scope == 'external':
                 if desired_spec is None:
                     pending_state_cleanup.append((agent_name, 'removed_from_config'))
+                    pending_state_cleanup_names.add(agent_name)
                 continue
             alert = _inspect_worktree(root, project_ctx, persisted_spec, reason=reason)
             if alert.needs_merge:
@@ -92,6 +125,13 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
             continue
         if desired_spec is None:
             pending_state_cleanup.append((agent_name, 'removed_from_config'))
+            pending_state_cleanup_names.add(agent_name)
+
+    for agent_name in deferred_cleanup:
+        if agent_name in desired_specs or agent_name in pending_state_cleanup_names:
+            continue
+        pending_state_cleanup.append((agent_name, 'deferred_cleanup_retry'))
+        pending_state_cleanup_names.add(agent_name)
 
     for spec in desired_specs.values():
         if spec.workspace_mode is not WorkspaceMode.GIT_WORKTREE:
@@ -122,14 +162,18 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
             )
         )
     for agent_name, reason in pending_state_cleanup:
-        _remove_agent_state(paths, agent_name)
+        cleanup = _remove_agent_state(paths, agent_name)
         retired.append(
             WorkspaceRetirement(
                 agent_name=agent_name,
                 branch_name=None,
                 workspace_path='',
                 reason=reason,
-                removed_agent_state=True,
+                removed_agent_state=cleanup.removed,
+                cleanup_deferred=cleanup.deferred,
+                cleanup_reason=cleanup.reason,
+                cleanup_deferred_persisted=cleanup.deferred_persisted,
+                cleanup_marker_cleared=cleanup.marker_cleared,
             )
         )
 
@@ -290,41 +334,224 @@ def _retire_worktree_spec(
         if plan.branch_name:
             delete_branch(project_root, plan.branch_name)
     if remove_agent_state:
-        _remove_agent_state(paths, spec.name)
+        cleanup = _remove_agent_state(paths, spec.name)
+    else:
+        cleanup = AgentStateCleanupResult(removed=False)
     return WorkspaceRetirement(
         agent_name=spec.name,
         branch_name=plan.branch_name,
         workspace_path=str(plan.workspace_path),
         reason=reason,
-        removed_agent_state=remove_agent_state,
+        removed_agent_state=cleanup.removed,
+        cleanup_deferred=cleanup.deferred,
+        cleanup_reason=cleanup.reason,
+        cleanup_deferred_persisted=cleanup.deferred_persisted,
+        cleanup_marker_cleared=cleanup.marker_cleared,
     )
 
 
-def _remove_agent_state(paths: PathLayout, agent_name: str) -> None:
-    for target in (paths.agent_dir(agent_name), paths.agent_mailbox_dir(agent_name)):
-        if target.is_symlink() or target.is_file():
-            target.unlink()
+def _remove_agent_state(paths: PathLayout, agent_name: str) -> AgentStateCleanupResult:
+    decision = _agent_state_cleanup_decision(paths, agent_name)
+    if not decision.can_remove:
+        deferred_persisted = _write_cleanup_deferred(paths, agent_name, decision)
+        return AgentStateCleanupResult(
+            removed=False,
+            deferred=True,
+            reason=decision.reason,
+            deferred_persisted=deferred_persisted,
+        )
+
+    try:
+        for target in (paths.agent_dir(agent_name), paths.agent_mailbox_dir(agent_name)):
+            if target.is_symlink() or target.is_file():
+                target.unlink()
+                continue
+            if target.is_dir():
+                _rmtree_agent_state(target)
+    except PermissionError as exc:
+        if not _is_file_in_use_error(exc):
+            raise
+        decision = _AgentStateCleanupDecision(
+            can_remove=False,
+            reason='file_in_use',
+        )
+        deferred_persisted = _write_cleanup_deferred(paths, agent_name, decision)
+        return AgentStateCleanupResult(
+            removed=False,
+            deferred=True,
+            reason=decision.reason,
+            deferred_persisted=deferred_persisted,
+        )
+
+    marker_cleared = _clear_cleanup_deferred(paths, agent_name)
+    return AgentStateCleanupResult(
+        removed=True,
+        reason=None if marker_cleared else 'deferred_marker_clear_failed',
+        marker_cleared=marker_cleared,
+    )
+
+
+def _agent_state_cleanup_decision(
+    paths: PathLayout,
+    agent_name: str,
+) -> _AgentStateCleanupDecision:
+    runtime_path = paths.agent_runtime_path(agent_name)
+    if not runtime_path.exists():
+        return _AgentStateCleanupDecision(can_remove=True)
+
+    try:
+        runtime = AgentRuntimeStore(paths).load(agent_name)
+    except Exception:
+        return _AgentStateCleanupDecision(
+            can_remove=False,
+            reason='runtime_unreadable',
+        )
+    if runtime is None:
+        return _AgentStateCleanupDecision(
+            can_remove=False,
+            reason='runtime_unknown',
+        )
+
+    live_pids = _live_runtime_pids(runtime)
+    if live_pids:
+        return _AgentStateCleanupDecision(
+            can_remove=False,
+            reason='runtime_process_alive',
+            runtime_state=runtime.state.value,
+            live_pids=live_pids,
+        )
+    if runtime.state is not AgentState.STOPPED:
+        return _AgentStateCleanupDecision(
+            can_remove=False,
+            reason=f'runtime_state_{runtime.state.value}',
+            runtime_state=runtime.state.value,
+        )
+    return _AgentStateCleanupDecision(
+        can_remove=True,
+        runtime_state=runtime.state.value,
+    )
+
+
+def _live_runtime_pids(runtime: AgentRuntime) -> tuple[int, ...]:
+    live: list[int] = []
+    for value in (runtime.pid, runtime.runtime_pid):
+        try:
+            pid = int(value or 0)
+        except (TypeError, ValueError):
             continue
-        if target.is_dir():
-            _rmtree_agent_state(target)
+        if pid <= 0 or pid in live:
+            continue
+        if is_pid_alive(pid):
+            live.append(pid)
+    return tuple(live)
+
+
+def _write_cleanup_deferred(
+    paths: PathLayout,
+    agent_name: str,
+    decision: _AgentStateCleanupDecision,
+) -> bool:
+    payload = {
+        'schema_version': _CLEANUP_DEFERRED_SCHEMA_VERSION,
+        'record_type': 'agent_cleanup_deferred',
+        'agent_name': agent_name,
+        'reason': decision.reason or 'unknown',
+        'runtime_state': decision.runtime_state,
+        'live_pids': list(decision.live_pids),
+        'created_at': _utc_now(),
+    }
+    try:
+        atomic_write_json(paths.agent_cleanup_deferred_path(agent_name), payload)
+    except OSError:
+        # Cleanup must remain non-destructive even if the marker cannot be written.
+        return False
+    return True
+
+
+def _clear_cleanup_deferred(paths: PathLayout, agent_name: str) -> bool:
+    try:
+        paths.agent_cleanup_deferred_path(agent_name).unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _load_deferred_cleanup(paths: PathLayout) -> dict[str, str]:
+    root = paths.runtime_state_root / 'state' / 'agent-cleanup'
+    if not root.is_dir():
+        return {}
+    deferred: dict[str, str] = {}
+    for marker in sorted(root.glob('*.json')):
+        try:
+            payload = json.loads(marker.read_text(encoding='utf-8'))
+            if not isinstance(payload, dict):
+                continue
+            if payload.get('schema_version') != _CLEANUP_DEFERRED_SCHEMA_VERSION:
+                continue
+            agent_name = normalize_agent_name(str(payload.get('agent_name') or marker.stem))
+            if agent_name != marker.stem:
+                continue
+            if payload.get('record_type') != 'agent_cleanup_deferred':
+                continue
+        except (OSError, UnicodeError, ValueError, TypeError):
+            continue
+        deferred[agent_name] = str(payload.get('reason') or 'deferred_cleanup_retry')
+    return deferred
 
 
 def _rmtree_agent_state(target: Path) -> None:
-    if sys.version_info >= (3, 12):
-        shutil.rmtree(target, onexc=_retry_remove_readonly)
-        return
+    attempts = len(_RMTREE_RETRY_DELAYS_S) + 1
+    for attempt in range(attempts):
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(target, onexc=_retry_remove_readonly)
+            else:
+                def onerror(function, path, exc_info) -> None:
+                    _retry_remove_readonly(function, path, exc_info[1])
 
-    def onerror(function, path, exc_info) -> None:
-        _retry_remove_readonly(function, path, exc_info[1])
-
-    shutil.rmtree(target, onerror=onerror)
+                shutil.rmtree(target, onerror=onerror)
+            return
+        except PermissionError as exc:
+            if not _is_file_in_use_error(exc) or attempt >= attempts - 1:
+                raise
+            time.sleep(_RMTREE_RETRY_DELAYS_S[attempt])
 
 
 def _retry_remove_readonly(function, path, excinfo) -> None:
     if not isinstance(excinfo, PermissionError):
         raise excinfo
+    if _is_file_in_use_error(excinfo):
+        _retry_file_in_use(function, path, excinfo)
+        return
     os.chmod(path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
     function(path)
+
+
+def _retry_file_in_use(function, path, exc: PermissionError) -> None:
+    last_error = exc
+    for delay in _RMTREE_RETRY_DELAYS_S:
+        time.sleep(delay)
+        try:
+            function(path)
+            return
+        except PermissionError as retry_error:
+            if not _is_file_in_use_error(retry_error):
+                raise
+            last_error = retry_error
+    raise last_error
+
+
+def _is_file_in_use_error(exc: PermissionError) -> bool:
+    if int(getattr(exc, 'winerror', 0) or 0) == 32:
+        return True
+    message = str(exc).lower()
+    return 'being used' in message or 'used by another process' in message
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def _workspace_binding_authority(plan) -> WorkspaceBindingAuthority:
@@ -430,6 +657,7 @@ def _state_text(value: bool | None) -> str:
 
 
 __all__ = [
+    'AgentStateCleanupResult',
     'WorkspaceGuardSummary',
     'WorkspaceRetirement',
     'WorktreeAlert',
