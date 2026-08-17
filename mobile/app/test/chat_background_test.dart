@@ -29,8 +29,12 @@ void main() {
 
       expect(await store.read(), isNull);
       final first = await store.save(_selection());
-      expect(await File(first.imagePath).exists(), isTrue);
+      expect(await File(first.imagePath!).exists(), isTrue);
       expect((await store.read())?.imagePath, first.imagePath);
+
+      final adjusted = await store.updateSurfaceOpacity(0.4);
+      expect(adjusted?.surfaceOpacity, closeTo(0.4, 0.001));
+      expect((await store.read())?.surfaceOpacity, closeTo(0.4, 0.001));
 
       final replacementBytes = Uint8List.fromList([..._pngBytes, 0]);
       final replacement = await store.save(
@@ -38,13 +42,19 @@ void main() {
           fileName: 'replacement.png',
           bytes: replacementBytes,
         ),
+        surfaceOpacity: 0.4,
       );
       expect(replacement.imagePath, isNot(first.imagePath));
-      expect(await File(first.imagePath).exists(), isFalse);
+      expect(await File(first.imagePath!).exists(), isFalse);
       expect((await store.read())?.imagePath, replacement.imagePath);
 
       await store.clear();
       expect(await store.read(), isNull);
+
+      final opacityOnly = await store.updateSurfaceOpacity(0.36);
+      expect(opacityOnly?.imagePath, isNull);
+      expect(opacityOnly?.surfaceOpacity, closeTo(0.36, 0.001));
+      expect((await store.read())?.surfaceOpacity, closeTo(0.36, 0.001));
     },
   );
 
@@ -119,6 +129,17 @@ void main() {
       find.byKey(const ValueKey('chat-background-settings-preview')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('chat-background-surface-opacity')),
+      findsOneWidget,
+    );
+    final opacitySlider = tester.widget<Slider>(
+      find.byKey(const ValueKey('chat-background-surface-opacity')),
+    );
+    opacitySlider.onChanged!(0.4);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect((await store.read())?.surfaceOpacity, closeTo(0.4, 0.001));
     expect(await store.read(), isNotNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -169,6 +190,11 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byKey(const ValueKey('project-list-screen')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ccb-workspace-background')),
+      findsOneWidget,
+    );
     await openCurrentProject(tester);
 
     final workspace = find.byKey(const ValueKey('ccb-workspace-background'));
@@ -194,6 +220,19 @@ void main() {
         matching: backgroundImage,
       ),
       findsNothing,
+    );
+    final bubbleMaterials = find.byWidgetPredicate(
+      (widget) =>
+          widget is Material &&
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'conversation-item-',
+          ),
+    );
+    expect(bubbleMaterials, findsWidgets);
+    expect(
+      tester.widget<Material>(bubbleMaterials.first).color!.a,
+      closeTo(ccbDefaultWorkspaceSurfaceOpacity, 0.02),
     );
 
     await tester.tap(find.byKey(const ValueKey('open-agent-terminal-button')));
@@ -234,10 +273,26 @@ class _MemoryChatBackgroundStore implements CcbChatBackgroundStore {
 
   @override
   Future<CcbChatBackgroundPreference> save(
-    CcbChatBackgroundSelection selection,
-  ) async {
-    final next = CcbChatBackgroundPreference(imagePath: imagePath);
+    CcbChatBackgroundSelection selection, {
+    double surfaceOpacity = ccbDefaultWorkspaceSurfaceOpacity,
+  }) async {
+    final next = CcbChatBackgroundPreference(
+      imagePath: imagePath,
+      surfaceOpacity: surfaceOpacity,
+    );
     preference = next;
     return next;
+  }
+
+  @override
+  Future<CcbChatBackgroundPreference?> updateSurfaceOpacity(
+    double opacity,
+  ) async {
+    final current = preference;
+    if (current == null) {
+      return null;
+    }
+    preference = current.copyWith(surfaceOpacity: opacity);
+    return preference;
   }
 }

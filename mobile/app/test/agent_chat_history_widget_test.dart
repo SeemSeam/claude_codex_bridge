@@ -352,7 +352,7 @@ void main() {
   });
 
   testWidgets(
-    'expanding bottom bubble scrolls it to top and collapse restores',
+    'expanding bottom bubble reveals its bottom and collapse restores',
     (tester) async {
       await setTestSurfaceSize(tester, const Size(390, 844));
       await tester.pumpWidget(
@@ -379,16 +379,18 @@ void main() {
       await tapVisible(tester, const ValueKey('conversation-expand-long-159'));
       await tester.pumpAndSettle();
 
-      final timelineTop =
+      final timelineBottom =
           tester
-              .getTopLeft(find.byKey(const ValueKey('agent-chat-timeline')))
+              .getBottomRight(find.byKey(const ValueKey('agent-chat-timeline')))
               .dy;
-      final itemTop =
+      final itemBottom =
           tester
-              .getTopLeft(find.byKey(conversationTimelineItemKey('long-159')))
+              .getBottomRight(
+                find.byKey(conversationTimelineItemKey('long-159')),
+              )
               .dy;
 
-      expect((itemTop - timelineTop).abs(), lessThan(128));
+      expect(timelineBottom - itemBottom, lessThan(80));
       expect(
         tester
             .getSize(

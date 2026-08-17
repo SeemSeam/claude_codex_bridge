@@ -426,6 +426,8 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
               _expandedTimelineOffsetKey(agentName, itemId),
             );
     if (shouldReveal) {
+      _uiControllers.cancelTimelineAutoFollow(agentName);
+      _uiControllers.cancelTimelineEndAnchor(agentName);
       final controller = _scrollController(agentName);
       if (controller.hasClients) {
         _preExpansionTimelineOffsets[_expandedTimelineOffsetKey(
@@ -439,7 +441,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
       _chatController.toggleExpandedItem(agentName, itemId);
     });
     if (shouldReveal) {
-      _scrollExpandedItemToTop(itemId);
+      _scrollExpandedItemToBottom(agentName, itemId);
     } else if (restoreOffset != null) {
       _restoreTimelineOffset(agentName, restoreOffset);
     }
@@ -449,9 +451,17 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
     return '$agentName:$itemId';
   }
 
-  void _scrollExpandedItemToTop(String itemId) {
+  void _scrollExpandedItemToBottom(String agentName, String itemId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!mounted || widget.agent?.name != agentName) {
+        return;
+      }
+      final controller = _scrollController(agentName);
+      if (!controller.hasClients) {
+        return;
+      }
+      if (_latestTimelineItemId(agentName) == itemId) {
+        _scrollTimelineToEnd(agentName);
         return;
       }
       final itemContext = _expandedTimelineItemKey(itemId).currentContext;
@@ -460,7 +470,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
       }
       Scrollable.ensureVisible(
         itemContext,
-        alignment: 0,
+        alignment: 1,
         duration: selectedAgentExpandScrollDuration,
         curve: Curves.easeOutCubic,
       );

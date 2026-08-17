@@ -75,6 +75,10 @@ class AgentChatUiControllerStore {
     controller.anchorToEndForNextLayout();
   }
 
+  void cancelTimelineEndAnchor(String agentName) {
+    _scrollControllers[agentName]?.cancelEndAnchorForNextLayout();
+  }
+
   bool isTimelineNearEnd(String agentName) {
     final controller = _scrollControllers[agentName];
     if (controller == null || !controller.hasClients) {
@@ -261,6 +265,11 @@ class _AgentChatTimelineScrollController extends ScrollController {
   bool get shouldAnchorToEndForNextLayout => _anchorToEndForNextLayout;
 
   void consumeEndAnchor() {
+    _anchorToEndForNextLayout = false;
+  }
+
+  void cancelEndAnchorForNextLayout() {
+    _anchorGeneration += 1;
     _anchorToEndForNextLayout = false;
   }
 

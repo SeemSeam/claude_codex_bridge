@@ -74,7 +74,9 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = CcbMobileLocalizations.of(context);
-    return Scaffold(
+    final hasBackground = ccbWorkspaceBackgroundEnabled(context);
+    final scaffold = Scaffold(
+      backgroundColor: hasBackground ? Colors.transparent : null,
       body: SafeArea(
         child: Padding(
           key: const ValueKey('project-list-screen'),
@@ -140,6 +142,7 @@ class ProjectHomeServerProjectListHost extends StatelessWidget {
         ),
       ),
     );
+    return CcbWorkspaceBackground(child: scaffold);
   }
 }
 

@@ -480,9 +480,22 @@ void main() {
     );
     expect(tester.getSize(viewportFinder).height, greaterThan(420));
     expect(find.byType(Scrollbar), findsOneWidget);
+
+    final bodyScrollView = tester.widget<SingleChildScrollView>(
+      find
+          .descendant(
+            of: viewportFinder,
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first,
+    );
+    expect(
+      bodyScrollView.controller!.position.pixels,
+      closeTo(bodyScrollView.controller!.position.maxScrollExtent, 1),
+    );
   });
 
-  testWidgets('expanded bubble keeps a floating collapse action visible', (
+  testWidgets('expanded bubble keeps collapse action in the header', (
     tester,
   ) async {
     final toggledIds = <String>[];
@@ -507,11 +520,14 @@ void main() {
       ),
     );
 
-    final floatingButton = find.byKey(
-      const ValueKey('conversation-floating-collapse-long-reply'),
+    expect(
+      find.byKey(const ValueKey('conversation-floating-collapse-long-reply')),
+      findsNothing,
     );
-    expect(floatingButton, findsOneWidget);
-    expect(tester.widget<Opacity>(floatingButton).opacity, closeTo(0.78, 0.01));
+    expect(
+      find.byKey(const ValueKey('conversation-expand-long-reply')),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('conversation-expand-long-reply')),
@@ -735,6 +751,70 @@ void main() {
     );
   });
 
+  testWidgets(
+    'collapsed attachment rows stay inside expanded message content',
+    (tester) async {
+      var expanded = false;
+      final item = CcbConversationItem(
+        id: 'msg-with-file',
+        agentName: 'mobile',
+        kind: CcbConversationItemKind.agentReply,
+        title: 'Agent reply',
+        body: List.generate(80, (index) => 'line $index').join('\n'),
+        attachments: const [
+          CcbMessageAttachment(
+            fileId: 'file-inside',
+            fileName: 'notes.txt',
+            mimeType: 'text/plain',
+            sizeBytes: 2048,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder:
+                (context, setState) => Scaffold(
+                  body: ConversationBubble(
+                    item: item,
+                    expanded: expanded,
+                    onToggleExpanded: (_) {
+                      setState(() => expanded = true);
+                    },
+                    onDownloadAttachment: (_) {},
+                  ),
+                ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(
+          const ValueKey('conversation-attachment-list-msg-with-file'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('conversation-expand-msg-with-file')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('conversation-body-viewport-msg-with-file'),
+          ),
+          matching: find.byKey(
+            const ValueKey('conversation-attachment-list-msg-with-file'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('conversation attachments expose download and progress states', (
     tester,
   ) async {
@@ -764,14 +844,18 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ConversationBubble(
-            item: item,
-            expanded: true,
-            onToggleExpanded: (_) {},
-            downloadingAttachmentIds: const {'file-2'},
-            onDownloadAttachment: (attachment) {
-              downloads.add(attachment.fileId);
-            },
+          body: ListView(
+            children: [
+              ConversationBubble(
+                item: item,
+                expanded: true,
+                onToggleExpanded: (_) {},
+                downloadingAttachmentIds: const {'file-2'},
+                onDownloadAttachment: (attachment) {
+                  downloads.add(attachment.fileId);
+                },
+              ),
+            ],
           ),
         ),
       ),
@@ -780,6 +864,25 @@ void main() {
     expect(
       find.byKey(const ValueKey('conversation-attachment-list-msg-1')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('conversation-body-viewport-msg-1')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('conversation-item-msg-1')),
+        matching: find.byKey(
+          const ValueKey('conversation-attachment-list-msg-1'),
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('conversation-item-msg-1')))
+          .height,
+      lessThan(220),
     );
     expect(
       find.byKey(const ValueKey('conversation-attachment-chip-file-1')),

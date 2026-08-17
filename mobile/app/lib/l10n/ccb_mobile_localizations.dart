@@ -164,6 +164,9 @@ class CcbMobileLocalizations {
           ? '选择一张本机图片作为聊天和终端的全屏背景。图片只保存在此设备，不会上传到 CCB。'
           : 'Choose a local image as the full-screen background for chats and terminals. It stays on this device and is never uploaded to CCB.';
 
+  String get chatBackgroundSurfaceOpacity =>
+      isChinese ? '内容表面不透明度' : 'Content surface opacity';
+
   String get chooseChatBackground => isChinese ? '选择图片' : 'Choose image';
 
   String get replaceChatBackground => isChinese ? '更换图片' : 'Replace image';

@@ -68,6 +68,7 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
       widget.chatBackgroundStore ?? FlutterCcbChatBackgroundStore();
   CcbThemePreference _themePreference = CcbThemePreference.system;
   CcbChatBackgroundPreference? _chatBackgroundPreference;
+  Future<void> _chatBackgroundOpacityWrite = Future<void>.value();
   CcbTerminalShortcutPreferences _terminalShortcutPreferences =
       CcbTerminalShortcutPreferences.defaults;
   Future<void> _terminalShortcutPreferenceWrite = Future<void>.value();
@@ -211,7 +212,12 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     if (selection == null) {
       return;
     }
-    final preference = await _chatBackgroundStore.save(selection);
+    final preference = await _chatBackgroundStore.save(
+      selection,
+      surfaceOpacity:
+          _chatBackgroundPreference?.surfaceOpacity ??
+          ccbDefaultWorkspaceSurfaceOpacity,
+    );
     if (!mounted) {
       return;
     }
@@ -228,6 +234,38 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     setState(() {
       _chatBackgroundPreference = null;
     });
+  }
+
+  Future<void> _setChatBackgroundSurfaceOpacity(double opacity) async {
+    final current = _chatBackgroundPreference;
+    if (current == null) {
+      return;
+    }
+    final normalized = opacity.clamp(
+      ccbMinWorkspaceSurfaceOpacity,
+      ccbMaxWorkspaceSurfaceOpacity,
+    ).toDouble();
+    setState(() {
+      _chatBackgroundPreference = current.copyWith(
+        surfaceOpacity: normalized,
+      );
+    });
+    _chatBackgroundOpacityWrite = _chatBackgroundOpacityWrite
+        .then((_) async {
+          try {
+            final saved = await _chatBackgroundStore.updateSurfaceOpacity(
+              normalized,
+            );
+            if (mounted && saved != null) {
+              setState(() {
+                _chatBackgroundPreference = saved;
+              });
+            }
+          } catch (_) {
+            // The in-memory value remains usable until the next app restart.
+          }
+        });
+    await _chatBackgroundOpacityWrite;
   }
 
   Future<void> _loadBackgroundConnectionPreference() async {
@@ -285,6 +323,7 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
         preference: _chatBackgroundPreference,
         onChoose: _chooseChatBackground,
         onClear: _clearChatBackground,
+        onSurfaceOpacityChanged: _setChatBackgroundSurfaceOpacity,
         child: CcbTerminalShortcutPreferencesScope(
           preferences: _terminalShortcutPreferences,
           onChanged: _setTerminalShortcutPreferences,

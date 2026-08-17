@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -286,6 +287,42 @@ class _ChatBackgroundSectionState extends State<_ChatBackgroundSection> {
                 ),
               ),
             ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.chatBackgroundSurfaceOpacity,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                Text(
+                  '${((widget.scope.preference?.surfaceOpacity ?? ccbDefaultWorkspaceSurfaceOpacity) * 100).round()}%',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            Slider(
+              key: const ValueKey('chat-background-surface-opacity'),
+              value:
+                  (widget.scope.preference?.surfaceOpacity ??
+                          ccbDefaultWorkspaceSurfaceOpacity)
+                      .clamp(
+                        ccbMinWorkspaceSurfaceOpacity,
+                        ccbMaxWorkspaceSurfaceOpacity,
+                      )
+                      .toDouble(),
+              min: ccbMinWorkspaceSurfaceOpacity,
+              max: ccbMaxWorkspaceSurfaceOpacity,
+              onChanged:
+                  _busy
+                      ? null
+                      : (value) => unawaited(
+                        widget.scope.onSurfaceOpacityChanged(value),
+                      ),
+            ),
             const SizedBox(height: 12),
             Row(
               children: [

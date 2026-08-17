@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/chat_background.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project_view.dart';
@@ -28,7 +29,9 @@ class ProjectListScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = CcbMobileLocalizations.of(context);
-    return Scaffold(
+    final hasBackground = ccbWorkspaceBackgroundEnabled(context);
+    final scaffold = Scaffold(
+      backgroundColor: hasBackground ? Colors.transparent : null,
       body: SafeArea(
         child: Padding(
           key: const ValueKey('project-list-screen'),
@@ -82,6 +85,7 @@ class ProjectListScaffold extends StatelessWidget {
         ),
       ),
     );
+    return CcbWorkspaceBackground(child: scaffold);
   }
 }
 
@@ -185,13 +189,17 @@ class _ProjectWorkingRowHighlightState
       return widget.child;
     }
     final colorScheme = Theme.of(context).colorScheme;
+    final tint = ccbWorkspaceSurfaceColor(
+      context,
+      projectWorkingRowTint(colorScheme),
+    );
     return Semantics(
       key: ValueKey('project-working-row-${widget.projectId}'),
       container: true,
       hint: 'Project has working agents',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: projectWorkingRowTint(colorScheme),
+          color: tint,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: projectWorkingRowBorder(

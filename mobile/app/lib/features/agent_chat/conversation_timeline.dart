@@ -16,7 +16,8 @@ import 'selected_agent_workspace_model.dart';
 const double conversationTimelineFollowLatestPadding = 6;
 const double conversationTimelineExpandedComposerRevealPadding = 20;
 const double conversationTimelineComposerRevealPadding = 32;
-const double conversationTimelineExpandedRevealPadding = 64;
+const double conversationTimelineExpandedRevealPadding =
+    conversationTimelineExpandedComposerRevealPadding;
 const double conversationTimelineNearEndThreshold = 120;
 const double conversationTimelineKeyboardInsetThreshold = 80;
 
