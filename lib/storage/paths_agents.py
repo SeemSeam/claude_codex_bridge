@@ -49,10 +49,6 @@ class AgentRuntimePathMixin:
     def agent_events_path(self, agent_name: str) -> Path:
         return self.agent_dir(agent_name) / 'events.jsonl'
 
-    def agent_cleanup_deferred_path(self, agent_name: str) -> Path:
-        normalized = normalize_agent_name(agent_name)
-        return self.runtime_state_root / 'state' / 'agent-cleanup' / f'{normalized}.json'
-
     def agent_provider_runtime_dir(self, agent_name: str, provider: str) -> Path:
         normalized_provider = str(provider or '').strip().lower()
         if not normalized_provider:

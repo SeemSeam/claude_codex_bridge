@@ -517,27 +517,6 @@ class HerdrSocketClient:
         )
         return _operation_evidence("report_pane_agent", pane, response, detail="pane agent reported")
 
-    def release_pane_agent(
-        self,
-        pane: MuxPaneRefV2,
-        *,
-        provider_kind: str,
-        seq: int | None = None,
-    ) -> MuxOperationEvidenceV2:
-        payload: dict[str, object] = {
-            "pane_id": pane["pane_id"],
-            "session_name": pane["session_name"],
-            "provider_kind": provider_kind,
-        }
-        if seq is not None:
-            payload["seq"] = seq
-        response = self._request(
-            "release_pane_agent",
-            payload,
-            require_status=True,
-        )
-        return _operation_evidence("release_pane_agent", pane, response, detail="pane agent released")
-
     def select_window(
         self,
         namespace: MuxNamespaceRefV2,

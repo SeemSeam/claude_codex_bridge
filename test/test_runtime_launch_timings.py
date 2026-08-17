@@ -165,8 +165,8 @@ def test_launch_tmux_runtime_uses_herdr_assigned_pane_ref_without_tmux_fallback(
         def set_pane_identity(self, pane, **kwargs):
             calls.append(('set_pane_identity', (dict(pane), dict(kwargs))))
 
-        def release_pane_agent(self, pane, **kwargs):
-            calls.append(('release_pane_agent', (dict(pane), dict(kwargs))))
+        def report_pane_agent(self, pane, **kwargs):
+            calls.append(('report_pane_agent', (dict(pane), dict(kwargs))))
 
         def capture_pane(self, pane, *, lines):
             calls.append(('capture_pane', (dict(pane), lines)))
@@ -228,14 +228,13 @@ def test_launch_tmux_runtime_uses_herdr_assigned_pane_ref_without_tmux_fallback(
     assert calls[2][0] == 'set_pane_identity'
     assert calls[2][1][0] == pane_ref
     assert calls[2][1][1]['project_id'] == 'project-test'
-    # 方案 A：启动时释放 CCB 生命周期权威（交还原生检测），不再 report 钉死 state。
-    assert calls[3][0] == 'release_pane_agent'
+    assert calls[3][0] == 'report_pane_agent'
     assert calls[3][1][0] == pane_ref
-    release_kwargs = calls[3][1][1]
-    assert release_kwargs['provider_kind'] == 'codex'
-    # seq 用启动时墙钟毫秒，保证能盖过此前小 seq 的陈旧上报；仅校验类型/正数。
-    assert isinstance(release_kwargs['seq'], int) and release_kwargs['seq'] > 0
-    assert 'state' not in release_kwargs
+    assert calls[3][1][1] == {
+        'provider_kind': 'codex',
+        'state': 'unknown',
+        'session_id': 'ccb-demo-session',
+    }
     assert ('build_session_payload', 'herdr-pane-1') in calls
     assert ('write_session_file', 'herdr-pane-1') in calls
 

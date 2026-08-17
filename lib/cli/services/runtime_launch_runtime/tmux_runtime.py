@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from time import monotonic_ns, time_ns
+from time import monotonic_ns
 
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
 from project_command_trust import require_runtime_provider_command_approval
@@ -179,10 +179,11 @@ def launch_runtime(
 
         stage_started_ns = monotonic_ns()
         try:
-            _release_runtime_pane_agent(
+            _report_runtime_pane_agent(
                 backend,
                 pane,
                 provider_kind=spec.provider,
+                session_id=launch_session_id,
             )
         finally:
             _record_elapsed_ms(timings_ms, 'pane_agent_report', stage_started_ns)
@@ -285,34 +286,24 @@ def _apply_runtime_pane_identity(
     )
 
 
-def _release_runtime_pane_agent(
+def _report_runtime_pane_agent(
     backend,
     pane,
     *,
     provider_kind: str,
+    session_id: str,
 ) -> None:
-    """方案 A：启动时释放 CCB 对该面板生命周期状态的“权威”，交还 Herdr 原生检测。
-
-    历史上 CCB 会 `report-agent --source ccb --state unknown` 夺取权威且此后不再更新，
-    导致侧栏 agents 面板状态冻结在 unknown（`state_change_seq` 不再前进）。改为在启动/
-    respawn 时释放权威：对全新面板是无害 no-op；对被夺权过的存量面板（respawn 复用同一
-    pane_id）则清掉陈旧 ccb 记录，让原生检测重新接管状态。best-effort，绝不因此中断启动。
-    """
     if not (isinstance(pane, dict) and str(pane.get('backend_impl') or '').strip() == 'herdr'):
         return
-    releaser = getattr(backend, 'release_pane_agent', None)
-    if not callable(releaser):
-        return
-    try:
-        # seq 用启动时的墙钟毫秒：跨 CCB 重启仍单调递增，确保能盖过此前小 seq 的陈旧上报。
-        releaser(
-            dict(pane),
-            provider_kind=provider_kind,
-            seq=time_ns() // 1_000_000,
-        )
-    except Exception:
-        # 释放失败（例如该面板本就无 ccb 权威记录）不影响启动；原生检测仍会接管新进程。
-        return
+    reporter = getattr(backend, 'report_pane_agent', None)
+    if not callable(reporter):
+        raise RuntimeError('Herdr backend does not support report_pane_agent')
+    reporter(
+        dict(pane),
+        provider_kind=provider_kind,
+        state='unknown',
+        session_id=session_id,
+    )
 
 
 def _runtime_backend_family(pane, namespace_ref: dict[str, object] | None) -> str:

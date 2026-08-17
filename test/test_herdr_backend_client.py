@@ -4153,53 +4153,6 @@ def test_herdr_cli_request_adapter_reports_pane_agent() -> None:
     ]
 
 
-def test_herdr_cli_request_adapter_releases_pane_agent() -> None:
-    commands: list[list[str]] = []
-
-    def run_fn(command, **kwargs):
-        commands.append(list(command))
-        return _completed("")
-
-    adapter = HerdrCliRequestAdapter(
-        session_name="ccb-demo",
-        herdr_executable="herdr",
-        run_fn=run_fn,
-        which_fn=lambda name: "herdr",
-    )
-
-    result = adapter(
-        "release_pane_agent",
-        {
-            "pane_id": "w1:p2",
-            "session_name": "ccb-demo",
-            "provider_kind": "claude",
-            "seq": 1234,
-        },
-    )
-
-    assert result == {
-        "status": "ok",
-        "pane_id": "w1:p2",
-        "provider_kind": "claude",
-    }
-    assert commands == [
-        [
-            "herdr",
-            "--session",
-            "ccb-demo",
-            "pane",
-            "release-agent",
-            "w1:p2",
-            "--source",
-            "ccb",
-            "--agent",
-            "claude",
-            "--seq",
-            "1234",
-        ]
-    ]
-
-
 def test_herdr_cli_request_adapter_is_alive_maps_command_not_found_to_false() -> None:
     def run_fn(command, **kwargs):
         raise _called_process_error(command, stderr="pane not found")

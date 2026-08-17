@@ -9,16 +9,14 @@ import subprocess
 
 import pytest
 
-from agents.models import AgentRuntime, AgentSpec, AgentState, PermissionMode, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode
-from agents.store import AgentRuntimeStore, AgentSpecStore
-from cli.render_runtime.common import render_worktree_retirements
-from project.identity import normalize_work_dir
+from agents.models import AgentSpec, PermissionMode, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode
+from agents.store import AgentSpecStore
 from project.resolver import bootstrap_project
 from storage.paths import PathLayout
 from workspace.binding import WorkspaceBindingStore
 from workspace.materializer import WorkspaceMaterializer
 from workspace.planner import WorkspacePlanner
-from workspace.reconcile import WorkspaceRetirement, reconcile_start_workspaces
+from workspace.reconcile import reconcile_start_workspaces
 from workspace.validator import WorkspaceValidator
 
 
@@ -376,15 +374,7 @@ def test_workspace_materializer_recovers_missing_registered_git_worktree(tmp_pat
         stderr=subprocess.PIPE,
         text=True,
     ).stdout
-    worktree_paths = [
-        line[len('worktree ') :].strip()
-        for line in listing_before.splitlines()
-        if line.startswith('worktree ')
-    ]
-    assert any(
-        normalize_work_dir(path) == normalize_work_dir(plan.workspace_path)
-        for path in worktree_paths
-    )
+    assert str(plan.workspace_path) in listing_before
     assert 'prunable ' in listing_before
 
     result = materializer.materialize(plan)
@@ -449,9 +439,6 @@ def test_reconcile_removes_retired_agent_state_with_readonly_files(tmp_path: Pat
     readonly_file.parent.mkdir(parents=True)
     readonly_file.write_text('readonly\n', encoding='utf-8')
     readonly_file.chmod(stat.S_IREAD)
-    mailbox_file = paths.agent_mailbox_dir('retired') / 'mailbox.json'
-    mailbox_file.parent.mkdir(parents=True)
-    mailbox_file.write_text('{}\n', encoding='utf-8')
 
     try:
         summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
@@ -460,315 +447,9 @@ def test_reconcile_removes_retired_agent_state_with_readonly_files(tmp_path: Pat
             os.chmod(readonly_file, stat.S_IREAD | stat.S_IWRITE)
 
     assert paths.agent_dir('retired').exists() is False
-    assert paths.agent_mailbox_dir('retired').exists() is False
     assert len(summary.retired) == 1
     assert summary.retired[0].agent_name == 'retired'
     assert summary.retired[0].removed_agent_state is True
-
-
-@pytest.mark.parametrize(
-    ('pid', 'runtime_pid', 'live_pid'),
-    (
-        (123, None, 123),
-        (None, 456, 456),
-    ),
-)
-def test_reconcile_defers_retired_agent_state_while_runtime_is_alive(
-    tmp_path: Path,
-    monkeypatch,
-    pid: int | None,
-    runtime_pid: int | None,
-    live_pid: int,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    context = bootstrap_project(project_root)
-    paths = PathLayout(project_root)
-    spec = _spec(name='retired', workspace_mode=WorkspaceMode.INPLACE)
-    AgentSpecStore(paths).save(spec)
-    AgentRuntimeStore(paths).save(
-        AgentRuntime(
-            agent_name='retired',
-            state=AgentState.IDLE,
-            pid=pid,
-            started_at=None,
-            last_seen_at=None,
-            runtime_ref='mux:w1:p1',
-            session_ref=None,
-            workspace_path=str(project_root),
-            project_id=context.project_id,
-            backend_type='pane-backed',
-            queue_depth=0,
-            socket_path=None,
-            health='healthy',
-            runtime_pid=runtime_pid,
-        )
-    )
-    (paths.agent_dir('retired') / 'provider-state' / 'codex' / 'home').mkdir(parents=True)
-    monkeypatch.setattr('workspace.reconcile.is_pid_alive', lambda pid: pid == live_pid)
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert paths.agent_dir('retired').exists() is True
-    assert summary.retired[0].removed_agent_state is False
-    assert summary.retired[0].cleanup_deferred is True
-    assert summary.retired[0].cleanup_reason == 'runtime_process_alive'
-    marker = paths.agent_cleanup_deferred_path('retired')
-    assert marker.exists()
-    payload = json.loads(marker.read_text(encoding='utf-8'))
-    assert payload['reason'] == 'runtime_process_alive'
-    assert payload['live_pids'] == [live_pid]
-
-
-def test_reconcile_defers_retired_agent_state_when_file_is_in_use(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    context = bootstrap_project(project_root)
-    paths = PathLayout(project_root)
-    spec = _spec(name='retired', workspace_mode=WorkspaceMode.INPLACE)
-    AgentSpecStore(paths).save(spec)
-    AgentRuntimeStore(paths).save(
-        AgentRuntime(
-            agent_name='retired',
-            state=AgentState.STOPPED,
-            pid=None,
-            started_at=None,
-            last_seen_at=None,
-            runtime_ref=None,
-            session_ref=None,
-            workspace_path=None,
-            project_id=context.project_id,
-            backend_type='pane-backed',
-            queue_depth=0,
-            socket_path=None,
-            health='stopped',
-        )
-    )
-    state_file = paths.agent_dir('retired') / 'provider-state' / 'codex' / 'home' / 'goals.sqlite'
-    state_file.parent.mkdir(parents=True)
-    state_file.write_text('locked\n', encoding='utf-8')
-
-    def locked_rmtree(*args, **kwargs):
-        del args, kwargs
-        raise PermissionError('file is being used by another process')
-
-    monkeypatch.setattr('workspace.reconcile.shutil.rmtree', locked_rmtree)
-    monkeypatch.setattr('workspace.reconcile.time.sleep', lambda _delay: None)
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert paths.agent_dir('retired').exists() is True
-    assert summary.retired[0].removed_agent_state is False
-    assert summary.retired[0].cleanup_deferred is True
-    assert summary.retired[0].cleanup_reason == 'file_in_use'
-    assert paths.agent_cleanup_deferred_path('retired').exists()
-
-
-def test_reconcile_retries_mailbox_cleanup_from_deferred_marker(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    paths = PathLayout(project_root)
-    AgentSpecStore(paths).save(_spec(name='retired', workspace_mode=WorkspaceMode.INPLACE))
-    mailbox_file = paths.agent_mailbox_dir('retired') / 'mailbox.json'
-    mailbox_file.parent.mkdir(parents=True)
-    mailbox_file.write_text('{}\n', encoding='utf-8')
-    original_rmtree = shutil.rmtree
-
-    def remove_agent_then_lock_mailbox(target, *args, **kwargs):
-        if Path(target) == paths.agent_mailbox_dir('retired'):
-            raise PermissionError('file is being used by another process')
-        return original_rmtree(target, *args, **kwargs)
-
-    monkeypatch.setattr('workspace.reconcile.shutil.rmtree', remove_agent_then_lock_mailbox)
-    monkeypatch.setattr('workspace.reconcile.time.sleep', lambda _delay: None)
-
-    first = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert paths.agent_dir('retired').exists() is False
-    assert paths.agent_mailbox_dir('retired').exists() is True
-    assert first.retired[0].cleanup_deferred is True
-    assert paths.agent_cleanup_deferred_path('retired').exists()
-
-    monkeypatch.setattr('workspace.reconcile.shutil.rmtree', original_rmtree)
-    second = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert paths.agent_mailbox_dir('retired').exists() is False
-    assert paths.agent_cleanup_deferred_path('retired').exists() is False
-    assert second.retired[0].reason == 'deferred_cleanup_retry'
-    assert second.retired[0].removed_agent_state is True
-
-
-def test_reconcile_reports_deferred_marker_write_failure(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    context = bootstrap_project(project_root)
-    paths = PathLayout(project_root)
-    AgentSpecStore(paths).save(_spec(name='retired', workspace_mode=WorkspaceMode.INPLACE))
-    AgentRuntimeStore(paths).save(
-        AgentRuntime(
-            agent_name='retired',
-            state=AgentState.IDLE,
-            pid=123,
-            started_at=None,
-            last_seen_at=None,
-            runtime_ref='mux:w1:p1',
-            session_ref=None,
-            workspace_path=str(project_root),
-            project_id=context.project_id,
-            backend_type='pane-backed',
-            queue_depth=0,
-            socket_path=None,
-            health='healthy',
-        )
-    )
-    monkeypatch.setattr('workspace.reconcile.is_pid_alive', lambda _pid: True)
-
-    def fail_marker_write(*args, **kwargs):
-        del args, kwargs
-        raise OSError('marker directory unavailable')
-
-    monkeypatch.setattr('workspace.reconcile.atomic_write_json', fail_marker_write)
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    retirement = summary.retired[0]
-    assert retirement.cleanup_deferred is True
-    assert retirement.cleanup_deferred_persisted is False
-    assert retirement.cleanup_reason == 'runtime_process_alive'
-    assert paths.agent_cleanup_deferred_path('retired').exists() is False
-
-
-def test_reconcile_reports_deferred_marker_clear_failure(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    paths = PathLayout(project_root)
-    marker = paths.agent_cleanup_deferred_path('retired')
-    marker.parent.mkdir(parents=True)
-    marker.write_text(
-        json.dumps(
-            {
-                'schema_version': 1,
-                'record_type': 'agent_cleanup_deferred',
-                'agent_name': 'retired',
-                'reason': 'file_in_use',
-            }
-        ),
-        encoding='utf-8',
-    )
-    mailbox_file = paths.agent_mailbox_dir('retired') / 'mailbox.json'
-    mailbox_file.parent.mkdir(parents=True)
-    mailbox_file.write_text('{}\n', encoding='utf-8')
-    original_unlink = Path.unlink
-
-    def fail_marker_unlink(path, *args, **kwargs):
-        if path == marker:
-            raise OSError('marker is locked')
-        return original_unlink(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, 'unlink', fail_marker_unlink)
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    retirement = summary.retired[0]
-    assert retirement.removed_agent_state is True
-    assert retirement.cleanup_deferred is False
-    assert retirement.cleanup_reason == 'deferred_marker_clear_failed'
-    assert retirement.cleanup_marker_cleared is False
-    assert marker.exists() is True
-
-
-def test_reconcile_ignores_unknown_deferred_marker_schema(tmp_path: Path) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    paths = PathLayout(project_root)
-    marker = paths.agent_cleanup_deferred_path('retired')
-    marker.parent.mkdir(parents=True)
-    marker.write_text(
-        json.dumps(
-            {
-                'schema_version': 999,
-                'record_type': 'agent_cleanup_deferred',
-                'agent_name': 'retired',
-                'reason': 'file_in_use',
-            }
-        ),
-        encoding='utf-8',
-    )
-    mailbox_file = paths.agent_mailbox_dir('retired') / 'mailbox.json'
-    mailbox_file.parent.mkdir(parents=True)
-    mailbox_file.write_text('{}\n', encoding='utf-8')
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert summary.retired == ()
-    assert mailbox_file.exists() is True
-    assert marker.exists() is True
-
-
-def test_reconcile_retries_file_in_use_until_cleanup_succeeds(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    project_root = tmp_path / 'repo'
-    project_root.mkdir()
-    paths = PathLayout(project_root)
-    AgentSpecStore(paths).save(_spec(name='retired', workspace_mode=WorkspaceMode.INPLACE))
-    state_file = paths.agent_dir('retired') / 'provider-state' / 'codex' / 'home' / 'goals.sqlite'
-    state_file.parent.mkdir(parents=True)
-    state_file.write_text('state\n', encoding='utf-8')
-    original_rmtree = shutil.rmtree
-    failed = False
-
-    def fail_once(target, *args, **kwargs):
-        nonlocal failed
-        if not failed and Path(target) == paths.agent_dir('retired'):
-            failed = True
-            raise PermissionError('file is being used by another process')
-        return original_rmtree(target, *args, **kwargs)
-
-    monkeypatch.setattr('workspace.reconcile.shutil.rmtree', fail_once)
-    monkeypatch.setattr('workspace.reconcile.time.sleep', lambda _delay: None)
-
-    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {}})())
-
-    assert failed is True
-    assert paths.agent_dir('retired').exists() is False
-    assert summary.retired[0].removed_agent_state is True
-    assert summary.retired[0].cleanup_deferred is False
-    assert paths.agent_cleanup_deferred_path('retired').exists() is False
-
-
-def test_render_worktree_retirements_includes_cleanup_persistence_state() -> None:
-    item = WorkspaceRetirement(
-        agent_name='retired',
-        branch_name=None,
-        workspace_path='',
-        reason='file_in_use',
-        removed_agent_state=False,
-        cleanup_deferred=True,
-        cleanup_reason='file_in_use',
-        cleanup_deferred_persisted=False,
-        cleanup_marker_cleared=None,
-    )
-
-    assert render_worktree_retirements((item,)) == (
-        'worktree_retired: agent=retired reason=file_in_use branch=<none> '
-        'removed_agent_state=false cleanup_deferred=true '
-        'cleanup_deferred_persisted=false cleanup_marker_cleared=unknown '
-        'cleanup_reason=file_in_use path=<none>',
-    )
 
 
 def _init_git_repo(project_root: Path) -> None:

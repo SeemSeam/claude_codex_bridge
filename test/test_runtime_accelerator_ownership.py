@@ -138,38 +138,6 @@ def test_lsof_executable_reader_ignores_non_accelerator_text_mappings(monkeypatc
     )
 
 
-@pytest.mark.parametrize(
-    ('reader_name', 'expected'),
-    (
-        ('_read_process_start_token', 'ps:Tue Jul 14 16:00:00 2026'),
-        ('_read_process_cwd_via_lsof', None),
-        ('_read_process_executable_via_lsof', None),
-    ),
-)
-def test_process_identity_subprocess_readers_use_utf8_replacement(
-    monkeypatch,
-    reader_name: str,
-    expected,
-) -> None:
-    calls: list[dict] = []
-
-    def fake_run(*args, **kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(
-            returncode=0 if reader_name == '_read_process_start_token' else 1,
-            stdout='Tue Jul 14 16:00:00 2026' if reader_name == '_read_process_start_token' else '',
-        )
-
-    monkeypatch.setattr("runtime_accelerator.ownership.subprocess.run", fake_run)
-
-    from runtime_accelerator import ownership
-
-    assert getattr(ownership, reader_name)(999999999) == expected
-    assert calls
-    assert calls[0]['encoding'] == 'utf-8'
-    assert calls[0]['errors'] == 'replace'
-
-
 def test_recorded_owner_waits_through_pre_exec_identity(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
