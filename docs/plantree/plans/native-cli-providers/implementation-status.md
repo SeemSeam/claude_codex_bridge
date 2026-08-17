@@ -12,8 +12,8 @@ instead of asking the model to print `CCB_DONE`. Kimi and OpenCode inherited
 ask skill injection landed in commit `a4395c2`. MiMo inherited ask instruction
 injection and `mimo run --format json` execution landed in commit `fce17c3`.
 
-Official DeepSeek Harness support is implemented in the active source
-candidate under provider key `dsh`; it does not replace the `deepseek` /
+Official DeepSeek Harness support is published in `v8.6.9` under provider key
+`dsh`; it does not replace the `deepseek` /
 `deepcode` provider. DSH is modeled as a service-backed Web provider. The
 current POSIX runtime pane only carries the signal-forwarding host process and
 logs; asks, reply extraction, exact completion, restore, clear, and compact do
@@ -55,7 +55,7 @@ instead of stacking retries into one native turn, records coalesced native
 can use stable pane fallback when transcript flushes lag. Topic:
 [topics/agy-delivery-stability-hardening.md](topics/agy-delivery-stability-hardening.md).
 
-Issue #318 is fixed in the active source candidate. Managed AGY now refreshes
+The Issue #318 fix is published in `v8.6.9`. Managed AGY now refreshes
 its provider-recognized recent-keyring-failure marker inside the agent-private
 HOME before every launch, selecting file token storage immediately instead of
 waiting for a failing OS keyring operation. User `spec.env` cannot redirect the
@@ -85,6 +85,9 @@ rollback. Interrupted in-flight Cursor jobs remain resubmit-required.
 
 ## Last Landed
 
+- Stable `v8.6.9` was published from commit `677edc72c` with annotated tag
+  `v8.6.9`, a bilingual GitHub Release, 10 platform/helper assets, and
+  `@seemseam/ccb@8.6.9` on npm `latest`.
 - Issue #318: AGY `1.1.13` managed launches select private file token storage
   through the confirmed private-home marker path without a source-home or
   cross-provider write path.
@@ -229,7 +232,7 @@ diagnostic ideas stay deferred/open until real usage needs them.
 
 ## Last Verified
 
-`v8.6.9` source-candidate verification, 2026-08-17:
+`v8.6.9` release verification, 2026-08-17:
 
 - Complete pytest gate in the dependency-qualified environment: `7166 passed,
   3 skipped, 4 subtests passed`.
@@ -241,6 +244,11 @@ diagnostic ideas stay deferred/open until real usage needs them.
   package identity is `@seemseam/ccb@8.6.9` with 19 allowlisted files.
 - Isolated `/home/bfly/yunwei/ccb_source/ccb_test version` from
   `/home/bfly/yunwei/test_ccb2` reported source version `8.6.9`.
+- Release Artifacts, Native Windows Release, Sidebar Helper, npm publish,
+  Tests, Cross-Platform Compatibility, and CCBD Real Platform Smoke all
+  completed successfully for commit `677edc72c`.
+- Public Linux, macOS, Android, Windows, and Sidebar checksums matched; a fresh
+  npm-prefix install returned `v8.6.9` and passed managed-runtime imports.
 
 Cursor visible-pane verification, 2026-08-12:
 

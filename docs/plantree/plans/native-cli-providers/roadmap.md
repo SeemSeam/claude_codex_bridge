@@ -20,7 +20,10 @@ Last updated: 2026-08-17
   agent-local config state, and provider-specific stream terminalization. Qoder
   CLI CN is registered separately as `qoderclicn` and reuses that corrected
   contract for `@qodercn-ai/qoderclicn` rather than the retired generic adapter.
-- Last verified: the 2026-08-17 `v8.6.9` source candidate passed the complete
+- Last verified: stable `v8.6.9` was published from commit `677edc72c` with all
+  seven release/test workflows successful, 10 GitHub assets, verified public
+  checksums, and `@seemseam/ccb@8.6.9` on npm `latest`. The source candidate
+  passed the complete
   pytest gate with `7166 passed, 3 skipped, 4 subtests passed`; the focused
   Linux/Windows release, Mobile version, and Windows PR-isolation set passed
   with `76 passed`. The bilingual notes check, `npm pack --dry-run`, and
@@ -35,8 +38,8 @@ Last updated: 2026-08-17
   native stream, whose unauthenticated assistant error plus
   `result.is_error=true` confirmed the CN-specific fail-closed observer. Managed
   panes share one agent-local config root and disable both update switches.
-- Official DeepSeek Harness is now implemented in the source candidate as the
-  separate service provider `dsh`. It starts `dsh web` on loopback, submits
+- Official DeepSeek Harness is now published in `v8.6.9` as the separate
+  service provider `dsh`. It starts `dsh web` on loopback, submits
   through HTTP/WebSocket session RPC, requires exact native RPC/turn terminal
   evidence, restores with an observer-only history reader, and never treats
   its host/log pane as prompt or completion authority. Focused DSH/config/
@@ -56,6 +59,10 @@ Last updated: 2026-08-17
 
 ## Done
 
+- Published stable `v8.6.9` from commit `677edc72c` through an annotated tag,
+  bilingual GitHub Release, Linux/macOS/Windows/Mobile and Sidebar assets, and
+  npm Trusted Publishing. Public checksum and fresh npm-install verification
+  passed after all release and platform workflows completed successfully.
 - Researched and integrated official DeepSeek Harness:
   - upstream `deepseek-ai/deepseek-harness`, npm `@deepseek-ai/dsh`, binary
     `dsh`, inspected at `0.1.0-rc.6` / commit
@@ -382,8 +389,6 @@ Last updated: 2026-08-17
 3. Run a real source-runtime AGY smoke in `/home/bfly/yunwei/test_ccb2` when an
    authenticated AGY account is available; unit coverage currently validates
    the delivery and parsing mechanics without provider login.
-4. Run the public `v8.6.9` tag, GitHub Release, npm publication, and platform
-   artifact sequence only under separate release authorization.
 
 ## Deferred
 
