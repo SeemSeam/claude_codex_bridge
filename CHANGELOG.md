@@ -1,5 +1,16 @@
 # Changelog
 
+## v8.6.8 (2026-08-17)
+
+- Added adjustable workspace-surface opacity for local CCB Mobile backgrounds
+  and extended the selected image across the project list and workspace chrome.
+- Opened expanded long replies at their bottom, kept the latest bubble visible,
+  and moved downloadable attachments into normal in-bubble message content.
+- Hardened native Windows and Herdr runtime handling for non-UTF-8 process
+  output, foreground Provider detection, pane authority, and deferred cleanup
+  of still-running Agent state (PR #314; supersedes PRs #315-#317).
+- No pairing, conversation, project, or configuration migration is required.
+
 ## v8.6.7 (2026-08-16)
 
 - Added local CCB Mobile workspace background customization across project

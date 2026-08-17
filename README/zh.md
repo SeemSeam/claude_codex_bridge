@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.8-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -211,9 +211,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.6 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.8 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.6 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [下载 CCB Mobile v8.6.8 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.8/ccb-mobile-v8.6.8.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -302,12 +302,12 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
-<summary><b>v8.6.6</b> - Mobile 连续性与 Provider 安全恢复</summary>
+<summary><b>v8.6.8</b> - Mobile 对话细化与更安全的 Windows 运行状态</summary>
 
-- `ccb update` 后自动重启正在运行的已安装版 Mobile Host，保留配对信息；同时避免合法的大型 Relay 终端历史快照在首次额度更新前卡住。
-- 仅当当前输入框仍包含本任务的精确证据时，才为首次 Enter 丢失的 Claude 提示补发一次 Enter；Pane 历史不会触发补发（PR #305）。
-- 显式 Agent 环境变量和 Provider 路由优先于继承的 Claude settings；Provider profile 变化时重建复用绑定，但不清除对话历史（PR #307、#308）。
-- Herdr 严格按指定的非根父 Pane 分割；原生 Windows 新增 `pwsh`、`powershell`、`bash`、`wincmd` shell Pane，同时保留带 Provider 后缀的同名 Agent（PR #309、#310）。
+- Mobile 本地背景支持调节内容表面不透明度，所选图片同时覆盖项目列表和工作区外壳。
+- 展开长回复时直接定位到气泡内部底部，保持最新气泡可见，并把可下载文件作为气泡内普通内容展示。
+- 带附件的短消息保持自然高度；长消息附件与正文位于同一个内部滚动区域。
+- Windows 子进程输出不可解码时进行安全替换，Herdr Pane 状态交回原生检测；退役 Agent 的运行时或文件仍活跃时延后清理（PR #314；取代 PR #315-#317）。
 
 </details>
 

@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.6-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.8-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -240,9 +240,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.6.6 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.6.8 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.6.6 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.6/ccb-mobile-v8.6.6.apk)
+- [Download CCB Mobile v8.6.8 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.8/ccb-mobile-v8.6.8.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -331,12 +331,12 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
-<summary><b>v8.6.6</b> - Mobile continuity and Provider-safe recovery</summary>
+<summary><b>v8.6.8</b> - Refined Mobile conversations and safer Windows runtime state</summary>
 
-- Restart an active installed Mobile Host after `ccb update` without rotating pairing, and prevent valid large Relay terminal-history snapshots from stalling before the first credit update.
-- Recover a Claude prompt whose initial Enter was lost only when the current composer still contains exact task evidence; pane history cannot trigger the retry (PR #305).
-- Keep explicit Agent environment and Provider routes above inherited Claude settings, and rebuild drifted Provider-profile bindings without clearing conversation history (PRs #307 and #308).
-- Honor exact non-root Herdr split parents and add native-Windows `pwsh`, `powershell`, `bash`, and `wincmd` shell panes without stealing provider-qualified Agent names (PRs #309 and #310).
+- Adjust workspace-surface opacity for local Mobile backgrounds and extend the selected image across the project list and workspace chrome.
+- Open expanded long replies at their internal bottom, keep the latest bubble visible, and render downloadable files as normal in-bubble content.
+- Preserve natural height for short attachment messages and keep long-message attachments in the same internal scroll viewport as the body.
+- Replace undecodable Windows subprocess bytes, return Herdr pane-state authority to native detection, and defer retired Agent cleanup while its runtime or files remain active (PR #314; supersedes PRs #315-#317).
 
 </details>
 

@@ -8,10 +8,11 @@ from platforms.windows.release.surface import windows_x64_release_surface_baseli
 
 def test_current_workspace_versions_match() -> None:
     admission = windows_x64_release_surface_baseline_version_admission(Path.cwd())
+    expected_version = Path("VERSION").read_text(encoding="utf-8").strip()
 
     assert admission["status"] == "ready"
     assert admission["baseline_version_status"] == "matching"
-    assert admission["version"] == "8.6.6"
+    assert admission["version"] == expected_version
 
 
 def test_mismatched_version_blocks_release_route(tmp_path: Path) -> None:

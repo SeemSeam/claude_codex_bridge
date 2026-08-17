@@ -140,9 +140,10 @@ def test_metadata_archive_and_checksum_are_self_consistent(tmp_path: Path) -> No
 
 def test_windows_release_workflow_handles_stable_and_beta_tags() -> None:
     text = Path(".github/workflows/release-windows.yml").read_text(encoding="utf-8")
+    version = Path("VERSION").read_text(encoding="utf-8").strip()
 
     assert "name: Native Windows Release" in text
-    assert 'default: "v8.6.6"' in text
+    assert f'default: "v{version}"' in text
     assert '- "v*.*.*"' in text
     assert '- "v*-beta.*"' in text
     assert "release_flags=(--latest)" in text

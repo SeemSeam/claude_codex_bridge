@@ -63,9 +63,9 @@ backend_env = get_backend_env()
 if backend_env and not os.environ.get("CCB_BACKEND_ENV"):
     os.environ["CCB_BACKEND_ENV"] = backend_env
 
-VERSION = "8.6.7"
+VERSION = "8.6.8"
 GIT_COMMIT = "release"
-GIT_DATE = "2026-08-15"
+GIT_DATE = "2026-08-17"
 
 
 def _is_source_checkout(root: Path) -> bool:
