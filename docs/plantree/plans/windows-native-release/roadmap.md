@@ -71,6 +71,10 @@ Date: 2026-08-12
   Windows scope from changed paths, diff markers, and commit subjects; blocks
   shared/Linux/macOS/npm/Mobile paths; and freezes the existing shared-to-
   Windows reverse-import inventory against expansion.
+- Hardened and landed the native-only gate in `702870c1b`: global release
+  metadata is no longer exempt, Windows API markers and `from platforms import
+  windows` imports are detected, and the workflow executes the checker from the
+  trusted base revision under `pull_request_target`.
 - Local Linux verification passed. Real macOS and affected-host Windows
   validation remain external CI/manual gates.
 - Detailed evidence: [evidence/v8.6.8-windows-pr-isolation-audit.md](evidence/v8.6.8-windows-pr-isolation-audit.md).

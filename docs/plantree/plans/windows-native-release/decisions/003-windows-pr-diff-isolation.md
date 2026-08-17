@@ -32,3 +32,9 @@ allowed, but adding an importer or imported Windows module is rejected.
   gate; the policy has no broad bypass for future remediation claims.
 - Existing reverse dependencies remain a residual risk until a later plan
   replaces them with platform-neutral facades and platform-gated loading.
+
+## Supersession
+
+Decision 004 supersedes the release-metadata exception and adds trusted-base
+execution for the gate. The ownership and reverse-dependency boundaries in
+this decision remain the historical baseline.
