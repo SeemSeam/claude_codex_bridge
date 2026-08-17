@@ -1,7 +1,7 @@
 name: Windows PR Isolation
 
 on:
-  pull_request:
+  pull_request_target:
 
 permissions:
   contents: read
@@ -17,20 +17,45 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Checkout PR head with full history
+      - name: Checkout trusted base policy
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: policy
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout untrusted PR head as data
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Import trusted base history into PR checkout
+        shell: bash
+        run: >-
+          git -C "${GITHUB_WORKSPACE}/pr" fetch --no-tags
+          "${GITHUB_WORKSPACE}/policy"
+          "${{ github.event.pull_request.base.sha }}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Check diff and reverse dependencies
+      - name: Check diff and reverse dependencies with trusted policy
         shell: bash
-        run: >-
-          python platforms/windows/tools/check_pr_isolation.py
-          --base "${{ github.event.pull_request.base.sha }}"
-          --head "${{ github.event.pull_request.head.sha }}"
+        run: |
+          checker="${GITHUB_WORKSPACE}/policy/platforms/windows/tools/check_pr_isolation.py"
+          if [[ ! -f "${checker}" ]]; then
+            echo "Trusted base revision does not contain the Windows PR isolation checker." >&2
+            exit 1
+          fi
+          python "${checker}" \
+            --repo-root "${GITHUB_WORKSPACE}/pr" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"

@@ -29,29 +29,23 @@ WINDOWS_OWNED_FILES = frozenset(
 )
 WINDOWS_TEST_NAME_MARKERS = ("windows", "herdr", "rmux", "wezterm")
 
-# Release notes and synchronized version identity are documentation/metadata,
-# not executable ownership. Everything else outside the Windows-owned surface
-# is protected when a diff is Windows-scoped.
-CROSS_SCOPE_METADATA_PREFIXES = ("docs/releases/",)
-CROSS_SCOPE_METADATA_FILES = frozenset(
-    {
-        "CHANGELOG.md",
-        "README.md",
-        "README/zh.md",
-        "VERSION",
-    }
-)
-
 WINDOWS_DIFF_MARKERS = {
+    "windows": re.compile(r"\bwindows\b", re.IGNORECASE),
     "herdr": re.compile(r"\bherdr\b", re.IGNORECASE),
     "native-windows": re.compile(r"\bnative[ _-]+windows\b", re.IGNORECASE),
     "platforms/windows": re.compile(r"platforms[/\\]windows", re.IGNORECASE),
     "powershell": re.compile(r"\b(?:powershell|pwsh)\b", re.IGNORECASE),
     "ps1": re.compile(r"\.ps1\b", re.IGNORECASE),
     "wezterm": re.compile(r"\bwezterm\b", re.IGNORECASE),
-    "win32": re.compile(r"\b(?:win32|winerror)\b", re.IGNORECASE),
+    "win32": re.compile(r"\b(?:win32|winerror|winreg|msvcrt|pywin32)\b", re.IGNORECASE),
+    "windows-api": re.compile(
+        r"\b(?:CreateProcess(?:W|A)?|STARTUPINFO(?:EX)?|STARTF_[A-Z_]+|"
+        r"DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP|windll|WinDLL|WINFUNCTYPE)\b",
+        re.IGNORECASE,
+    ),
     "windows-platform-check": re.compile(
-        r"(?:os\.name\s*==\s*['\"]nt['\"]|sys\.platform\s*==\s*['\"]win32['\"])",
+        r"(?:\bos\.name\s*==\s*['\"]nt['\"]|\bsys\.platform\s*==\s*['\"]win32['\"]|"
+        r"\bplatform\.system\s*\(\)|\bsys\.getwindowsversion\s*\(\))",
         re.IGNORECASE,
     ),
 }
@@ -105,7 +99,7 @@ class IsolationReport:
 
 
 def normalized_repo_path(value: str) -> str:
-    raw = str(value or "").strip().replace("\\", "/")
+    raw = str(value or "").replace("\\", "/")
     while raw.startswith("./"):
         raw = raw[2:]
     path = PurePosixPath(raw)
@@ -124,11 +118,6 @@ def is_windows_owned_path(value: str) -> bool:
         name = PurePosixPath(path).name.lower()
         return any(marker in name for marker in WINDOWS_TEST_NAME_MARKERS)
     return False
-
-
-def is_cross_scope_metadata_path(value: str) -> bool:
-    path = normalized_repo_path(value)
-    return path in CROSS_SCOPE_METADATA_FILES or path.startswith(CROSS_SCOPE_METADATA_PREFIXES)
 
 
 def windows_scope_evidence(
@@ -161,10 +150,14 @@ def scan_shared_windows_imports(repo_root: Path) -> frozenset[tuple[str, str]]:
     imports: set[tuple[str, str]] = set()
     lib_root = repo_root / "lib"
     windows_root = lib_root / "platforms" / "windows"
+    if not lib_root.is_dir():
+        raise RuntimeError(f"cannot inspect Windows dependency boundary: missing {lib_root}")
     for path in sorted(lib_root.rglob("*.py")):
         if path.is_relative_to(windows_root):
             continue
         relative = path.relative_to(repo_root).as_posix()
+        if path.is_symlink():
+            raise RuntimeError(f"cannot inspect Windows dependency boundary through symlink: {relative}")
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
         except (OSError, SyntaxError, UnicodeError) as exc:
@@ -174,6 +167,10 @@ def scan_shared_windows_imports(repo_root: Path) -> frozenset[tuple[str, str]]:
                 module = str(node.module or "")
                 if module.startswith("platforms.windows"):
                     imports.add((relative, module))
+                elif module == "platforms":
+                    for alias in node.names:
+                        if alias.name == "windows" or alias.name.startswith("windows."):
+                            imports.add((relative, f"platforms.{alias.name}"))
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name.startswith("platforms.windows"):
@@ -199,7 +196,7 @@ def evaluate_isolation(
         protected = tuple(
             path
             for path in paths
-            if not is_windows_owned_path(path) and not is_cross_scope_metadata_path(path)
+            if not is_windows_owned_path(path)
         )
     observed_imports = shared_windows_imports or frozenset()
     new_imports = tuple(sorted(observed_imports - ALLOWED_SHARED_WINDOWS_IMPORTS))
@@ -256,8 +253,8 @@ def _print_report(report: IsolationReport) -> None:
             print(f"  - {path}: {module}")
     print(
         "Move Windows runtime/release logic under lib/platforms/windows or "
-        "platforms/windows, and land shared Linux/macOS behavior in a separate "
-        "cross-platform change with its own review."
+        "platforms/windows. Land shared Linux/macOS behavior, global release "
+        "metadata, and gate-policy changes in separate reviewed PRs."
     )
 
 
