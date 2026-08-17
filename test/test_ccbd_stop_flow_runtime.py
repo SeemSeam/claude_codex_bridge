@@ -253,6 +253,10 @@ def test_terminate_runtime_pids_reaps_helper_group_from_manifest(tmp_path: Path,
     removed: list[tuple[Path, ...]] = []
 
     monkeypatch.setattr('provider_runtime.helper_cleanup._kill_helper_group', lambda pgid, sig: killed.append((pgid, int(sig))) or True)
+    monkeypatch.setattr(
+        'provider_runtime.helper_cleanup._shared_is_pid_alive',
+        lambda _pid: False,
+    )
 
     terminate_runtime_pids_impl(
         project_root=project_root,

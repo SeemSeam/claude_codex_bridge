@@ -28,6 +28,10 @@ def _patch_posix_os(monkeypatch, killed: list[tuple[int, int]]) -> None:
         kill=lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None,
     )
     monkeypatch.setattr('provider_runtime.helper_cleanup.os', os_proxy)
+    monkeypatch.setattr(
+        'provider_runtime.helper_cleanup._shared_is_pid_alive',
+        lambda _pid: False,
+    )
 
 
 def test_save_helper_manifest_skips_identical_atomic_rewrite(tmp_path) -> None:
