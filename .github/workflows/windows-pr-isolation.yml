@@ -1,0 +1,36 @@
+name: Windows PR Isolation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ccb-windows-pr-isolation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  isolation:
+    name: Windows changes stay in Windows ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout PR head with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check diff and reverse dependencies
+        shell: bash
+        run: >-
+          python platforms/windows/tools/check_pr_isolation.py
+          --base "${{ github.event.pull_request.base.sha }}"
+          --head "${{ github.event.pull_request.head.sha }}"

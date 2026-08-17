@@ -55,11 +55,34 @@ Date: 2026-08-12
   Android manifest, Windows PE x86-64 launchers, npm `latest`, and a clean
   npm-installed CLI and `ccb compact` help smoke.
 
+## v8.6.8 isolation remediation
+
+- Audited the four post-`v8.6.7` Windows/Herdr feature commits against the
+  accepted ownership boundary. Every commit crossed into shared, Unix, or
+  generic test files and is rejected by the new diff policy.
+- Landed exact reverse patches in `7d74e92a8` for `92dae890d`, `0eb15c4b1`,
+  `f87f995ff`, and `67a95fea1`. The two later PR merge commits contain no
+  additional effective change, so reverting those merge objects would not
+  remove the cherry-picked behavior.
+- Preserved the Mobile changes, release/version history, Windows newline-test
+  skip, and unrelated test-mock corrections in `v8.6.8`.
+- Added a dedicated Windows PR isolation workflow and checker. It detects
+  Windows scope from changed paths, diff markers, and commit subjects; blocks
+  shared/Linux/macOS/npm/Mobile paths; and freezes the existing shared-to-
+  Windows reverse-import inventory against expansion.
+- Local Linux verification passed. Real macOS and affected-host Windows
+  validation remain external CI/manual gates.
+- Detailed evidence: [evidence/v8.6.8-windows-pr-isolation-audit.md](evidence/v8.6.8-windows-pr-isolation-audit.md).
+
 ## Next after stable publication
 
-1. Install the ZIP on a real user Windows x64 machine.
-2. Validate WezTerm + Herdr startup, pane creation, capture, restart, kill, and
+1. Land the isolation checker/workflow as a separate governance change,
+   without rewriting the immutable `v8.6.8` release record.
+2. Require the dedicated isolation workflow plus the existing Ubuntu and
+   macOS test lanes on future Windows PRs.
+3. Install the next immutable ZIP on a real user Windows x64 machine.
+4. Validate WezTerm + Herdr startup, pane creation, capture, restart, kill, and
    Codex/Claude provider workflows.
-3. Record failures without upgrading the support tier prematurely.
-4. Cut a new immutable release for fixes; do not move an already published
+5. Record failures without upgrading the support tier prematurely.
+6. Cut a new immutable release for fixes; do not move an already published
    stable or beta tag.
