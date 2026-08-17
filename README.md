@@ -336,7 +336,7 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 - Adjust workspace-surface opacity for local Mobile backgrounds and extend the selected image across the project list and workspace chrome.
 - Open expanded long replies at their internal bottom, keep the latest bubble visible, and render downloadable files as normal in-bubble content.
 - Preserve natural height for short attachment messages and keep long-message attachments in the same internal scroll viewport as the body.
-- Replace undecodable Windows subprocess bytes, return Herdr pane-state authority to native detection, and defer retired Agent cleanup while its runtime or files remain active (PR #314; supersedes PRs #315-#317).
+- Replace undecodable Windows subprocess bytes, return Herdr pane-state authority to native detection, and defer retired Agent cleanup while its runtime or files remain active (PRs #314, #315, and #317; PR #316 is superseded by the hardened test correction).
 
 </details>
 

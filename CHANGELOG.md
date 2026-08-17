@@ -8,7 +8,8 @@
   and moved downloadable attachments into normal in-bubble message content.
 - Hardened native Windows and Herdr runtime handling for non-UTF-8 process
   output, foreground Provider detection, pane authority, and deferred cleanup
-  of still-running Agent state (PR #314; supersedes PRs #315-#317).
+  of still-running Agent state (PRs #314, #315, and #317; PR #316 superseded
+  by the hardened cross-platform test correction).
 - No pairing, conversation, project, or configuration migration is required.
 
 ## v8.6.7 (2026-08-16)
