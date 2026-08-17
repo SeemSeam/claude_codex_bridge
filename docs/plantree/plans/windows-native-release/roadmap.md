@@ -66,7 +66,8 @@ Date: 2026-08-12
   remove the cherry-picked behavior.
 - Preserved the Mobile changes, release/version history, Windows newline-test
   skip, and unrelated test-mock corrections in `v8.6.8`.
-- Added a dedicated Windows PR isolation workflow and checker. It detects
+- Added and landed the dedicated Windows PR isolation workflow and checker in
+  `23d62228f`. It detects
   Windows scope from changed paths, diff markers, and commit subjects; blocks
   shared/Linux/macOS/npm/Mobile paths; and freezes the existing shared-to-
   Windows reverse-import inventory against expansion.
@@ -76,13 +77,12 @@ Date: 2026-08-12
 
 ## Next after stable publication
 
-1. Land the isolation checker/workflow as a separate governance change,
-   without rewriting the immutable `v8.6.8` release record.
-2. Require the dedicated isolation workflow plus the existing Ubuntu and
+1. Make the dedicated isolation workflow a required PR check alongside the
+   existing Ubuntu and
    macOS test lanes on future Windows PRs.
-3. Install the next immutable ZIP on a real user Windows x64 machine.
-4. Validate WezTerm + Herdr startup, pane creation, capture, restart, kill, and
+2. Install the next immutable ZIP on a real user Windows x64 machine.
+3. Validate WezTerm + Herdr startup, pane creation, capture, restart, kill, and
    Codex/Claude provider workflows.
-5. Record failures without upgrading the support tier prematurely.
-6. Cut a new immutable release for fixes; do not move an already published
+4. Record failures without upgrading the support tier prematurely.
+5. Cut a new immutable release for fixes; do not move an already published
    stable or beta tag.

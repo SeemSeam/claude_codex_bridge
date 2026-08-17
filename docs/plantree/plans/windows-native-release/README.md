@@ -13,8 +13,9 @@ Unix/npm ownership.
 
 - Version/tag: `v8.6.8`
 - Status: the published release remains immutable. Local corrective rollback
-  commit `7d74e92a8` removes four Windows/Herdr changes that crossed shared
-  Linux/macOS ownership; the Windows artifact remains beta.
+  `7d74e92a8` and isolation gate `23d62228f` remove and guard against Windows/
+  Herdr changes that cross shared Linux/macOS ownership; the Windows artifact
+  remains beta.
 - Artifact: `ccb-windows-x86_64.zip`
 - Installer: root `install.ps1`, implemented by
   `platforms/windows/installer/install.ps1`
