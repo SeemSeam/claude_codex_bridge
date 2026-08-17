@@ -4,6 +4,15 @@ Date: 2026-06-13
 
 ## Open
 
+- When CCB gains a project-owned service-process supervisor with the same
+  restart, shutdown, diagnostics, and zero-orphan guarantees as mounted panes,
+  should the DSH host move out of its current POSIX lifecycle/log pane?
+- Which later stable DSH release should replace the inspected
+  `0.1.0-rc.6` Developer Preview protocol baseline, and does it retain the
+  exact Web carrier and event shapes?
+- Authenticated DSH answer success still requires user-owned credentials; the
+  completed no-key probe proves transport and fail-closed native terminal
+  handling only.
 - Should CCB later support `provider = "deepcode"` as an alias for
   `provider = "deepseek"` if user configs naturally follow the binary name?
 - Should Kimi get a second execution mode based on `kimi --prompt` after the
@@ -24,6 +33,21 @@ Date: 2026-06-13
 
 ## Resolved
 
+- Issue #318 storage decision: AGY `1.1.13` exposes no public file-storage
+  option, while its runtime explicitly recognizes a recent
+  `antigravity-keyring-unavailable` marker. Refresh that marker before each
+  managed AGY launch inside the agent-private HOME only; do not inject
+  undocumented Gemini environment variables or modify the source user HOME.
+- DSH identity decision: use separate provider key `dsh` for official
+  `deepseek-ai/deepseek-harness`; do not repurpose `deepseek`, which continues
+  to launch `deepcode`.
+- DSH runtime decision: treat it as a service-backed Web provider. A current
+  pane may carry the host process and logs, but pane input, pane text,
+  quietness, and process exit have no request or completion authority.
+- DSH completion decision: require exact durable `source.rpcId`, the same
+  native turn's committed non-empty assistant reply, and
+  `turn/end.reason.kind=completed`; restore is observer-only and never reposts
+  the prompt.
 - First provider key decision: use `kimi` and `deepseek`; map `deepseek` to
   command `deepcode`.
 - First execution decision: keep pane-backed managed runtime for Kimi and

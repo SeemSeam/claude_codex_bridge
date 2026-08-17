@@ -38,6 +38,9 @@ _WSL_POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 _WSL_CMD = '/mnt/c/Windows/System32/cmd.exe'
 _AGY_NTFS_HOMES_DIRNAME = '.ccb_agy_homes'
 _AGY_CONVERSATIONS_REL = Path('.gemini') / 'antigravity-cli' / 'conversations'
+_AGY_KEYRING_BYPASS_MARKER_REL = (
+    Path('.gemini') / 'antigravity-cli' / 'cache' / 'antigravity-keyring-unavailable'
+)
 _AGY_AUTH_FILES = (
     Path('.gemini') / '.env',
     Path('.gemini') / 'google_accounts.json',
@@ -224,7 +227,9 @@ def _materialize_private_credentials(
     """Project auth/config source -> managed home without any reverse path."""
     for dirname in ('.gemini', '.antigravity'):
         if not _detach_legacy_credential_link(managed_home / dirname, source_home / dirname):
-            return
+            raise RuntimeError(
+                f'agy managed credential directory aliases external source: {managed_home / dirname}'
+            )
         ensure_private_descendant_directory(managed_home, Path(dirname))
     ensure_private_descendant_directory(managed_home, Path('.gemini') / 'config')
     if profile is None or bool(getattr(profile, 'inherit_auth', True)):
@@ -233,6 +238,30 @@ def _materialize_private_credentials(
     if profile is None or bool(getattr(profile, 'inherit_config', True)):
         for relative in _AGY_CONFIG_FILES:
             _sync_private_file(source_home / relative, managed_home / relative)
+
+
+def _materialize_file_token_storage_bypass(managed_home: Path) -> Path:
+    """Refresh AGY's private marker so startup skips the unavailable keyring."""
+    cache_dir = ensure_private_descendant_directory(
+        managed_home,
+        _AGY_KEYRING_BYPASS_MARKER_REL.parent,
+    )
+    marker = cache_dir / _AGY_KEYRING_BYPASS_MARKER_REL.name
+    try:
+        if marker.exists() or marker.is_symlink():
+            marker.unlink()
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, 'O_NOFOLLOW'):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(marker, flags, 0o600)
+        try:
+            if hasattr(os, 'fchmod'):
+                os.fchmod(fd, 0o600)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise RuntimeError(f'failed to prepare AGY file token storage marker: {marker}') from exc
+    return marker
 
 
 def _wslpath_to_windows(wsl_path: Path) -> str | None:
@@ -398,6 +427,7 @@ def build_start_cmd(
     managed_home = ensure_private_inheritance_directory(managed_home, credential_home)
     profile = load_resolved_provider_profile(runtime_dir)
     _materialize_private_credentials(credential_home, managed_home, profile=profile)
+    _materialize_file_token_storage_bypass(managed_home)
 
     cmd_parts = provider_start_parts('agy')
     if command.auto_permission and _YOLO_FLAG not in cmd_parts and _YOLO_FLAG not in spec.startup_args:

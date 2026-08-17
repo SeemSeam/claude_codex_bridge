@@ -18,6 +18,9 @@ COMPACT_COMMANDS: dict[str, str | None] = {
     'agy': '/compress',
     'kimi': '/compact',
     'deepseek': None,
+    # Official DeepSeek Harness executes this through its structured Web API;
+    # project_compact must never type it into the lifecycle/log pane.
+    'dsh': '/compact',
     'mimo': '/compact',
     'qwen': '/compress',
     'qoder': None,

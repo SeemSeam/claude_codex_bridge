@@ -1,6 +1,7 @@
 # Native CLI Providers Roadmap
 
 Date: 2026-06-13
+Last updated: 2026-08-17
 
 ## Status Summary
 
@@ -19,10 +20,11 @@ Date: 2026-06-13
   agent-local config state, and provider-specific stream terminalization. Qoder
   CLI CN is registered separately as `qoderclicn` and reuses that corrected
   contract for `@qodercn-ai/qoderclicn` rather than the retired generic adapter.
-- Last verified: focused native completion tests, provider catalog tests,
-  Kimi/OpenCode skill projection tests, and a real MiMo CCB ask passed after
-  switching CCB MiMo execution to `mimo run --pure --format json`; full
-  pytest release gate passed with `2613 passed, 2 skipped`.
+- Last verified: the 2026-08-17 `v8.6.9` source candidate passed the complete
+  pytest gate with `7166 passed, 3 skipped, 4 subtests passed`; the focused
+  Linux/Windows release, Mobile version, and Windows PR-isolation set passed
+  with `76 passed`. The bilingual notes check, `npm pack --dry-run`, and
+  isolated source-wrapper version check also passed for `8.6.9`.
 - Qoder correction verification on 2026-07-22 used real `qodercli 1.1.2`
   help/version and credential-free stream output plus focused launcher,
   execution, catalog, registry, and storage tests. Authenticated completion
@@ -33,6 +35,15 @@ Date: 2026-06-13
   native stream, whose unauthenticated assistant error plus
   `result.is_error=true` confirmed the CN-specific fail-closed observer. Managed
   panes share one agent-local config root and disable both update switches.
+- Official DeepSeek Harness is now implemented in the source candidate as the
+  separate service provider `dsh`. It starts `dsh web` on loopback, submits
+  through HTTP/WebSocket session RPC, requires exact native RPC/turn terminal
+  evidence, restores with an observer-only history reader, and never treats
+  its host/log pane as prompt or completion authority. Focused DSH/config/
+  context-control tests pass. An isolated external `ccb_test` mount with
+  official `0.1.0-rc.6` also passed host-instance-fenced restart, clear, and
+  native compact; its no-key ask produced the expected exact request anchor
+  plus native `turn/end(error)` fail-closed result.
 - Next target: review and release readiness for the next native CLI provider
   wave after source-runtime and real CLI version smoke passed for Qwen Code,
   Cursor Agent, GitHub Copilot CLI, Charm Crush, Kiro CLI, and Pi. Talk1's
@@ -44,6 +55,22 @@ Date: 2026-06-13
   [topics/pi-visible-pane-completion.md](topics/pi-visible-pane-completion.md).
 
 ## Done
+
+- Researched and integrated official DeepSeek Harness:
+  - upstream `deepseek-ai/deepseek-harness`, npm `@deepseek-ai/dsh`, binary
+    `dsh`, inspected at `0.1.0-rc.6` / commit
+    `47f943859bef60e4160492346772ded9b24f765a`;
+  - selected a service-backed Web carrier rather than terminal input;
+  - isolated each Agent's `DSH_HOME` and projected only credentials, API
+    route, settings, skills, and memory allowed by provider-profile policy;
+  - bound each CCB job id to DSH `session.prompt` RPC id and durable
+    `user/message.source.rpcId`;
+  - required a committed non-empty same-turn assistant reply and native
+    `turn/end(completed)`; every other terminal and process-only closure fails
+    closed;
+  - added native session rotation for `ccb clear`, API-backed `/compact`,
+    model/reasoning/API shortcuts, update discovery, storage classification,
+    and required DSH control skills.
 
 - Confirmed Kimi Code is a terminal AI coding agent from Moonshot AI, launched
   with `kimi`, and npm package `@moonshot-ai/kimi-code` exposes bin `kimi`.
@@ -280,6 +307,13 @@ Date: 2026-06-13
     observing transcript/pane evidence before deciding failure.
   - AGY transcript parsing detects multiple `CCB_REQ_ID` anchors in one native
     `USER_INPUT` and reports superseded requests as `agy_request_coalesced`.
+- Fixed Issue #318 for AGY `1.1.13`:
+  - each managed launch refreshes AGY's confirmed recent-keyring-failure marker
+    inside the agent-private HOME, bypassing the unavailable OS keyring without
+    an undocumented environment switch;
+  - marker replacement detaches legacy links, source credentials remain
+    one-way inputs, user environment overrides cannot redirect the managed
+    HOME, and no other provider receives AGY-specific state.
 - Added Z.ai CLI provider support:
   - `provider = "zai"` is registered as an optional native CLI provider.
   - Startup uses managed provider-state and `ZAI_START_CMD` override.
@@ -333,7 +367,8 @@ Date: 2026-06-13
 ## In Progress
 
 - Provider-specific auth/doctor diagnostics decision for the next-wave CLIs.
-- Review and release readiness for the current dirty source changes.
+- Authenticated DSH answer success and a real macOS AGY startup remain explicit
+  follow-up qualification evidence rather than inferred release claims.
 - Grok cross-agent communication acceptance is complete for direct ask,
   chained result recovery, named clear, and post-clear isolation.
 
@@ -347,8 +382,8 @@ Date: 2026-06-13
 3. Run a real source-runtime AGY smoke in `/home/bfly/yunwei/test_ccb2` when an
    authenticated AGY account is available; unit coverage currently validates
    the delivery and parsing mechanics without provider login.
-4. Review the full dirty source diff, excluding unrelated managed-tool/neovim
-   changes already present in the worktree.
+4. Run the public `v8.6.9` tag, GitHub Release, npm publication, and platform
+   artifact sequence only under separate release authorization.
 
 ## Deferred
 

@@ -14,6 +14,8 @@ from provider_core.runtime_specs import (
     CURSOR_RUNTIME_SPEC,
     DEEPSEEK_CLIENT_SPEC,
     DEEPSEEK_RUNTIME_SPEC,
+    DSH_CLIENT_SPEC,
+    DSH_RUNTIME_SPEC,
     GROK_CLIENT_SPEC,
     GROK_RUNTIME_SPEC,
     KIMI_CLIENT_SPEC,
@@ -69,6 +71,9 @@ def test_runtime_specs_use_provider_native_names() -> None:
     assert DEEPSEEK_RUNTIME_SPEC.provider_key == "deepseek"
     assert DEEPSEEK_RUNTIME_SPEC.idle_timeout_env == "CCB_DEEPSEEK_RUNTIME_IDLE_TIMEOUT_S"
     assert DEEPSEEK_CLIENT_SPEC.session_filename == ".deepseek-session"
+    assert DSH_RUNTIME_SPEC.provider_key == "dsh"
+    assert DSH_RUNTIME_SPEC.idle_timeout_env == "CCB_DSH_RUNTIME_IDLE_TIMEOUT_S"
+    assert DSH_CLIENT_SPEC.session_filename == ".dsh-session"
     assert MIMO_RUNTIME_SPEC.provider_key == "mimo"
     assert MIMO_RUNTIME_SPEC.idle_timeout_env == "CCB_MIMO_RUNTIME_IDLE_TIMEOUT_S"
     assert MIMO_CLIENT_SPEC.session_filename == ".mimo-session"
@@ -104,6 +109,8 @@ def test_runtime_specs_use_provider_native_names() -> None:
     assert OMP_CLIENT_SPEC.session_filename == ".omp-session"
     assert RUNTIME_SPECS_BY_PROVIDER["kimi"] is KIMI_RUNTIME_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["deepseek"] is DEEPSEEK_CLIENT_SPEC
+    assert RUNTIME_SPECS_BY_PROVIDER["dsh"] is DSH_RUNTIME_SPEC
+    assert CLIENT_SPECS_BY_PROVIDER["dsh"] is DSH_CLIENT_SPEC
     assert RUNTIME_SPECS_BY_PROVIDER["mimo"] is MIMO_RUNTIME_SPEC
     assert CLIENT_SPECS_BY_PROVIDER["mimo"] is MIMO_CLIENT_SPEC
     assert RUNTIME_SPECS_BY_PROVIDER["qwen"] is QWEN_RUNTIME_SPEC

@@ -14,6 +14,7 @@ PROVIDER_SESSION_FILENAMES = {
     'agy': '.agy-session',
     'kimi': '.kimi-session',
     'deepseek': '.deepseek-session',
+    'dsh': '.dsh-session',
     'mimo': '.mimo-session',
     'qwen': '.qwen-session',
     'qoder': '.qoder-session',

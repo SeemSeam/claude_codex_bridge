@@ -55,6 +55,10 @@ _SUCCESS_OUTCOME_REASONS = {"stop", "end_turn", "yield"}
 @dataclass(frozen=True)
 class NativeCliObservation:
     text: str = ""
+    # Some providers can prove that the provider itself durably accepted the
+    # exact CCB request.  This is deliberately separate from process launch or
+    # prompt submission: exact adapters must not synthesize anchor evidence.
+    anchor_seen: bool = False
     finished: bool = False
     finish_reason: str = ""
     turn_ref: str | None = None
@@ -78,6 +82,7 @@ class NativeCliExecutionRequest:
 CommandBuilder = Callable[[NativeCliExecutionRequest], list[str]]
 EnvBuilder = Callable[[NativeCliExecutionRequest], dict[str, str]]
 Observer = Callable[[Path], NativeCliObservation]
+ResumeCommandBuilder = Callable[[dict[str, object]], list[str]]
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,14 @@ class NativeCliExecutionConfig:
     terminal_on_process_exit: bool = True
     terminal_requires_process_exit: bool = False
     require_outcome_reason: bool = False
+    require_native_anchor: bool = False
+    # The provider has a durable, correlated terminal protocol rather than a
+    # heuristic interpretation of one-shot CLI output.
+    exact_native_terminal: bool = False
+    # Optional observer-only process used after a ccbd restart.  It must never
+    # submit the user prompt again; it may only recover provider-native state
+    # for the exact persisted request.
+    resume_command_builder: ResumeCommandBuilder | None = None
 
     def reason(self, name: str) -> str:
         explicit = str(getattr(self, name) or "").strip()
@@ -119,7 +132,21 @@ class NativeCliSubprocessAdapter:
         self.config = config
         self.provider = str(config.provider or "").strip().lower()
 
+    @property
+    def restart_resume_supported(self) -> bool:
+        return self.config.resume_command_builder is not None
+
     def restore_diagnostics(self) -> dict[str, object]:
+        if self.config.resume_command_builder is not None:
+            return {
+                "resume_supported": True,
+                "restore_mode": "exact_native_observer",
+                "restore_reason": "provider_native_history_resume",
+                "restore_detail": (
+                    f"{self.provider} resumes the exact persisted native request "
+                    "through an observer-only process without reposting the prompt"
+                ),
+            }
         return {
             "resume_supported": False,
             "restore_mode": "resubmit_required",
@@ -158,8 +185,73 @@ class NativeCliSubprocessAdapter:
         persisted_state,
         now: str,
     ) -> ProviderSubmission | None:
-        del job, submission, context, persisted_state, now
+        del context, persisted_state
+        return _resume_submission(self.config, job, submission, now=now)
+
+
+def _resume_submission(
+    config: NativeCliExecutionConfig,
+    job: JobRecord,
+    submission: ProviderSubmission,
+    *,
+    now: str,
+) -> ProviderSubmission | None:
+    builder = config.resume_command_builder
+    state = dict(submission.runtime_state or {})
+    if builder is None:
         return None
+    if (
+        submission.job_id != job.job_id
+        or submission.provider != config.provider
+        or str(state.get("provider") or "") != config.provider
+        or str(state.get("job_id") or "") != job.job_id
+        or str(state.get("mode") or "") != config.mode
+    ):
+        return None
+
+    stdout_path = _path_from_state(state, "stdout_path")
+    stderr_path = _path_from_state(state, "stderr_path")
+    work_dir = _path_from_state(state, "work_dir")
+    if stdout_path is None or stderr_path is None or work_dir is None:
+        return None
+
+    # A surviving observer keeps writing the same append-only artifact.  Do
+    # not create a duplicate observer (and, critically, do not repost work).
+    if _pid_is_live(_state_int(state, "pid", 0)):
+        state["last_poll_at"] = now
+        return replace(submission, runtime_state=state)
+
+    try:
+        command = builder(state)
+        if not command or not all(str(part) for part in command):
+            return None
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        with stdout_path.open("a", encoding="utf-8") as stdout, stderr_path.open(
+            "a", encoding="utf-8"
+        ) as stderr:
+            proc = subprocess.Popen(
+                [str(part) for part in command],
+                cwd=str(work_dir),
+                env=dict(os.environ),
+                stdout=stdout,
+                stderr=stderr,
+                text=True,
+                start_new_session=True,
+            )
+    except Exception:
+        return None
+
+    _RUN_PROCS[_proc_key(config.provider, job.job_id)] = proc
+    state.update(
+        {
+            "pid": proc.pid,
+            "returncode": None,
+            "last_poll_at": now,
+            "resumed_at": now,
+            "resume_mode": "observe_only",
+        }
+    )
+    return replace(submission, runtime_state=state)
 
 
 def _start_submission(
@@ -246,7 +338,7 @@ def _start_submission(
         "started_at": now,
         "last_poll_at": now,
         "next_seq": 1,
-        "anchor_emitted": bool(no_wrap),
+        "anchor_emitted": bool(no_wrap and not config.require_native_anchor),
         "no_wrap": bool(no_wrap),
         "reply_buffer": "",
         "stdout_path": str(stdout_path),
@@ -307,7 +399,9 @@ def _poll_submission(
     observer = config.observer or observe_jsonl_output
     observation = observer(Path(str(state.get("stdout_path") or "")))
     items = []
-    if not bool(state.get("anchor_emitted")):
+    if not bool(state.get("anchor_emitted")) and (
+        not config.require_native_anchor or observation.anchor_seen
+    ):
         items.append(
             build_item(
                 submission,
@@ -375,7 +469,9 @@ def _terminal_result_if_ready(
     provider = str(config.provider or submission.provider)
     reply = str(state.get("reply_buffer") or clean_native_reply(observation.text or "", str(state.get("request_anchor") or submission.job_id))).strip()
     wait_for_process_exit = config.terminal_requires_process_exit and returncode is None
-    if observation.error and not wait_for_process_exit:
+    if observation.error and not wait_for_process_exit and not (
+        config.exact_native_terminal and observation.finished
+    ):
         return _terminal(
             config,
             submission,
@@ -457,6 +553,25 @@ def _terminal_result_if_ready(
             },
         )
 
+    if observation.finished and config.require_native_anchor and not bool(state.get("anchor_emitted")):
+        return _terminal(
+            config,
+            submission,
+            state,
+            items,
+            now,
+            status=CompletionStatus.INCOMPLETE,
+            reason=config.reason("invalid_protocol_reason"),
+            reply=reply,
+            confidence=CompletionConfidence.DEGRADED,
+            diagnostics_extra={
+                "protocol_error": "provider_native_anchor_missing",
+                "finish_reason": observation.finish_reason,
+                "outcome_reason": observation.outcome_reason,
+                "returncode": returncode,
+            },
+        )
+
     if observation.finished:
         reason = _normalized_reason(observation.finish_reason)
         outcome_reason = _normalized_reason(observation.outcome_reason)
@@ -464,6 +579,14 @@ def _terminal_result_if_ready(
             status = CompletionStatus.INCOMPLETE
             terminal_reason = config.reason("missing_outcome_reason")
             confidence = CompletionConfidence.DEGRADED
+        elif observation.error:
+            status = CompletionStatus.FAILED
+            terminal_reason = config.reason("run_error_reason")
+            confidence = (
+                CompletionConfidence.EXACT
+                if config.exact_native_terminal
+                else CompletionConfidence.OBSERVED
+            )
         elif outcome_reason in _FAILED_OUTCOME_REASONS:
             status = CompletionStatus.FAILED
             terminal_reason = config.reason("run_error_reason")
@@ -483,7 +606,11 @@ def _terminal_result_if_ready(
         else:
             status = CompletionStatus.COMPLETED
             terminal_reason = config.reason("complete_reason")
-            confidence = CompletionConfidence.OBSERVED
+            confidence = (
+                CompletionConfidence.EXACT
+                if config.exact_native_terminal
+                else CompletionConfidence.OBSERVED
+            )
         _append_turn_boundary(config, submission, state, items, now, reason=terminal_reason, reply=reply, observation=observation)
         return _terminal(
             config,
@@ -498,6 +625,7 @@ def _terminal_result_if_ready(
             diagnostics_extra={
                 "finish_reason": observation.finish_reason,
                 "outcome_reason": observation.outcome_reason,
+                "error": observation.error,
                 "stdout_path": str(state.get("stdout_path") or ""),
                 "stderr_path": str(state.get("stderr_path") or ""),
                 "returncode": returncode,
@@ -701,6 +829,7 @@ def _observe_jsonl_output_with_rust_helper(path: Path) -> NativeCliObservation |
         return None
     return NativeCliObservation(
         text=str(value.get("text") or ""),
+        anchor_seen=bool(value.get("anchor_seen")),
         finished=bool(value.get("finished")),
         finish_reason=str(value.get("finish_reason") or ""),
         turn_ref=value.get("turn_ref") if isinstance(value.get("turn_ref"), str) else None,
@@ -993,6 +1122,24 @@ def _path_from_session(session_data: dict[str, object], key: str) -> Path | None
         return Path(value).expanduser()
     except Exception:
         return None
+
+
+def _path_from_state(state: dict[str, object], key: str) -> Path | None:
+    return _path_from_session(state, key)
+
+
+def _pid_is_live(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _next_seq(state: dict[str, object]) -> int:

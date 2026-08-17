@@ -16,6 +16,7 @@ def test_execution_registry_can_build_core_only_registry() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'dsh',
         'mimo',
         'qwen',
         'qoder',
@@ -37,6 +38,7 @@ def test_execution_registry_can_build_core_only_registry() -> None:
     assert registry.get('agy') is None
     assert registry.get('kimi') is None
     assert registry.get('deepseek') is None
+    assert registry.get('dsh') is None
     assert registry.get('mimo') is None
     assert registry.get('qwen') is None
     assert registry.get('qoder') is None

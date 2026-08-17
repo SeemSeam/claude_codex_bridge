@@ -9,6 +9,7 @@ OPTIONAL_PROVIDER_NAMES = (
     "agy",
     "kimi",
     "deepseek",
+    "dsh",
     "mimo",
     "qwen",
     "qoder",
@@ -32,6 +33,7 @@ def build_builtin_backends(*, include_optional: bool = True) -> list[ProviderBac
     from provider_backends.crush import build_backend as build_crush_backend
     from provider_backends.cursor import build_backend as build_cursor_backend
     from provider_backends.deepseek import build_backend as build_deepseek_backend
+    from provider_backends.dsh import build_backend as build_dsh_backend
     from provider_backends.droid import build_backend as build_droid_backend
     from provider_backends.gemini import build_backend as build_gemini_backend
     from provider_backends.grok import build_backend as build_grok_backend
@@ -58,6 +60,7 @@ def build_builtin_backends(*, include_optional: bool = True) -> list[ProviderBac
             build_agy_backend(),
             build_kimi_backend(),
             build_deepseek_backend(),
+            build_dsh_backend(),
             build_mimo_backend(),
             build_qwen_backend(),
             build_qoder_backend(),

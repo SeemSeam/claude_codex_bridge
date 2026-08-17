@@ -37,6 +37,7 @@ _NATIVE_REGISTRY_PACKAGES = {
     "opencode": "opencode-ai",
     "mimo": "@mimo-ai/cli",
     "grok": "@xai-official/grok",
+    "dsh": "@deepseek-ai/dsh",
 }
 _NATIVE_UPDATE_ARGS = {
     "codex": ("update",),
@@ -63,6 +64,7 @@ _PROVIDER_LABELS = {
     "opencode": "OpenCode",
     "mimo": "MiMo",
     "grok": "Grok",
+    "dsh": "DeepSeek Harness",
 }
 _EXPECTED_EXECUTABLE_NAMES = {
     "deepseek": "deepcode",

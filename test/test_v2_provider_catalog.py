@@ -29,6 +29,7 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'dsh',
         'mimo',
         'qwen',
         'qoder',
@@ -69,6 +70,16 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert deepseek.completion_source_kind is CompletionSourceKind.SESSION_SNAPSHOT
     assert deepseek.supports_observed_completion is True
     assert deepseek.supports_anchor_binding is True
+    dsh = catalog.resolve_completion_manifest('dsh', RuntimeMode.PANE_BACKED)
+    assert catalog.get('dsh').supports_resume is True
+    assert catalog.get('dsh').supports_stream_watch is True
+    assert dsh.completion_family is CompletionFamily.STRUCTURED_RESULT
+    assert dsh.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
+    assert dsh.supports_exact_completion is True
+    assert dsh.supports_observed_completion is False
+    assert dsh.supports_anchor_binding is True
+    assert dsh.supports_terminal_reason is True
+    assert dsh.supports_reply_stability is False
     mimo = catalog.resolve_completion_manifest('mimo', RuntimeMode.PANE_BACKED)
     assert mimo.completion_family is CompletionFamily.STRUCTURED_RESULT
     assert mimo.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
@@ -134,6 +145,7 @@ def test_provider_catalog_can_build_core_only_catalog() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'dsh',
         'mimo',
         'qwen',
         'qoder',

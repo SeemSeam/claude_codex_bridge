@@ -43,6 +43,10 @@ _API_ENV_KEYS = {
         'DEEPCODE_API_KEY',
         'DEEPCODE_BASE_URL',
     },
+    'dsh': {
+        'DEEPSEEK_API_KEY',
+        'DEEPSEEK_BASE_URL',
+    },
 }
 
 

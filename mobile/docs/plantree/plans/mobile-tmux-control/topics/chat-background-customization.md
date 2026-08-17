@@ -13,13 +13,17 @@ restarts.
 - The image is copied into the app's private documents directory and is never
   uploaded to CCB, the Gateway, or Relay.
 - The background spans the complete project workspace, including its header,
-  bubble chat, Agent Terminal, and the standalone host Terminal route.
+  project home/list, bubble chat, Agent Terminal, and the standalone host
+  Terminal route. Pairing/settings and diagnostics remain control surfaces.
 - Selection accepts PNG, JPEG, GIF, WebP, and BMP images up to 20 MiB.
 - Replacing or removing a background deletes managed predecessor files.
 - Missing, damaged, or unsupported files fail back to the normal theme surface
   without blocking project or conversation loading.
 - A theme-aware scrim remains above the image so session boundaries and the
   space between opaque bubbles remain readable in light and dark themes.
+- Chat and project-list content surfaces use a persisted adjustable opacity;
+  the default is `0.62`. Controls such as the header, composer, settings, and
+  diagnostics remain opaque for reliable interaction and contrast.
 - Terminal views use a stronger dark scrim and a transparent xterm base so the
   image remains visible without sacrificing ANSI text contrast.
 
@@ -32,6 +36,9 @@ icon. There is no separate background screen and no visible filesystem path.
 ## Acceptance
 
 - Selecting an image updates an already-open chat without reconnecting.
+- The selected image is visible behind the project home/list and chat bubbles,
+  not only in the margins around an opaque chat scaffold.
+- Adjusting content opacity updates the open workspace and survives restart.
 - The selected image is restored after rebuilding/restarting the app.
 - Removing the image immediately restores the standard chat surface.
 - Chat bubbles, scrolling, expansion, composer behavior, and working rings

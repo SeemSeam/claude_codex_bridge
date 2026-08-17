@@ -8,6 +8,7 @@ from .models import StorageClass, StorageEntry
 _SECRET_FILENAMES = {
     '.ccb-auth-projection.json',
     '.credentials.json',
+    '.credentials.yaml',
     '.env',
     'a2a-oauth-tokens.json',
     'auth.encrypted',
@@ -34,7 +35,7 @@ _CODEX_PROJECTED_NAMES = {'config.toml'}
 _OPENCODE_PROJECTED_NAMES = {'opencode.json'}
 _MIMO_PROJECTED_NAMES = {'mimocode.json'}
 _COPILOT_PROJECTION_MARKER_NAME = '.ccb-installed-plugins-projection.json'
-_NATIVE_CLI_PROVIDERS = {'qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'grok', 'kiro', 'pi', 'omp', 'zai'}
+_NATIVE_CLI_PROVIDERS = {'qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'dsh', 'grok', 'kiro', 'pi', 'omp', 'zai'}
 _NATIVE_CLI_PROJECTED_ROOTS = {'inherited-skills', 'role-skills', 'overlay-skills'}
 _NATIVE_CLI_CACHE_ROOTS = {'.cache', '.npm', '.tmp', 'cache', 'node_modules', 'tmp'}
 _NATIVE_CLI_SESSION_ROOTS = {
@@ -436,6 +437,20 @@ def _classify_native_cli_home(
     root_kind: str,
 ) -> StorageEntry:
     name = remainder[-1]
+    if provider == 'dsh' and (
+        remainder[0] == 'skills'
+        or name in {'AGENTS.md', 'settings.yaml'}
+    ):
+        return _entry(
+            path,
+            relative_path,
+            StorageClass.PROJECTED_CONFIG,
+            size,
+            provider=provider,
+            agent=agent,
+            reason='dsh_managed_projection',
+            root_kind=root_kind,
+        )
     if (
         provider == 'grok'
         and len(remainder) >= 3

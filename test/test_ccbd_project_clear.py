@@ -218,3 +218,41 @@ def test_project_clear_context_handler_blocks_active_or_queued_agent(monkeypatch
         }
     ]
     assert backend.calls == []
+
+
+def test_project_clear_dsh_rotates_native_session_without_pane_input(monkeypatch, tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    monkeypatch.setattr(
+        project_clear,
+        'TmuxBackend',
+        lambda *, socket_path: (_ for _ in ()).throw(
+            AssertionError(f'DSH clear must not open tmux backend {socket_path}')
+        ),
+    )
+    session_file = tmp_path / '.dsh-session'
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        'provider_backends.dsh.control.rotate_dsh_session',
+        lambda path: calls.append(path) or {'context_generation': 4},
+    )
+    app = _app(
+        agents={'dsh1': SimpleNamespace(provider='dsh')},
+        runtimes={'dsh1': SimpleNamespace(session_file=str(session_file))},
+    )
+    app.project_namespace = SimpleNamespace(load=lambda: None)
+    handler = build_project_clear_context_handler(app)
+
+    payload = handler({'agent_names': ['dsh1']})
+
+    assert payload['status'] == 'ok'
+    assert payload['results'] == [
+        {
+            'agent': 'dsh1',
+            'status': 'cleared',
+            'provider': 'dsh',
+            'command': 'native-session-rotate',
+            'context_generation': 4,
+        }
+    ]
+    assert calls == [session_file]
+    assert backend.calls == []

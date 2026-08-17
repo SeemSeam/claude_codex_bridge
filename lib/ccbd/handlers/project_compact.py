@@ -5,17 +5,20 @@ import subprocess
 from agents.models import normalize_agent_name
 from terminal_runtime import TmuxBackend
 
-from .project_clear import _agent_provider, _clear_busy_gate, _runtime_pane_id
+from .project_clear import (
+    _agent_provider,
+    _clear_busy_gate,
+    _context_terminal_backend,
+    _runtime_pane_id,
+    _runtime_session_file,
+)
 from .project_context import COMPACT_COMMANDS, send_context_command
 
 
 def build_project_compact_context_handler(app):
     def handle(payload: dict) -> dict:
         agent_names = _requested_agent_names(app, payload)
-        namespace = app.project_namespace.load()
-        if namespace is None:
-            raise RuntimeError('project namespace is not mounted')
-        backend = TmuxBackend(socket_path=namespace.tmux_socket_path)
+        backend = _context_terminal_backend(app, agent_names, backend_factory=TmuxBackend)
         results = tuple(_compact_agent_context(app, backend=backend, agent_name=name) for name in agent_names)
         statuses = {str(item.get('status') or '') for item in results}
         if 'blocked' in statuses:
@@ -69,6 +72,38 @@ def _compact_agent_context(app, *, backend, agent_name: str) -> dict[str, object
     runtime = app.registry.get(agent_name)
     if runtime is None:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'runtime_missing', 'provider': provider}
+    if provider == 'dsh':
+        session_file = _runtime_session_file(runtime)
+        if session_file is None:
+            return {
+                'agent': agent_name,
+                'status': 'skipped',
+                'reason': 'session_binding_missing',
+                'provider': provider,
+            }
+        try:
+            from provider_backends.dsh.control import compact_dsh_session
+
+            compacted = compact_dsh_session(session_file)
+        except Exception as exc:
+            return {
+                'agent': agent_name,
+                'status': 'failed',
+                'reason': str(exc)[:200],
+                'provider': provider,
+                'command': command,
+            }
+        return {
+            'agent': agent_name,
+            'status': 'compacted',
+            'provider': provider,
+            'command': str(compacted.get('command') or command or '/compact'),
+            **(
+                {'detail': compacted['detail']}
+                if compacted.get('detail')
+                else {}
+            ),
+        }
     pane_id = _runtime_pane_id(runtime)
     if pane_id is None:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'pane_missing', 'provider': provider}

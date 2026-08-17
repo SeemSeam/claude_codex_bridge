@@ -35,6 +35,10 @@ Managed Claude conversation isolation rules live in [docs/claude-session-isolati
 Common provider asset projection and effective-root rules live in
 [docs/provider-asset-projection-contract.md](/home/bfly/yunwei/ccb_source/docs/provider-asset-projection-contract.md).
 
+Official DeepSeek Harness service, session, transport, completion, and context
+control rules live in
+[docs/dsh-service-provider-contract.md](/home/bfly/yunwei/ccb_source/docs/dsh-service-provider-contract.md).
+
 ## 2. Problem Statement
 
 The current codebase already contains pieces of the required behavior:
@@ -258,6 +262,9 @@ Rules:
   - helper manifests and runtime records may define ownership for cleanup and restart purposes
   - runtime authority and helper ownership must be written from the same agent-authority update path; later outer-layer field patching must not leave helper ownership on an older daemon/runtime generation
   - helper pids, detached parents, or process names alone are evidence only
+  - the managed DSH Web host is a slot-owned service process; its current pane
+    is only the POSIX lifecycle/log carrier, while the loopback endpoint record
+    and native DSH session/RPC events provide transport and completion evidence
   - a managed Codex app-server used by the visible TUI is a child of the
     slot-owned Codex bridge process group; its socket and pid live only in that
     agent's provider-runtime directory
@@ -481,6 +488,16 @@ Managed provider startup mutation rules:
   successful semantic completion must still wait for process exit and output
   closure, and zero exit without the required native event closes as
   `incomplete` rather than completed. Older event shapes fail closed.
+- managed DSH startup launches the official `dsh web` profile on an
+  ephemeral loopback port through a signal-forwarding host wrapper. The
+  current POSIX implementation may place that wrapper in the assigned pane,
+  but it must never submit prompts, parse replies, infer quiet completion, or
+  turn process exit into success from pane state. DSH asks use HTTP/WebSocket
+  session RPC and exact native `source.rpcId` plus same-turn
+  `assistant/message` and `turn/end(completed)` evidence as defined by
+  `docs/dsh-service-provider-contract.md`. Any future non-pane service
+  supervisor must preserve project ownership, restart, shutdown, diagnostics,
+  and zero-orphan guarantees before replacing this carrier.
 - managed Qoder and Qoder CLI CN startup must resolve the final explicit or
   managed `--config-dir` before projecting skills; optional system skills, Role
   skills, and packaged `ask`/`ccb-clear`/`ccb-compact`/`ccb-diagnose` controls
@@ -492,7 +509,12 @@ Managed provider startup mutation rules:
 - managed AGY must use private agent-local `.gemini` and `.antigravity`
   directories. It may copy allowlisted authentication/config files from the
   user's Windows provider home, but it must not symlink or junction either
-  managed directory back to that source.
+  managed directory back to that source. Before every launch, CCB must safely
+  refresh AGY's provider-recognized
+  `.gemini/antigravity-cli/cache/antigravity-keyring-unavailable` marker inside
+  that private home so AGY selects file token storage without first waiting on
+  the OS keyring. This marker must not be injected globally, placed in the
+  source home, or shared with any other provider.
 - managed Droid must set the OS `HOME` and `FACTORY_HOME_OVERRIDE` to
   `.ccb/agents/<agent>/provider-state/droid/home/`, set `FACTORY_HOME` to its
   `.factory/` child, and set `FACTORY_DISABLE_KEYRING=true`; known v2 keyring

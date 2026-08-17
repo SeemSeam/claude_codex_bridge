@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.8-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.9-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
   <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/DeepSeek%20Harness-4D6BFE?style=flat-square" alt="DeepSeek Harness">
   <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
   <img src="https://img.shields.io/badge/Kimi-111111?style=flat-square&logo=moonshotai&logoColor=white" alt="Kimi">
   <img src="https://img.shields.io/badge/MiMo-FF6900?style=flat-square&logo=xiaomi&logoColor=white" alt="MiMo">
@@ -45,7 +46,8 @@
 ## 为什么用 CCB？
 
 - 强稳定的 agent 间通信能力，支持 `A -> B -> C`、`A,B -> C`、`A -> B,C` 等复杂协作关系。
-- 每个 agent 都是完整原生终端，支持可见的界面排布和直接接管。
+- 交互式 CLI agent 是完整原生终端，支持可见排布和直接接管；服务型 provider
+  保留明确的受管 host/log 界面，但不会伪装成终端 request 协议。
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
@@ -75,6 +77,23 @@ CLI，并只提示一次可安全管理的更新。可使用 `--providers check`
 本次跳过。选择“暂不更新”后，下次 `ccb update` 会再次提示；选择“跳过此
 版本”只会静默当前检测到的准确版本。该流程不会自动重启正在运行的
 provider pane；已接受的新版本会在 pane 下次启动或显式重启后生效。
+
+官方 DeepSeek Harness 以独立的 Developer Preview provider key `dsh`
+接入（`deepseek` 仍表示 Deep Code CLI）。使用受支持的 Node runtime 安装其
+npm 包，然后在 Config UI 选择 `dsh`，或使用 `research:dsh` 这样的 Agent
+leaf：
+
+```bash
+npm install -g @deepseek-ai/dsh
+dsh --version
+```
+
+CCB 会在 loopback 上启动 `dsh web`，并通过 DSH 的结构化
+HTTP/WebSocket carrier 通信。当前 POSIX 运行时可以把该服务放在受管 pane
+中，但 pane 仅承担 lifecycle/log 所有权；prompt、reply、原生结束判定、
+`ccb compact` 和恢复都不依赖终端输入或 pane 文本启发式。请在用户自有 DSH
+状态或 CCB provider profile/API 控制中配置
+`DEEPSEEK_API_KEY`，并按需配置 `DEEPSEEK_BASE_URL`；CCB 不会自动获取凭据。
 
 版本发生更新后，新安装的 CCB 还会迁移旧的项目级 Claude/Gemini 缓存：
 manifest 校验通过且项目已经删除的缓存会立即清理；当前项目已经停止时会
@@ -211,9 +230,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.8 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.9 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.8 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.8/ccb-mobile-v8.6.8.apk)
+- [下载 CCB Mobile v8.6.9 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.9/ccb-mobile-v8.6.9.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -302,12 +321,12 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
-<summary><b>v8.6.8</b> - Mobile 对话细化与更安全的 Windows 运行状态</summary>
+<summary><b>v8.6.9</b> - DeepSeek Harness、AGY 启动与 Windows 隔离</summary>
 
-- Mobile 本地背景支持调节内容表面不透明度，所选图片同时覆盖项目列表和工作区外壳。
-- 展开长回复时直接定位到气泡内部底部，保持最新气泡可见，并把可下载文件作为气泡内普通内容展示。
-- 带附件的短消息保持自然高度；长消息附件与正文位于同一个内部滚动区域。
-- Windows 子进程输出不可解码时进行安全替换，Herdr Pane 状态交回原生检测；退役 Agent 的运行时或文件仍活跃时延后清理（PR #314、#315、#317；PR #316 由加固后的测试修正取代）。
+- 以独立 Developer Preview provider `dsh` 接入官方 DeepSeek Harness，通过 loopback HTTP/WebSocket 服务与精确 native turn 证据工作。
+- 让受管 AGY 1.1.13 立即选择私有文件 token 存储，避免 keyring 超时，同时不写入用户源 HOME（Issue #318）。
+- 撤销 Windows PR 对 Linux/macOS 共享运行时代码的越界改动，并新增基于可信 base 的原生 Windows 专用 PR 门禁，阻止后续跨平台污染。
+- 将 DSH clear、compact、精确 session 恢复、凭据、skills 与运行时状态限制在 provider-native、Agent 私有边界内。
 
 </details>
 

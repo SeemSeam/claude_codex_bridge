@@ -82,6 +82,11 @@ def test_npm_package_detection_supports_scoped_and_unscoped_packages() -> None:
     ) == "opencode-ai"
 
 
+def test_dsh_update_catalog_uses_official_npm_package() -> None:
+    assert provider_updates._NATIVE_REGISTRY_PACKAGES['dsh'] == '@deepseek-ai/dsh'
+    assert provider_updates._PROVIDER_LABELS['dsh'] == 'DeepSeek Harness'
+
+
 def test_npm_install_prefix_detection_tracks_the_resolved_global_package_root() -> None:
     assert provider_updates._npm_install_prefix_from_path(
         Path("/home/demo/.local/lib/node_modules/@vegamo/deepcode-cli/dist/cli.js")

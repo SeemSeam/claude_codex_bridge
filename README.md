@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.8-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.9-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
   <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/DeepSeek%20Harness-4D6BFE?style=flat-square" alt="DeepSeek Harness">
   <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
   <img src="https://img.shields.io/badge/Kimi-111111?style=flat-square&logo=moonshotai&logoColor=white" alt="Kimi">
   <img src="https://img.shields.io/badge/MiMo-FF6900?style=flat-square&logo=xiaomi&logoColor=white" alt="MiMo">
@@ -45,7 +46,9 @@
 ## Why CCB?
 
 - Stable inter-agent communication for complex collaboration graphs such as `A -> B -> C`, `A,B -> C`, and `A -> B,C`.
-- Every agent is a full native terminal with visible layout control and direct takeover.
+- Interactive CLI agents are full native terminals with visible layout control
+  and direct takeover; service-backed providers keep an explicit managed
+  host/log surface without pretending it is their request protocol.
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
@@ -97,6 +100,24 @@ report-only, non-interactive update, or skip behavior. Declining prompts again
 on the next `ccb update`; skipping a version hides only that exact version.
 CCB never restarts active provider panes during this flow, so an accepted
 provider update applies when that pane next starts or is explicitly restarted.
+
+The official DeepSeek Harness integration is available as the separate
+Developer Preview provider key `dsh` (`deepseek` continues to mean the Deep
+Code CLI). Install its current npm release with a supported Node runtime, then
+select `dsh` in Config UI or use an Agent leaf such as `research:dsh`:
+
+```bash
+npm install -g @deepseek-ai/dsh
+dsh --version
+```
+
+CCB starts `dsh web` on loopback and communicates through DSH's structured
+HTTP/WebSocket carrier. The current POSIX runtime may host that service in a
+managed pane only for lifecycle/log ownership; prompts, replies, native
+completion, `ccb compact`, and restore do not depend on terminal input or
+pane-text heuristics. Configure `DEEPSEEK_API_KEY` (and
+optionally `DEEPSEEK_BASE_URL`) in user-owned DSH state or through CCB's
+provider-profile/API controls; CCB does not obtain credentials automatically.
 
 After a release change, the newly installed CCB also retires old
 project-scoped Claude/Gemini caches. Manifest-valid caches for deleted projects
@@ -240,9 +261,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.6.8 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.6.9 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.6.8 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.8/ccb-mobile-v8.6.8.apk)
+- [Download CCB Mobile v8.6.9 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.9/ccb-mobile-v8.6.9.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -331,12 +352,12 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
-<summary><b>v8.6.8</b> - Refined Mobile conversations and safer Windows runtime state</summary>
+<summary><b>v8.6.9</b> - DeepSeek Harness, AGY startup, and Windows isolation</summary>
 
-- Adjust workspace-surface opacity for local Mobile backgrounds and extend the selected image across the project list and workspace chrome.
-- Open expanded long replies at their internal bottom, keep the latest bubble visible, and render downloadable files as normal in-bubble content.
-- Preserve natural height for short attachment messages and keep long-message attachments in the same internal scroll viewport as the body.
-- Replace undecodable Windows subprocess bytes, return Herdr pane-state authority to native detection, and defer retired Agent cleanup while its runtime or files remain active (PRs #314, #315, and #317; PR #316 is superseded by the hardened test correction).
+- Add the official DeepSeek Harness as the separate Developer Preview provider `dsh`, using its loopback HTTP/WebSocket service and exact native turn evidence.
+- Make managed AGY 1.1.13 select private file token storage immediately, avoiding the keyring timeout without writing to the user's source HOME (Issue #318).
+- Roll back Windows PR changes that crossed into shared Linux/macOS runtime code and add a trusted-base native-only PR gate that rejects future cross-platform leakage.
+- Keep DSH clear, compact, exact-session restore, credentials, skills, and runtime state inside provider-native, agent-private boundaries.
 
 </details>
 

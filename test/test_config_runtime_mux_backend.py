@@ -521,6 +521,7 @@ _VA7_EXPECTED_LAUNCH_MODES = {
     'agy': 'simple_tmux',
     'kimi': 'simple_tmux',
     'deepseek': 'simple_tmux',
+    'dsh': 'simple_tmux',
     'mimo': 'simple_tmux',
     'qwen': 'simple_tmux',
     'qoder': 'simple_tmux',
@@ -537,7 +538,7 @@ _VA7_EXPECTED_LAUNCH_MODES = {
 
 
 def test_va7_all_providers_have_correct_launch_mode() -> None:
-    """VA-7: 20 providers — codex 唯一 codex_tmux，其余 19 均 simple_tmux。
+    """VA-7: 21 providers — codex 唯一 codex_tmux，其余 20 均 simple_tmux。
 
     验证 launch_mode 值有效且与预期注册表一致。
     """
@@ -545,9 +546,9 @@ def test_va7_all_providers_have_correct_launch_mode() -> None:
 
     launchers = build_default_runtime_launcher_map(include_optional=True)
 
-    # 断言 1: 恰好 20 个 provider
-    assert len(launchers) == 20, (
-        f'expected 20 providers with runtime launchers, got {len(launchers)}'
+    # 断言 1: 恰好 21 个 provider
+    assert len(launchers) == 21, (
+        f'expected 21 providers with runtime launchers, got {len(launchers)}'
     )
 
     # 断言 2: 每个 provider 的 launch_mode 与预期一致
@@ -712,6 +713,10 @@ def test_herdr_explicit_gate_blocks_unverified_provider() -> None:
     assert reason is not None
     assert 'gemini' in reason
     assert 'does not support herdr-native launch' in reason
+    dsh_reason = _herdr_explicit_gate_error('dsh')
+    assert dsh_reason is not None
+    assert 'dsh' in dsh_reason
+    assert 'does not support herdr-native launch' in dsh_reason
 
 
 def test_herdr_explicit_gate_is_case_insensitive() -> None:

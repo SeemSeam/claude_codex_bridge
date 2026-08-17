@@ -953,6 +953,17 @@ home = ".ccb/provider-profiles/agent1/{provider}"
             },
             True,
         ),
+        (
+            'dsh',
+            'key = "deepseek-key"\nurl = "https://api.deepseek.com"\n',
+            'deepseek-key',
+            'https://api.deepseek.com',
+            {
+                'DEEPSEEK_API_KEY': 'deepseek-key',
+                'DEEPSEEK_BASE_URL': 'https://api.deepseek.com',
+            },
+            True,
+        ),
     ],
 )
 def test_load_project_config_supports_toml_agent_api_shortcut(
@@ -1176,6 +1187,7 @@ url = "https://api.example.test/v1"
         ('claude', 'opus', ('--model', 'opus')),
         ('gemini', 'gemini-2.5-pro', ('-m', 'gemini-2.5-pro')),
         ('opencode', 'openai/gpt-5', ('-m', 'openai/gpt-5')),
+        ('dsh', 'deepseek-v4-flash', ()),
     ],
 )
 def test_load_project_config_supports_agent_model_shortcut(
@@ -1233,6 +1245,8 @@ startup_args = ["--search"]
         ),
         ('deepseek', 'deepseek-v4-pro', 'max', ()),
         ('deepseek', 'deepseek-v4-flash', 'off', ()),
+        ('dsh', 'deepseek-v4-flash', 'high', ()),
+        ('dsh', 'deepseek-v4-pro', 'max', ()),
     ],
 )
 def test_load_project_config_supports_static_agent_thinking_shortcut(
@@ -2525,6 +2539,7 @@ url = "https://api.example.test/v1"
     [
         ('codex', 'gpt-5.5', 'xhigh'),
         ('deepseek', 'deepseek-v4-flash', 'high'),
+        ('dsh', 'deepseek-v4-pro', 'max'),
     ],
 )
 def test_render_project_config_text_round_trips_static_thinking(

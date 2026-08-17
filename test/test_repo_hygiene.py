@@ -64,6 +64,7 @@ def test_inherited_skills_live_under_inherit_skills_only() -> None:
         "claude_skills",
         "codex_skills",
         "droid_skills",
+        "dsh_skills",
         "gemini_skills",
         "grok_skills",
         "kimi_skills",
@@ -81,6 +82,10 @@ def test_inherited_skills_live_under_inherit_skills_only() -> None:
     assert (inherited / "droid_skills" / "ask" / "SKILL.md").is_file()
     assert (inherited / "droid_skills" / "ccb-clear" / "SKILL.md").is_file()
     assert (inherited / "droid_skills" / "ccb-diagnose" / "SKILL.md").is_file()
+    assert (inherited / "dsh_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "dsh_skills" / "ccb-clear" / "SKILL.md").is_file()
+    assert (inherited / "dsh_skills" / "ccb-compact" / "SKILL.md").is_file()
+    assert (inherited / "dsh_skills" / "ccb-diagnose" / "SKILL.md").is_file()
     assert (inherited / "gemini_skills" / "ask" / "SKILL.md").is_file()
     assert (inherited / "gemini_skills" / "ccb-clear" / "SKILL.md").is_file()
     assert (inherited / "gemini_skills" / "ccb-diagnose" / "SKILL.md").is_file()
@@ -118,6 +123,7 @@ def test_inherited_skill_set_is_minimal() -> None:
         "claude_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},
         "codex_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose", "reconnect"},
         "droid_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},
+        "dsh_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},
         "gemini_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},
         "grok_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},
         "kimi_skills": {"ask", "ccb-clear", "ccb-compact", "ccb-diagnose"},

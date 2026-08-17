@@ -212,12 +212,23 @@ def test_config_ui_serves_token_guarded_page_and_project_session(tmp_path: Path)
             'claude',
             'gemini',
             'deepseek',
+            'dsh',
         }
         by_provider = {provider['id']: provider for provider in capabilities['providers']}
         assert by_provider['codex']['static_thinking'] is True
         assert by_provider['deepseek']['model_shortcut'] is True
         assert by_provider['deepseek']['api_shortcut'] is True
         assert by_provider['deepseek']['static_thinking'] is True
+        assert by_provider['dsh']['model_shortcut'] is True
+        assert by_provider['dsh']['api_shortcut'] is True
+        assert by_provider['dsh']['static_thinking'] is True
+        assert {
+            model['id']: model['reasoning_levels']
+            for model in by_provider['dsh']['models']
+        } == {
+            'deepseek-v4-flash': ['off', 'high', 'max'],
+            'deepseek-v4-pro': ['off', 'high', 'max'],
+        }
         assert {
             model['id']: model['reasoning_levels']
             for model in by_provider['deepseek']['models']
@@ -1499,6 +1510,15 @@ def test_config_ui_provider_capabilities_use_current_safe_model_sources(tmp_path
     assert providers['codex']['api_shortcut'] is True
     assert providers['deepseek']['api_shortcut'] is True
     assert providers['deepseek']['model_source'] == 'deepseek_v4_and_deepcode_contract'
+    assert [model['id'] for model in providers['dsh']['models']] == [
+        'deepseek-v4-flash',
+        'deepseek-v4-pro',
+    ]
+    assert providers['dsh']['models'][0]['reasoning_levels'] == ['off', 'high', 'max']
+    assert providers['dsh']['models'][0]['default_reasoning_level'] == 'high'
+    assert providers['dsh']['model_shortcut'] is True
+    assert providers['dsh']['api_shortcut'] is True
+    assert providers['dsh']['model_source'] == 'deepseek_harness_official_catalog'
     assert [model['id'] for model in providers['opencode']['models']] == ['openai/gpt-5.6-sol']
     assert [model['id'] for model in providers['mimo']['models']] == ['xiaomi/mimo-v2.5-pro']
     assert providers['codex']['static_thinking'] is True
@@ -1507,7 +1527,7 @@ def test_config_ui_provider_capabilities_use_current_safe_model_sources(tmp_path
     assert all(
         provider['static_thinking'] is False
         for name, provider in providers.items()
-        if name not in {'codex', 'claude', 'deepseek'}
+        if name not in {'codex', 'claude', 'deepseek', 'dsh'}
     )
 
 

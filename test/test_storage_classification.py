@@ -304,6 +304,37 @@ def test_qoder_config_skills_are_projected(
     assert entry.reason == 'qoder_skill_projection'
 
 
+@pytest.mark.parametrize(
+    ('remainder', 'storage_class'),
+    (
+        (('.credentials.yaml',), 'secret'),
+        (('.env',), 'secret'),
+        (('settings.yaml',), 'projected_config'),
+        (('AGENTS.md',), 'projected_config'),
+        (('skills', 'ask', 'SKILL.md'), 'projected_config'),
+        (('sessions', 'session-1.jsonl'), 'session'),
+        (('.cache', 'catalog.json'), 'rebuildable_cache'),
+    ),
+)
+def test_dsh_managed_home_storage_boundaries(
+    tmp_path: Path,
+    remainder: tuple[str, ...],
+    storage_class: str,
+) -> None:
+    path = tmp_path.joinpath(*remainder)
+    entry = classify_provider_home(
+        path,
+        f'agents/dsh1/provider-state/dsh/home/{"/".join(remainder)}',
+        'dsh',
+        'dsh1',
+        remainder,
+        size=3,
+        root_kind='project',
+    )
+
+    assert entry.storage_class.value == storage_class
+
+
 def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     ccb = project_root / '.ccb'

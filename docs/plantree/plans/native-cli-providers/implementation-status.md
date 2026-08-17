@@ -1,6 +1,7 @@
 # Native CLI Providers Implementation Status
 
 Date: 2026-07-21
+Last updated: 2026-08-17
 
 ## Current Phase
 
@@ -10,6 +11,18 @@ session/event logs or structured result streams for completion detection
 instead of asking the model to print `CCB_DONE`. Kimi and OpenCode inherited
 ask skill injection landed in commit `a4395c2`. MiMo inherited ask instruction
 injection and `mimo run --format json` execution landed in commit `fce17c3`.
+
+Official DeepSeek Harness support is implemented in the active source
+candidate under provider key `dsh`; it does not replace the `deepseek` /
+`deepcode` provider. DSH is modeled as a service-backed Web provider. The
+current POSIX runtime pane only carries the signal-forwarding host process and
+logs; asks, reply extraction, exact completion, restore, clear, and compact do
+not use terminal input or pane-text heuristics. Unit and focused integration
+regressions pass, as does an isolated official-host no-credential failure
+probe. An external `ccb_test` mount using the official host also passed
+exact-session restart, keyless native-error terminalization, clear rotation,
+and structured compact. Authenticated answer success remains explicit
+qualification evidence rather than an inferred claim.
 
 Pi's per-job headless execution has been replaced in the source worktree by
 visible managed-pane execution while preserving 8.5.0 headless jobs and an
@@ -42,6 +55,14 @@ instead of stacking retries into one native turn, records coalesced native
 can use stable pane fallback when transcript flushes lag. Topic:
 [topics/agy-delivery-stability-hardening.md](topics/agy-delivery-stability-hardening.md).
 
+Issue #318 is fixed in the active source candidate. Managed AGY now refreshes
+its provider-recognized recent-keyring-failure marker inside the agent-private
+HOME before every launch, selecting file token storage immediately instead of
+waiting for a failing OS keyring operation. User `spec.env` cannot redirect the
+managed HOME, legacy marker links are detached, and the source credential home
+remains read-only inheritance input. No setting is injected into other
+providers.
+
 Z.ai CLI provider support has landed in source as `provider = "zai"` using the
 shared native CLI subprocess adapter. It targets conversational `zai` CLIs with
 headless `--prompt` support, such as `@guizmo-ai/zai-cli`; official
@@ -64,6 +85,9 @@ rollback. Interrupted in-flight Cursor jobs remain resubmit-required.
 
 ## Last Landed
 
+- Issue #318: AGY `1.1.13` managed launches select private file token storage
+  through the confirmed private-home marker path without a source-home or
+  cross-provider write path.
 - Kimi exact-session restart now binds native identity only from an observed
   per-agent request anchor, persists one restart-command insertion point, and
   fails fresh when binding or capability validation fails. Real Kimi 1.47.0
@@ -176,8 +200,9 @@ rollback. Interrupted in-flight Cursor jobs remain resubmit-required.
 
 ## Active TODO
 
-1. Commit the accepted Pi visible-pane adapter, lifecycle sidecar,
-   persisted-mode migration, restore behavior, and no-default-cutoff contract.
+1. Keep authenticated DSH answer success and real macOS AGY keyring-bypass
+   startup as explicit post-landing qualification; do not infer either from
+   keyless, stub, or local marker probes.
 2. Decide whether to keep the smoke/real test projects as reusable validation
    fixtures.
 3. Decide whether provider-specific auth diagnostics should land before the
@@ -203,6 +228,19 @@ Kimi hardening source work is unblocked. Remaining Kimi prompt-mode and auth
 diagnostic ideas stay deferred/open until real usage needs them.
 
 ## Last Verified
+
+`v8.6.9` source-candidate verification, 2026-08-17:
+
+- Complete pytest gate in the dependency-qualified environment: `7166 passed,
+  3 skipped, 4 subtests passed`.
+- Linux/Windows release scripts, Mobile version surface, Windows x64 baseline,
+  and trusted-base Windows PR isolation: `76 passed`.
+- Issue #318 marker isolation and legacy-link regressions: `3 passed, 30
+  deselected`; the installed AGY executable reports `1.1.13`.
+- Bilingual release-note validation and `npm pack --dry-run` passed; the npm
+  package identity is `@seemseam/ccb@8.6.9` with 19 allowlisted files.
+- Isolated `/home/bfly/yunwei/ccb_source/ccb_test version` from
+  `/home/bfly/yunwei/test_ccb2` reported source version `8.6.9`.
 
 Cursor visible-pane verification, 2026-08-12:
 

@@ -40,6 +40,7 @@ def test_default_session_binding_map_uses_backend_owned_entries() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'dsh',
         'mimo',
         'qwen',
         'qoder',
@@ -59,6 +60,7 @@ def test_default_session_binding_map_uses_backend_owned_entries() -> None:
     assert bindings['agy'].session_path_attr == 'agy_session_path'
     assert bindings['kimi'].session_path_attr == 'kimi_session_path'
     assert bindings['deepseek'].session_path_attr == 'deepseek_session_path'
+    assert bindings['dsh'].session_path_attr == 'dsh_session_path'
     assert bindings['mimo'].session_path_attr == 'mimo_session_path'
     assert bindings['qwen'].session_path_attr == 'qwen_session_path'
     assert bindings['qoder'].session_path_attr == 'qoder_session_path'
@@ -86,6 +88,7 @@ def test_default_runtime_launcher_map_uses_backend_owned_entries() -> None:
         'agy',
         'kimi',
         'deepseek',
+        'dsh',
         'mimo',
         'qwen',
         'qoder',
@@ -105,6 +108,7 @@ def test_default_runtime_launcher_map_uses_backend_owned_entries() -> None:
     assert launchers['agy'].launch_mode == 'simple_tmux'
     assert launchers['kimi'].launch_mode == 'simple_tmux'
     assert launchers['deepseek'].launch_mode == 'simple_tmux'
+    assert launchers['dsh'].launch_mode == 'simple_tmux'
     assert launchers['mimo'].launch_mode == 'simple_tmux'
     assert launchers['qwen'].launch_mode == 'simple_tmux'
     assert launchers['qoder'].launch_mode == 'simple_tmux'
@@ -126,6 +130,7 @@ def test_session_filename_for_agent_follows_agent_first_naming() -> None:
     assert session_filename_for_agent('agy', 'antigravity') == '.agy-antigravity-session'
     assert session_filename_for_agent('kimi', 'moon') == '.kimi-moon-session'
     assert session_filename_for_agent('deepseek', 'coder') == '.deepseek-coder-session'
+    assert session_filename_for_agent('dsh', 'harness') == '.dsh-harness-session'
     assert session_filename_for_agent('mimo', 'mimoer') == '.mimo-mimoer-session'
     assert session_filename_for_agent('qwen', 'qwen1') == '.qwen-qwen1-session'
     assert session_filename_for_agent('qoder', 'qoder1') == '.qoder-qoder1-session'

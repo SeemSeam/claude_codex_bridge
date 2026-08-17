@@ -29,6 +29,7 @@ _AUTH_FILES: dict[str, tuple[str, ...]] = {
         '.gemini/mcp-oauth-tokens.json',
         '.gemini/a2a-oauth-tokens.json',
     ),
+    'dsh': ('.credentials.yaml',),
 }
 _AUTH_METADATA_FILES: dict[str, tuple[str, ...]] = {
     'claude': ('.claude.json', '.claude/.claude.json'),
@@ -37,6 +38,7 @@ _AUTH_METADATA_FILES: dict[str, tuple[str, ...]] = {
 _API_FILES: dict[str, tuple[str, ...]] = {
     'claude': ('.claude/settings.json',),
     'gemini': ('.gemini/.env',),
+    'dsh': ('.env',),
 }
 _AUTH_PROJECTION_MANIFEST = '.ccb-auth-projection.json'
 _CONTINUITY_SCHEMA_VERSION = 1
@@ -60,6 +62,13 @@ def current_provider_authority_fingerprint(provider: str, profile, runtime_dir: 
     inherit_api = bool(getattr(profile, 'inherit_api', True))
     inherit_auth = bool(getattr(profile, 'inherit_auth', True))
     source_home = current_provider_source_home()
+    if provider_name == 'dsh':
+        explicit_dsh_home = str(os.environ.get('DSH_HOME') or '').strip()
+        source_home = (
+            Path(explicit_dsh_home).expanduser()
+            if explicit_dsh_home
+            else source_home / '.dsh'
+        )
     managed_home = _managed_home(runtime, profile, provider_name)
     api_keys = set(provider_api_env_keys(provider_name))
     profile_env = {
@@ -509,6 +518,7 @@ def _credential_env_keys(provider: str) -> set[str]:
         'claude': {'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'},
         'gemini': {'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS'},
         'codex': {'OPENAI_API_KEY'},
+        'dsh': {'DEEPSEEK_API_KEY'},
     }.get(provider, set())
 
 
@@ -532,6 +542,10 @@ def _explicit_api_owned_names(provider: str, profile_env: Mapping[str, str]) -> 
             {'OPENAI_API_KEY'},
             {'OPENAI_BASE_URL', 'OPENAI_API_BASE'},
             {'OPENAI_ORG_ID', 'OPENAI_ORGANIZATION'},
+        ),
+        'dsh': (
+            {'DEEPSEEK_API_KEY'},
+            {'DEEPSEEK_BASE_URL'},
         ),
     }.get(provider, ())
     owned: set[str] = set()

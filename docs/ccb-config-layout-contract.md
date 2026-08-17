@@ -110,10 +110,14 @@ Examples:
   topology leaf.
 - Each configured agent must appear exactly once in the layout.
 - Built-in provider keys are currently `codex`, `claude`, `gemini`,
-  `opencode`, `droid`, `agy`, `kimi`, `deepseek`, `mimo`, `qwen`, `cursor`,
-  `copilot`, `crush`, `kiro`, `pi`, `zai`, and `grok`. The `deepseek` provider key launches the
-  DeepSeek-oriented Deep Code CLI command `deepcode` by default; `mimo`
-  launches Xiaomi MiMo Code with command `mimo`; `qwen`, `cursor`, `copilot`,
+  `opencode`, `droid`, `agy`, `kimi`, `deepseek`, `dsh`, `mimo`, `qwen`,
+  `qoder`, `qoderclicn`, `cursor`, `copilot`, `crush`, `kiro`, `pi`, `omp`,
+  `zai`, and `grok`. The `deepseek` provider key launches the DeepSeek-oriented
+  Deep Code CLI command `deepcode` by default. The separate `dsh` key starts
+  the official DeepSeek Harness Web service with command `dsh`; CCB uses its
+  structured loopback API, and any current pane is only a lifecycle/log
+  carrier. The `mimo` key launches Xiaomi MiMo Code with command `mimo`;
+  `qwen`, `cursor`, `copilot`,
   `crush`, `kiro`, and `pi` launch `qwen`, `agent`, `copilot`, `crush`,
   `kiro-cli`, and `pi` respectively; `zai` and `grok` launch `zai` and `grok`.
   Each command may be overridden by its provider start-command environment

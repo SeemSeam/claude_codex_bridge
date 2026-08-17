@@ -128,8 +128,8 @@ timeout 必须是正数，quorum 必须是正整数。
 \midrule
 \cmd{ccb ps} & 查看 agent/backend runtime 状态。 \\
 \cmd{ccb ping <agent|all>} & 检查 agent 或 all。 \\
-\cmd{ccb clear [agent...]} & 向 provider pane 发送 native \cmd{/clear}；不删除 \src{.ccb} 状态、workspace、auth、session 或日志；\cmd{all} 不能和具体 agent 混用。 \\
-\cmd{ccb compact [agent...]} & 向 provider pane 发送已验证的 native context-compaction 命令（例如 Codex/Claude 的 \cmd{/compact}、Gemini/Qwen/Droid 的 \cmd{/compress}、Crush 的 \cmd{/summarize}）；busy/queued agent 会被阻止，未验证 provider 返回 \src{unsupported}；不删除任何项目状态。 \\
+\cmd{ccb clear [agent...]} & 调用 provider-native context clear；交互式 provider 通常接收 \cmd{/clear}，DSH 因没有该命令而轮换 managed native session id。该操作不删除旧 DSH 日志、\src{.ccb} 状态、workspace、auth 或 memory；\cmd{all} 不能和具体 agent 混用。 \\
+\cmd{ccb compact [agent...]} & 调用已验证的 native context-compaction 控制（例如 Codex/Claude 的 \cmd{/compact}、Gemini/Qwen/Droid 的 \cmd{/compress}、Crush 的 \cmd{/summarize}）；DSH 通过其结构化 Web API 执行 \cmd{/compact}，不向 host/log pane 输入。busy/queued agent 会被阻止，未验证 provider 返回 \src{unsupported}；不删除任何项目状态。 \\
 \cmd{ccb restart <agent>} & 通过 ccbd 重启单个 agent；busy、queued、reply delivery 或 callback continuation 状态会被拒绝；不支持 \cmd{all}。 \\
 \cmd{ccb reload [--dry-run]} & 重新加载项目配置；dry-run 只预检。 \\
 \cmd{ccb cleanup [--legacy-provider-caches]} & 清理当前停止项目的安全可重建缓存；显式选项额外清理 manifest 校验通过且项目根目录已不存在的旧 Provider 项目缓存。 \\

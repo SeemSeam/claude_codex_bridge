@@ -100,7 +100,8 @@ First CCB slice:
 
 Observed local storage:
 
-- Local binary: `/home/bfly/.local/bin/agy`, version `1.0.7`.
+- Local binary: `/home/bfly/.local/bin/agy`, version `1.1.13` (verified
+  2026-08-17).
 - CLI help exposes `--print`, `--prompt-interactive`, `--conversation`,
   `--continue`, and `--print-timeout`.
 - Antigravity writes transcript logs under
@@ -119,6 +120,14 @@ Observed local storage:
   stable meaning of those enums is not source-confirmed, transcript jsonl
   remains the primary CCB completion authority and sqlite is only a possible
   future diagnostic aid.
+- AGY `1.1.13` has no documented token-storage flag and does not contain the
+  Gemini CLI `GEMINI_FORCE_FILE_STORAGE` switches. Binary symbols and an
+  isolated syscall trace confirm that its composite token store bypasses the
+  OS keyring when the caller requests file storage internally or when
+  `~/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable` is recent.
+  CCB cannot select the internal caller boolean through the public CLI, so its
+  managed launcher refreshes that provider-recognized marker only inside the
+  agent-private HOME.
 
 ## OpenCode
 
@@ -498,6 +507,47 @@ CCB direction:
   authenticate the managed Grok home through the visible pane or use inherited
   environment such as `XAI_API_KEY` when supported by the CLI.
 
+## Official DeepSeek Harness
+
+Observed official source and package evidence on 2026-08-14:
+
+- GitHub: `deepseek-ai/deepseek-harness`.
+- npm package: `@deepseek-ai/dsh@0.1.0-rc.6`; binary `dsh`.
+- Inspected source commit:
+  `47f943859bef60e4160492346772ded9b24f765a`.
+- Node requirement: `^22.19 || >=24`.
+- DSH is a service-oriented harness with terminal, Web, headless, and SDK
+  surfaces; CCB uses the official Web carrier rather than pretending the host
+  process is an interactive agent TUI.
+- Managed host: `dsh web --host 127.0.0.1 --port 0`; readiness is published as
+  `dsh web: http://127.0.0.1:<port>`.
+- Unary calls are HTTP POST. Browser event downlinks use
+  `/api/events.mux` and `/api/events.host` WebSockets.
+- `session.prompt` keeps its RPC id in the durable
+  `user/message.source.rpcId`. Native turn evidence includes `turn/start`,
+  `user/message`, committed `assistant/message`, and `turn/end`.
+- Native terminal reasons are `completed`, `aborted`, `blocked`, `error`,
+  `max-tokens`, and `interrupted`.
+- `session.history` pages backward by `beforeSeq` and supports exact
+  request/turn reconstruction without prompt repost.
+- The official built-in DeepSeek route is `deepseek-official`; the inspected
+  catalog exposes `deepseek-v4-flash` and `deepseek-v4-pro` with reasoning
+  levels `off`, `high`, and `max`.
+- DSH supports native `/compact` and does not expose native `/clear`.
+- DSH home is `$DSH_HOME` (default `~/.dsh`); inspected inputs include
+  `.credentials.yaml`, `.env`, `settings.yaml`, `skills/`, and `AGENTS.md`.
+
+CCB direction:
+
+- Provider key `dsh`; default executable `dsh`; override `DSH_START_CMD`.
+- Isolated per-Agent DSH home and native session id.
+- WebSocket open before submission; CCB job id as the native prompt RPC id.
+- Success only from exact durable request anchor, committed non-empty
+  same-turn assistant reply, and same-turn native `completed` terminal.
+- Observer-only history restore; no prompt repost.
+- Pane, when present under the current POSIX lifecycle, is host/log transport
+  only and has no request/reply/completion authority.
+
 ## Local Probe Evidence
 
 - Local Node: `v22.20.0`.
@@ -533,3 +583,9 @@ CCB direction:
 - `npm view @xai-official/grok name version description bin dist.tarball
   optionalDependencies --json` returned package `0.2.93`, bin `grok`, and
   platform optional dependency versions.
+- Installed `@deepseek-ai/dsh@0.1.0-rc.6` under the isolated lab prefix and
+  verified its `dsh` executable with local Node `v22.22.1`.
+- An isolated no-credential official `dsh web` probe reached loopback
+  readiness, durably recorded the exact CCB RPC anchor, and ended with native
+  `turn/end(error)` plus an empty reply. This proves transport and fail-closed
+  terminal handling only; it is not authenticated answer-success evidence.

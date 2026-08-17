@@ -16,6 +16,7 @@ _REQUIRED_CONTROL_SKILLS = {
     'claude': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'codex': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose', 'reconnect'),
     'droid': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
+    'dsh': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'gemini': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'grok': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'kimi': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),

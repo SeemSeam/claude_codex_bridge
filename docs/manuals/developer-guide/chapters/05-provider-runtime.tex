@@ -16,6 +16,7 @@ CCB 支持多个 provider family。每个 provider 有自己的启动方式、se
   \item \src{docs/claude-session-isolation-contract.md}
   \item \src{docs/gemini-session-isolation-contract.md}
   \item \src{docs/opencode-completion-contract.md}
+  \item \src{docs/dsh-service-provider-contract.md}
 \end{itemize}
 
 \section{pane-backed runtime}
@@ -23,6 +24,8 @@ CCB 支持多个 provider family。每个 provider 有自己的启动方式、se
 默认 runtime mode 是 pane-backed。也就是说，provider 通常在一个 tmux pane 中运行，CCB 通过 pane、runtime record、session file、completion snapshot 和 provider-specific detector 组合判断它是否可用。
 
 pane-backed 不是把 tmux pane 当权威。它只是执行通道。权威状态仍来自 daemon registry、dispatcher job record、completion tracker 和 provider-specific session binding。
+
+官方 DeepSeek Harness 是一个特殊边界：\src{dsh} 启动 \cmd{dsh web} 服务，request、reply 与 native terminal 都走 loopback HTTP/WebSocket。当前 POSIX launcher 可以把 host wrapper 放在 managed pane 中，但该 pane 只承担 lifecycle/log carrier；CCB 不向它键入 prompt，不从 pane capture 提取 reply，也不以 quiet time 或 process exit 判定完成。完整约束见 \src{docs/dsh-service-provider-contract.md}。把 agent 简单标成 \src{headless} 并不等于已经实现 service supervisor。
 
 \section{provider home 隔离}
 
@@ -49,7 +52,7 @@ terminal decision 是 job finalization 的输入。finalization 再把 decision 
 
 \section{provider-specific reply detection}
 
-Codex、Claude、Gemini 和 OpenCode 的 reply detection 不应被写成同一套字符串规则。每个 provider 的 session 文件、日志格式、prompt 边界和完成判断都不同。因此 CCB 把 provider-specific 检测放在 provider/completion 层，并通过 manifest 暴露给 dispatcher。
+Codex、Claude、Gemini、OpenCode 和 DSH 的 reply detection 不应被写成同一套字符串规则。每个 provider 的 session 文件、日志格式、prompt 边界和完成判断都不同。因此 CCB 把 provider-specific 检测放在 provider/completion 层，并通过 manifest 暴露给 dispatcher。DSH 只有在同一 native turn 中同时证明 exact \src{source.rpcId}、非空 committed assistant reply 与 \src{turn/end(completed)} 时才能成功。
 
 这一点对维护者有两个约束。
 

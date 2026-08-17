@@ -146,10 +146,50 @@ def test_compact_opencode_waits_before_submit(monkeypatch) -> None:
     assert ('sleep', '0.3') in backend.calls
 
 
+def test_compact_dsh_uses_structured_api_without_pane_input(monkeypatch, tmp_path) -> None:
+    backend = _Backend()
+    monkeypatch.setattr(
+        'ccbd.handlers.project_compact.TmuxBackend',
+        lambda *, socket_path: (_ for _ in ()).throw(
+            AssertionError(f'DSH compact must not open tmux backend {socket_path}')
+        ),
+    )
+    session_file = tmp_path / '.dsh-session'
+    calls = []
+    monkeypatch.setattr(
+        'provider_backends.dsh.control.compact_dsh_session',
+        lambda path: calls.append(path) or {
+            'session_id': 'session-1',
+            'command': '/compact',
+            'detail': 'Compacted.',
+        },
+    )
+    app = _app(
+        agents={'dsh1': SimpleNamespace(provider='dsh')},
+        runtimes={'dsh1': SimpleNamespace(session_file=str(session_file))},
+    )
+    app.project_namespace = SimpleNamespace(load=lambda: None)
+
+    result = build_project_compact_context_handler(app)({})
+
+    assert result['status'] == 'ok'
+    assert result['results'] == [
+        {
+            'agent': 'dsh1',
+            'status': 'compacted',
+            'provider': 'dsh',
+            'command': '/compact',
+            'detail': 'Compacted.',
+        }
+    ]
+    assert calls == [session_file]
+    assert backend.calls == []
+
+
 def test_compact_capability_table_covers_all_builtin_provider_keys() -> None:
     expected = {
         'codex', 'claude', 'gemini', 'opencode', 'droid', 'agy', 'kimi', 'deepseek',
-        'mimo', 'qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'grok',
+        'dsh', 'mimo', 'qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'grok',
         'kiro', 'pi', 'omp', 'zai',
     }
     assert set(COMPACT_COMMANDS) == expected
@@ -167,4 +207,5 @@ def test_compact_capability_table_covers_all_builtin_provider_keys() -> None:
         'crush': '/summarize',
         'pi': '/compact',
         'omp': '/compact',
+        'dsh': '/compact',
     }

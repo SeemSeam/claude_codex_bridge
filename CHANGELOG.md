@@ -1,5 +1,21 @@
 # Changelog
 
+## v8.6.9 (2026-08-17)
+
+- Added the official DeepSeek Harness as the separate Developer Preview
+  provider `dsh`, with loopback HTTP/WebSocket transport, exact native request
+  and turn completion, observer-only restore, native clear/compact handling,
+  and agent-private account, skill, and runtime state.
+- Fixed Issue #318 by making managed AGY 1.1.13 select its private file token
+  store immediately, without a keyring timeout or writes to the source user
+  HOME.
+- Reverted Windows PR behavior that had crossed into shared Linux/macOS
+  runtime modules, then added a trusted-base native-only Windows PR gate that
+  rejects shared client, release, Mobile, npm, and generic-test changes.
+- No project, conversation, pairing, or configuration migration is required.
+  DeepSeek Harness remains optional and does not change the existing
+  `deepseek` / `deepcode` provider.
+
 ## v8.6.8 (2026-08-17)
 
 - Added adjustable workspace-surface opacity for local CCB Mobile backgrounds

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shlex
 import sqlite3
@@ -142,6 +143,130 @@ def test_agy_wsl_pins_windows_appdata_to_managed_home(
     assert "APPDATA/p" in cmd
     assert "LOCALAPPDATA/p" in cmd
     assert "EXISTING/u" in cmd
+
+
+def test_agy_forces_file_token_storage_inside_private_home(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    external_home = tmp_path / "user-selected-home"
+    source_marker = (
+        source_home
+        / ".gemini"
+        / "antigravity-cli"
+        / "cache"
+        / "antigravity-keyring-unavailable"
+    )
+    source_marker.parent.mkdir(parents=True)
+    source_marker.write_text("source-owned\n", encoding="utf-8")
+    managed_marker = (
+        managed_home
+        / ".gemini"
+        / "antigravity-cli"
+        / "cache"
+        / "antigravity-keyring-unavailable"
+    )
+    managed_marker.parent.mkdir(parents=True)
+    managed_marker.symlink_to(source_marker)
+
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+
+    cmd = agy_launcher.build_start_cmd(
+        ParsedStartCommand(
+            project=None,
+            agent_names=("agy_agent",),
+            restore=False,
+            auto_permission=False,
+        ),
+        _spec(
+            "agy_agent",
+            "agy",
+            env={"HOME": str(external_home), "USERPROFILE": str(external_home)},
+        ),
+        tmp_path / "runtime",
+        "launch-agy",
+    )
+
+    assert managed_marker.is_file()
+    assert not managed_marker.is_symlink()
+    assert managed_marker.read_bytes() == b""
+    if os.name != "nt":
+        assert managed_marker.stat().st_mode & 0o777 == 0o600
+    assert source_marker.read_text(encoding="utf-8") == "source-owned\n"
+    assert cmd.rfind(f"HOME={shlex.quote(str(managed_home))}") > cmd.rfind(
+        f"HOME={shlex.quote(str(external_home))}"
+    )
+    assert cmd.rfind(f"USERPROFILE={shlex.quote(str(managed_home))}") > cmd.rfind(
+        f"USERPROFILE={shlex.quote(str(external_home))}"
+    )
+    assert "antigravity-keyring-unavailable" not in cmd
+
+
+def test_agy_fails_closed_when_legacy_credential_link_cannot_be_detached(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_home.mkdir()
+    managed_home.mkdir()
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+
+    def detach(target: Path, source: Path) -> bool:
+        del source
+        return target == managed_home
+
+    monkeypatch.setattr(agy_launcher, "_detach_legacy_credential_link", detach)
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+
+    with pytest.raises(RuntimeError, match="managed credential directory aliases external source"):
+        agy_launcher.build_start_cmd(
+            ParsedStartCommand(
+                project=None,
+                agent_names=("agy_agent",),
+                restore=False,
+                auto_permission=False,
+            ),
+            _spec("agy_agent", "agy"),
+            tmp_path / "runtime",
+            "launch-agy",
+        )
+
+    assert not (source_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).exists()
+    assert not (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).exists()
+
+
+def test_agy_refreshes_file_token_storage_marker_on_every_launch(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_home.mkdir()
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+    command = ParsedStartCommand(
+        project=None,
+        agent_names=("agy_agent",),
+        restore=False,
+        auto_permission=False,
+    )
+    spec = _spec("agy_agent", "agy")
+    runtime_dir = tmp_path / "runtime"
+
+    agy_launcher.build_start_cmd(command, spec, runtime_dir, "launch-agy-1")
+    marker = managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL
+    os.utime(marker, (1, 1))
+
+    agy_launcher.build_start_cmd(command, spec, runtime_dir, "launch-agy-2")
+
+    assert marker.stat().st_mtime > 1
 
 
 def test_kimi_start_cmd_uses_env_override_and_auto_without_implicit_restore(monkeypatch, tmp_path: Path) -> None:

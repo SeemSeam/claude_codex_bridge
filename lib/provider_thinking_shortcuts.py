@@ -8,6 +8,8 @@ _PROVIDER_THINKING_LEVELS = {
     # Claude Code 2.1.220 exposes these values through --effort.
     'claude': ('low', 'medium', 'high', 'xhigh', 'max'),
     'deepseek': ('off', 'high', 'max'),
+    # DSH validates these on session.selectModel rather than at process start.
+    'dsh': ('off', 'high', 'max'),
 }
 
 _PROVIDER_THINKING_RUNTIME_ENV = {

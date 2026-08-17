@@ -22,8 +22,8 @@
 \cmd{ccb wait-quorum <n> <target>} & 等 quorum。 \\
 \cmd{ccb ps} & 查看状态。 \\
 \cmd{ccb ping <agent|all>} & ping。 \\
-\cmd{ccb clear [agents]} & 清理上下文。 \\
-\cmd{ccb compact [agents]} & 使用各 provider 已验证的原生命令压缩上下文；不支持时报告 unsupported。 \\
+\cmd{ccb clear [agents]} & 清理上下文；DSH 轮换 managed native session，不删除旧日志或项目状态。 \\
+\cmd{ccb compact [agents]} & 使用各 provider 已验证的原生控制压缩上下文；DSH 走 Web API 而非 pane input，不支持时报告 unsupported。 \\
 \cmd{ccb restart <agent>} & 重启 agent。 \\
 \cmd{ccb reload [--dry-run]} & 重载配置。 \\
 \cmd{ccb cleanup [--legacy-provider-caches]} & 清理当前项目残留；显式选项额外清理已删除项目的旧 Provider 缓存。 \\

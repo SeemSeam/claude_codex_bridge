@@ -40,7 +40,9 @@ maintenance doctor repair config fault reload restart
 
 \cmd{compact} 是项目上下文控制命令，不是 mailbox 任务。它通过
 \src{project_compact_context} RPC，对指定 agent（省略时为全部 configured
-agents）向 tmux pane 发送 provider-native compaction 命令。发送前复用
+agents）调用 provider-native compaction 控制。交互式 provider 通常向 pane
+发送原生命令；DSH 则通过结构化 Web API 调用 \cmd{/compact}，不得向其
+host/log pane 发送输入。执行前复用
 \cmd{clear} 的 busy/queue gate；provider 没有已验证命令时必须 fail closed，
 返回 \src{unsupported}，不得把未知控制词当作普通 prompt 发送。该命令不清理
 \src{.ccb}、workspace、auth、session、日志或 memory。

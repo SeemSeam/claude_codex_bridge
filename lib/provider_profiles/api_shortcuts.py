@@ -20,6 +20,10 @@ _PROVIDER_API_SHORTCUT_ENV = {
         'key': 'DEEPCODE_API_KEY',
         'url': 'DEEPCODE_BASE_URL',
     },
+    'dsh': {
+        'key': 'DEEPSEEK_API_KEY',
+        'url': 'DEEPSEEK_BASE_URL',
+    },
 }
 
 

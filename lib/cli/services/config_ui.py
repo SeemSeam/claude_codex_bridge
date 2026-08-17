@@ -450,6 +450,20 @@ def config_ui_provider_capabilities(
                 default_reasoning_level='max',
             ),
         ],
+        'dsh': [
+            _model(
+                'deepseek-v4-flash',
+                'DeepSeek V4 Flash',
+                reasoning_levels=list(provider_thinking_levels('dsh')),
+                default_reasoning_level='high',
+            ),
+            _model(
+                'deepseek-v4-pro',
+                'DeepSeek V4 Pro',
+                reasoning_levels=list(provider_thinking_levels('dsh')),
+                default_reasoning_level='high',
+            ),
+        ],
         'opencode': [_model(model_id, model_id) for model_id in discovered_cli_models.get('opencode', [])],
         'mimo': [_model(model_id, model_id) for model_id in discovered_cli_models.get('mimo', [])],
     }
@@ -469,6 +483,8 @@ def config_ui_provider_capabilities(
             source = 'provider_cli_cache' if suggestions['mimo'] else 'custom_only'
         elif provider == 'deepseek':
             source = 'deepseek_v4_and_deepcode_contract'
+        elif provider == 'dsh':
+            source = 'deepseek_harness_official_catalog'
         providers.append(
             {
                 'id': provider,
