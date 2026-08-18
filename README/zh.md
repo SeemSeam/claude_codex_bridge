@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.9-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.10-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -230,9 +230,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.9 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.10 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.9 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.9/ccb-mobile-v8.6.9.apk)
+- [下载 CCB Mobile v8.6.10 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.10/ccb-mobile-v8.6.10.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -321,6 +321,15 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.6.10</b> - Claude OAuth 重登录隔离</summary>
+
+- 外部 OAuth 重新登录后，受管重启会刷新 Agent 私有 Claude Keychain 凭据，避免继续使用已撤销 token（Issue #319）。
+- 继承源凭据未变化时保留 Claude 私有 Keychain 自行刷新的值；外部 Claude Keychain service 始终只读。
+- CCB 凭据投影为 symlink 或私有 Keychain 检查异常时 fail closed。无需迁移项目、对话、配对或配置。
+
+</details>
+
+<details>
 <summary><b>v8.6.9</b> - DeepSeek Harness、AGY 启动与 Windows 隔离</summary>
 
 - 以独立 Developer Preview provider `dsh` 接入官方 DeepSeek Harness，通过 loopback HTTP/WebSocket 服务与精确 native turn 证据工作。

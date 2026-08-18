@@ -1,5 +1,16 @@
 # Changelog
 
+## v8.6.10 (2026-08-18)
+
+- Fixed Issue #319: after an external Claude OAuth re-login, a stopped managed
+  restart now refreshes the existing Agent-private Keychain credential instead
+  of retaining a revoked token and returning 401.
+- Preserved a Claude-private Keychain refresh when the inherited source is
+  unchanged; external Claude Keychain services remain read-only.
+- Added fail-closed handling for symlinked CCB credential projections and
+  private Keychain inspection errors. No project, conversation, pairing, or
+  configuration migration is required.
+
 ## v8.6.9 (2026-08-17)
 
 - Added the official DeepSeek Harness as the separate Developer Preview

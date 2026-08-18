@@ -24,16 +24,17 @@ Native resume remains capability-gated. A qualified fork/import is used when
 the installed CLI supports it; an unqualified or unsafe binding is retained as
 linked continuation evidence instead of being hidden from history.
 
-## Current Local Patch
+## Current Release Candidate
 
-Issue #319 macOS Claude OAuth re-login repair is implemented in the current
-working tree but is not committed or published. On stopped restart, CCB now
-compares the inherited source payload with the prior CCB-owned
+Issue #319 macOS Claude OAuth re-login repair is included in the `v8.6.10`
+release candidate from implementation commit `84f2bc73c`. On stopped restart,
+CCB now compares the inherited source payload with the prior CCB-owned
 `.credentials.json` projection and updates only the matching Agent-derived
 Keychain service when the source changed. An unchanged source preserves a
 managed Claude refresh performed in that private service. External Claude
 Keychain services remain read-only; symlinked projections and private
-Keychain inspection errors fail closed.
+Keychain inspection errors fail closed. The candidate is not yet published
+from this worktree.
 
 ## Last Landed
 

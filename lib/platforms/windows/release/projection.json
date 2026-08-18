@@ -57,7 +57,7 @@
   ],
   "packaged_projection_ref": "lib/platforms/windows/release/projection.json",
   "projection_source": "repo_evidence",
-  "release_artifact_ref": "v8.6.9",
+  "release_artifact_ref": "v8.6.10",
   "release_gate_detail": "The Windows x64 ZIP is attached to the stable CCB release but retains beta support status.",
   "release_install_entry": "install_ps1",
   "schema_version": 1,
