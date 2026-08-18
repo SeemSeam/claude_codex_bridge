@@ -81,6 +81,7 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
         message_bureau_control: MessageBureauControlService | None = None,
         snapshot_writer: SnapshotWriter | None = None,
         timing_sink=None,
+        agent_lifecycle_bridge=None,
         clock=utc_now,
     ) -> None:
         self._runtime_state = DispatcherRuntimeState(
@@ -113,6 +114,7 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
             last_restore_entries=(),
             last_restore_generated_at=None,
         )
+        self._agent_lifecycle_bridge = agent_lifecycle_bridge
         self._rebuild_state()
         cleanup_stale_execution_states(self)
 

@@ -497,6 +497,7 @@ class HerdrSocketClient:
         *,
         provider_kind: str,
         state: str = "unknown",
+        seq: int | None = None,
         session_id: str | None = None,
         session_path: str | None = None,
     ) -> MuxOperationEvidenceV2:
@@ -506,6 +507,8 @@ class HerdrSocketClient:
             "provider_kind": provider_kind,
             "state": state,
         }
+        if seq is not None:
+            payload["seq"] = seq
         if session_id:
             payload["session_id"] = session_id
         if session_path:
@@ -516,6 +519,59 @@ class HerdrSocketClient:
             require_status=True,
         )
         return _operation_evidence("report_pane_agent", pane, response, detail="pane agent reported")
+
+    def report_pane_agent_session(
+        self,
+        pane: MuxPaneRefV2,
+        *,
+        provider_kind: str,
+        seq: int | None = None,
+        session_id: str | None = None,
+        session_path: str | None = None,
+    ) -> MuxOperationEvidenceV2:
+        payload: dict[str, object] = {
+            "pane_id": pane["pane_id"],
+            "session_name": pane["session_name"],
+            "provider_kind": provider_kind,
+        }
+        if seq is not None:
+            payload["seq"] = seq
+        if session_id:
+            payload["session_id"] = session_id
+        if session_path:
+            payload["session_path"] = session_path
+        response = self._request(
+            "report_pane_agent_session",
+            payload,
+            require_status=True,
+        )
+        return _operation_evidence(
+            "report_pane_agent_session",
+            pane,
+            response,
+            detail="pane agent session reported",
+        )
+
+    def release_pane_agent(
+        self,
+        pane: MuxPaneRefV2,
+        *,
+        provider_kind: str,
+        seq: int | None = None,
+    ) -> MuxOperationEvidenceV2:
+        payload: dict[str, object] = {
+            "pane_id": pane["pane_id"],
+            "session_name": pane["session_name"],
+            "provider_kind": provider_kind,
+        }
+        if seq is not None:
+            payload["seq"] = seq
+        response = self._request(
+            "release_pane_agent",
+            payload,
+            require_status=True,
+        )
+        return _operation_evidence("release_pane_agent", pane, response, detail="pane agent released")
 
     def select_window(
         self,

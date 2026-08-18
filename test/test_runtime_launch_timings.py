@@ -165,6 +165,9 @@ def test_launch_tmux_runtime_uses_herdr_assigned_pane_ref_without_tmux_fallback(
         def set_pane_identity(self, pane, **kwargs):
             calls.append(('set_pane_identity', (dict(pane), dict(kwargs))))
 
+        def release_pane_agent(self, pane, **kwargs):
+            calls.append(('release_pane_agent', (dict(pane), dict(kwargs))))
+
         def report_pane_agent(self, pane, **kwargs):
             calls.append(('report_pane_agent', (dict(pane), dict(kwargs))))
 
@@ -228,13 +231,18 @@ def test_launch_tmux_runtime_uses_herdr_assigned_pane_ref_without_tmux_fallback(
     assert calls[2][0] == 'set_pane_identity'
     assert calls[2][1][0] == pane_ref
     assert calls[2][1][1]['project_id'] == 'project-test'
-    assert calls[3][0] == 'report_pane_agent'
+    assert calls[3][0] == 'release_pane_agent'
     assert calls[3][1][0] == pane_ref
-    assert calls[3][1][1] == {
+    assert calls[3][1][1] == {'provider_kind': 'codex'}
+    assert calls[4][0] == 'report_pane_agent'
+    assert calls[4][1][0] == pane_ref
+    assert calls[4][1][1] == {
         'provider_kind': 'codex',
-        'state': 'unknown',
+        'state': 'idle',
+        'seq': 1,
         'session_id': 'ccb-demo-session',
     }
+    assert not any(call[1][1].get('state') == 'unknown' for call in calls if call[0] == 'report_pane_agent')
     assert ('build_session_payload', 'herdr-pane-1') in calls
     assert ('write_session_file', 'herdr-pane-1') in calls
 
