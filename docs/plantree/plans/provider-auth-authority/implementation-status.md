@@ -24,20 +24,17 @@ Native resume remains capability-gated. A qualified fork/import is used when
 the installed CLI supports it; an unqualified or unsafe binding is retained as
 linked continuation evidence instead of being hidden from history.
 
-## Current Release Candidate
-
-Issue #319 macOS Claude OAuth re-login repair is included in the `v8.6.10`
-release candidate from implementation commit `84f2bc73c`. On stopped restart,
-CCB now compares the inherited source payload with the prior CCB-owned
-`.credentials.json` projection and updates only the matching Agent-derived
-Keychain service when the source changed. An unchanged source preserves a
-managed Claude refresh performed in that private service. External Claude
-Keychain services remain read-only; symlinked projections and private
-Keychain inspection errors fail closed. The candidate is not yet published
-from this worktree.
-
 ## Last Landed
 
+- Issue #319 macOS Claude OAuth re-login repair was published in CCB `v8.6.10`
+  from implementation commit `84f2bc73c` and release commit `705c932ec`, with
+  annotated tag `v8.6.10`, GitHub Release assets, and npm
+  `@seemseam/ccb@8.6.10`. On stopped restart, CCB compares the inherited source
+  payload with the prior CCB-owned `.credentials.json` projection and updates
+  only the matching Agent-derived Keychain service when the source changed. An
+  unchanged source preserves a managed Claude refresh performed in that private
+  service. External Claude Keychain services remain read-only; symlinked
+  projections and private Keychain inspection errors fail closed.
 - v8.5.5 was withdrawn from GitHub on 2026-08-05 after its first startup moved
   all pre-HMAC Codex sessions out of the active namespace.
 - Codex now adopts compatible pre-HMAC namespaces in place and restores the
@@ -94,8 +91,13 @@ rather than block local history continuity.
   when rerun with the qualification interpreter and `aiohttp` on `PATH`).
 - `py_compile` and `git diff --check` passed for the current local patch.
 - Real macOS Keychain qualification is still unavailable on this Linux host;
-  the macOS behavior remains covered by deterministic fakes and requires the
-  platform gate before release.
+  the macOS behavior remains covered by deterministic fakes and remains a
+  platform-owner qualification item after publication.
+- v8.6.10 release verification: Release Artifacts run `32123813089`, Native
+  Windows run `32123813069`, Release Sidebar run `32123813053`, and npm OIDC
+  run `32123813131` all completed successfully. The public release contains
+  Linux/macOS, Windows, Mobile, sidebar, and checksum assets; npm `latest`
+  resolves to `8.6.10`.
 
 - `/home/bfly/yunwei/ccb_source/ccb_test --diagnose` passed from the external
   `/home/bfly/yunwei/test_ccb2` project root.

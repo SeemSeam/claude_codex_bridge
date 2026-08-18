@@ -91,7 +91,7 @@ Required cases:
   source is unchanged, refusing to follow a symlinked CCB-owned projection, and
   failing closed when the private service cannot be inspected. The current
   Linux host cannot provide real macOS Keychain qualification, so that remains
-  a platform-owner gate for this release candidate.
+  a platform-owner gate after the `v8.6.10` publication.
 - Linux Secret Service, Windows credential stores, and file-backed providers
   follow the same capability decision.
 - Provider-specific tests assert the exact root and credential-store switches
