@@ -86,6 +86,12 @@ Required cases:
 
 - macOS Keychain tests distinguish service-name isolation from remote-token
   identity and never use real secrets.
+- Issue #319 adds deterministic coverage for source re-login refreshing an
+  existing Agent-derived service, preserving an Agent-private refresh when the
+  source is unchanged, refusing to follow a symlinked CCB-owned projection, and
+  failing closed when the private service cannot be inspected. The current
+  Linux host cannot provide real macOS Keychain qualification, so that remains
+  a platform-owner gate.
 - Linux Secret Service, Windows credential stores, and file-backed providers
   follow the same capability decision.
 - Provider-specific tests assert the exact root and credential-store switches

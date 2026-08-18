@@ -634,6 +634,11 @@ def _materialize_auth(source_home: Path, target_layout: ClaudeHomeLayout, *, pro
         target_layout.credentials_path,
         target_layout.home_root,
     )
+    previous_credentials_payload = (
+        _read_owned_json_projection(target_layout.credentials_path)
+        if credentials_name in previous_files
+        else None
+    )
     if not _inherits_external_auth(profile):
         for _source_auth, target_auth in _source_auth_paths(source_home, target_layout):
             name = _relative_to_home(target_auth, target_layout.home_root)
@@ -669,6 +674,8 @@ def _materialize_auth(source_home: Path, target_layout: ClaudeHomeLayout, *, pro
             credentials_name not in previous_files
             or credentials_name in projected_files
         ),
+        previous_projected_payload=previous_credentials_payload,
+        previous_projection_owned=credentials_name in previous_files,
     )
     if keychain_projected:
         projected_files.add(credentials_name)
@@ -988,6 +995,8 @@ def _materialize_macos_keychain_auth(
     target_layout: ClaudeHomeLayout,
     *,
     preserve_existing: bool = True,
+    previous_projected_payload: dict[str, object] | None = None,
+    previous_projection_owned: bool = False,
 ) -> bool:
     try:
         source_payload = _read_macos_keychain_claude_credentials()
@@ -1008,7 +1017,17 @@ def _materialize_macos_keychain_auth(
         payload = _read_json_object(target_layout.credentials_path)
     if not payload or not isinstance(payload.get('claudeAiOauth'), dict):
         return False
-    _seed_managed_macos_keychain_auth(target_layout, payload)
+    refresh_existing = bool(
+        previous_projection_owned
+        and payload != previous_projected_payload
+    )
+    # Claude may refresh its private Keychain item after launch. Replace it
+    # only when the CCB-owned source projection changed between launches.
+    _sync_managed_macos_keychain_auth(
+        target_layout,
+        payload,
+        refresh_existing=refresh_existing,
+    )
     return source_payload is not None
 
 
@@ -1085,9 +1104,11 @@ def _managed_macos_keychain_service(target_layout: ClaudeHomeLayout) -> str:
     return f'{base}-{suffix}'
 
 
-def _seed_managed_macos_keychain_auth(
+def _sync_managed_macos_keychain_auth(
     target_layout: ClaudeHomeLayout,
     payload: dict[str, object],
+    *,
+    refresh_existing: bool = False,
 ) -> None:
     if platform.system() != 'Darwin':
         return
@@ -1109,7 +1130,13 @@ def _seed_managed_macos_keychain_auth(
     except Exception as exc:
         raise RuntimeError(f'cannot inspect agent-private Claude Keychain login: {exc}') from exc
     if existing.returncode == 0:
-        return
+        if not refresh_existing:
+            return
+        existing_payload = _json_object_from_text(existing.stdout)
+        if existing_payload == payload:
+            return
+    elif existing.returncode != 44:
+        raise RuntimeError('cannot inspect agent-private Claude Keychain login')
     credential_text = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
     try:
         result = subprocess.run(
@@ -1517,6 +1544,21 @@ def _read_json_object(path: Path) -> dict[str, object]:
     except Exception:
         return {}
     return data
+
+
+def _read_owned_json_projection(path: Path) -> dict[str, object] | None:
+    target = Path(path)
+    try:
+        metadata = target.lstat()
+    except OSError:
+        return None
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        return None
+    try:
+        payload = json.loads(target.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _read_source_json_object(path: Path, *, label: str) -> dict[str, object]:

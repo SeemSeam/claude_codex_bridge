@@ -253,6 +253,14 @@ When `ccb` starts a managed Claude agent:
   startup may seed only the agent-derived namespaced service selected from
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`; refresh and cleanup may mutate only that
   service, while ordinary source Claude services remain read-only
+- when a stopped restart observes that the inherited source credential changed
+  from the previous CCB-owned projection, startup must update that exact
+  agent-derived service before launching Claude; the presence of an older
+  private service item must not suppress the refresh
+- when the inherited source credential is unchanged, startup must preserve a
+  different value already held by the agent-derived service because the
+  managed Claude process may have refreshed its private credential after the
+  last source projection
 - managed login-auth projection must not copy
   `~/Library/Preferences/com.apple.security.plist` or link the managed
   `Library/Keychains` path to the user's Keychains; startup must remove a

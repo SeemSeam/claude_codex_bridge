@@ -1,6 +1,6 @@
 # Provider Authentication Authority Implementation Status
 
-Date: 2026-08-06
+Date: 2026-08-18
 
 ## Current Phase
 
@@ -23,6 +23,17 @@ record, or transcript history.
 Native resume remains capability-gated. A qualified fork/import is used when
 the installed CLI supports it; an unqualified or unsafe binding is retained as
 linked continuation evidence instead of being hidden from history.
+
+## Current Local Patch
+
+Issue #319 macOS Claude OAuth re-login repair is implemented in the current
+working tree but is not committed or published. On stopped restart, CCB now
+compares the inherited source payload with the prior CCB-owned
+`.credentials.json` projection and updates only the matching Agent-derived
+Keychain service when the source changed. An unchanged source preserves a
+managed Claude refresh performed in that private service. External Claude
+Keychain services remain read-only; symlinked projections and private
+Keychain inspection errors fail closed.
 
 ## Last Landed
 
@@ -74,6 +85,16 @@ private-login decisions. An unqualified Provider must use linked continuation
 rather than block local history continuity.
 
 ## Last Verified
+
+- Issue #319 regression tests: `4 passed`.
+- Provider/restart/authority/storage regression matrix: `406 passed`.
+- Full source suite in the qualification environment: `7170 passed, 3
+  skipped, 4 subtests passed` (the initial 27 environment-only failures passed
+  when rerun with the qualification interpreter and `aiohttp` on `PATH`).
+- `py_compile` and `git diff --check` passed for the current local patch.
+- Real macOS Keychain qualification is still unavailable on this Linux host;
+  the macOS behavior remains covered by deterministic fakes and requires the
+  platform gate before release.
 
 - `/home/bfly/yunwei/ccb_source/ccb_test --diagnose` passed from the external
   `/home/bfly/yunwei/test_ccb2` project root.

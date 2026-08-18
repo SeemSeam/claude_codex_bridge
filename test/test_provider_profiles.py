@@ -2923,6 +2923,204 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
     )
 
 
+def test_materialize_claude_home_config_refreshes_existing_macos_keychain_after_source_relogin(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_home.mkdir(parents=True)
+    source_refresh = 'source-refresh-1'
+    managed_refresh: str | None = None
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def credential_payload(refresh_token: str) -> dict[str, object]:
+        return {'claudeAiOauth': {'refreshToken': refresh_token}}
+
+    def fake_run(argv, **_kwargs):
+        nonlocal managed_refresh
+        call = [str(part) for part in argv]
+        calls.append(call)
+        command = call[1]
+        service = call[call.index('-s') + 1]
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(0, json.dumps(credential_payload(source_refresh)))
+        if command == 'find-generic-password':
+            if managed_refresh is None:
+                return Result(44)
+            return Result(0, json.dumps(credential_payload(managed_refresh)))
+        if command == 'add-generic-password':
+            stored = json.loads(call[call.index('-w') + 1])
+            managed_refresh = stored['claudeAiOauth']['refreshToken']
+            return Result(0)
+        return Result(44)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    monkeypatch.setenv('USER', 'mac-user')
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    managed_service = claude_home_runtime._managed_macos_keychain_service(layout)
+    assert managed_refresh == 'source-refresh-1'
+
+    calls.clear()
+    source_refresh = 'source-refresh-2'
+    materialize_claude_home_config(target_home, source_home=source_home)
+
+    payload = json.loads(layout.credentials_path.read_text(encoding='utf-8'))
+    assert payload['claudeAiOauth']['refreshToken'] == 'source-refresh-2'
+    assert managed_refresh == 'source-refresh-2'
+    updates = [
+        call
+        for call in calls
+        if call[1] == 'add-generic-password'
+    ]
+    assert len(updates) == 1
+    assert '-U' in updates[0]
+    assert updates[0][updates[0].index('-s') + 1] == managed_service
+    assert not any(
+        call[1] in {'add-generic-password', 'delete-generic-password'}
+        and call[call.index('-s') + 1] == 'Claude Code-credentials'
+        for call in calls
+    )
+
+
+def test_materialize_claude_home_config_preserves_private_macos_keychain_refresh_when_source_is_unchanged(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_home.mkdir(parents=True)
+    source_refresh = 'source-refresh'
+    managed_refresh: str | None = None
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def credential_payload(refresh_token: str) -> dict[str, object]:
+        return {'claudeAiOauth': {'refreshToken': refresh_token}}
+
+    def fake_run(argv, **_kwargs):
+        nonlocal managed_refresh
+        call = [str(part) for part in argv]
+        calls.append(call)
+        command = call[1]
+        service = call[call.index('-s') + 1]
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(0, json.dumps(credential_payload(source_refresh)))
+        if command == 'find-generic-password':
+            if managed_refresh is None:
+                return Result(44)
+            return Result(0, json.dumps(credential_payload(managed_refresh)))
+        if command == 'add-generic-password':
+            stored = json.loads(call[call.index('-w') + 1])
+            managed_refresh = stored['claudeAiOauth']['refreshToken']
+            return Result(0)
+        return Result(44)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    monkeypatch.setenv('USER', 'mac-user')
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    assert managed_refresh == source_refresh
+
+    managed_refresh = 'managed-refresh'
+    calls.clear()
+    materialize_claude_home_config(target_home, source_home=source_home)
+
+    payload = json.loads(layout.credentials_path.read_text(encoding='utf-8'))
+    assert payload['claudeAiOauth']['refreshToken'] == source_refresh
+    assert managed_refresh == 'managed-refresh'
+    assert not any(call[1] == 'add-generic-password' for call in calls)
+
+
+def test_materialize_claude_home_config_does_not_follow_owned_credentials_symlink_during_keychain_refresh(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    external_credentials = tmp_path / 'external-credentials.json'
+    source_home.mkdir(parents=True)
+    target_credentials = target_home / '.claude' / '.credentials.json'
+    target_credentials.parent.mkdir(parents=True)
+    external_credentials.write_text(
+        '{"claudeAiOauth":{"refreshToken":"external-untouched"}}\n',
+        encoding='utf-8',
+    )
+    target_credentials.symlink_to(external_credentials)
+    (target_home / '.ccb-auth-projection.json').write_text(
+        json.dumps(
+            {
+                'schema_version': 1,
+                'record_type': 'ccb_claude_auth_projection',
+                'status': 'inherited_auth',
+                'source_home': str(source_home),
+                'projected_files': ['.claude/.credentials.json'],
+                'projected_env_keys': [],
+            }
+        ),
+        encoding='utf-8',
+    )
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def fake_run(argv, **_kwargs):
+        call = [str(part) for part in argv]
+        calls.append(call)
+        command = call[1]
+        service = call[call.index('-s') + 1]
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(
+                0,
+                json.dumps({'claudeAiOauth': {'refreshToken': 'source-refresh'}}),
+            )
+        if command == 'find-generic-password':
+            return Result(
+                0,
+                json.dumps({'claudeAiOauth': {'refreshToken': 'managed-stale'}}),
+            )
+        if command == 'add-generic-password':
+            return Result(0)
+        return Result(44)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    monkeypatch.setenv('USER', 'mac-user')
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+
+    assert layout.credentials_path.is_file()
+    assert not layout.credentials_path.is_symlink()
+    assert json.loads(layout.credentials_path.read_text(encoding='utf-8')) == {
+        'claudeAiOauth': {'refreshToken': 'source-refresh'}
+    }
+    assert json.loads(external_credentials.read_text(encoding='utf-8')) == {
+        'claudeAiOauth': {'refreshToken': 'external-untouched'}
+    }
+    assert any(call[1] == 'add-generic-password' and '-U' in call for call in calls)
+
+
 def test_materialize_claude_home_config_observes_macos_keychain_logout(
     tmp_path: Path,
     monkeypatch,
@@ -3030,6 +3228,46 @@ def test_materialize_claude_home_config_keychain_error_preserves_projection(
         materialize_claude_home_config(target_home, source_home=source_home)
 
     assert layout.credentials_path.read_bytes() == projected
+
+
+def test_materialize_claude_home_config_private_keychain_inspection_error_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    source_home.mkdir(parents=True)
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def fake_run(argv, **_kwargs):
+        call = [str(part) for part in argv]
+        calls.append(call)
+        command = call[1]
+        service = call[call.index('-s') + 1]
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(
+                0,
+                json.dumps({'claudeAiOauth': {'refreshToken': 'source-refresh'}}),
+            )
+        if command == 'find-generic-password':
+            return Result(36)
+        return Result(0)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    monkeypatch.setenv('USER', 'mac-user')
+
+    with pytest.raises(RuntimeError, match='cannot inspect agent-private Claude Keychain login'):
+        materialize_claude_home_config(target_home, source_home=source_home)
+
+    assert not any(call[1] == 'add-generic-password' for call in calls)
 
 
 def test_materialize_claude_home_config_does_not_project_macos_keychain_preferences(
