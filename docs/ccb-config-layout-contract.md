@@ -775,7 +775,7 @@ General rule:
 - The project-owned tmux socket/session is responsible for its own theme and pane header rendering.
 - Project UI correctness must not depend on whether the invoking shell is already inside some outer tmux server.
 - Namespace creation or reuse must reapply session-scoped CCB tmux options on the project-owned socket.
-- CCB-managed tmux sessions use vi copy/scroll mode by default (`mode-keys vi`) with a 50000-line scrollback history, including `v` to begin selection, `y` to copy and leave copy mode, and Vim-style pane navigation (`prefix+h/j/k/l`) plus pane resizing (`prefix+H/J/K/L`).
+- CCB-managed tmux sessions use vi copy/scroll mode by default (`mode-keys vi`) with a 10000-line scrollback history. Set `CCB_TMUX_HISTORY_LIMIT` to override the limit, including `v` to begin selection, `y` to copy and leave copy mode, and Vim-style pane navigation (`prefix+h/j/k/l`) plus pane resizing (`prefix+H/J/K/L`).
 - When a project-owned pane dies and the daemon chooses namespace-level recovery, it must recreate and re-project the configured layout so each logical pane returns to its canonical position.
 - Namespace `layout_version` is the compatibility key for visible pane topology and tmux UI presentation:
   - when the stored namespace layout version differs from the current code contract, the project namespace must be recreated

@@ -10,6 +10,9 @@ import re
 from provider_core.platform_info import is_windows as _platform_is_windows
 from runtime_env.control_plane import scrub_managed_provider_runtime_env
 
+TMUX_HISTORY_LIMIT_ENV = 'CCB_TMUX_HISTORY_LIMIT'
+DEFAULT_TMUX_HISTORY_LIMIT = 10000
+
 
 def env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
@@ -30,6 +33,11 @@ def env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def tmux_history_limit() -> int:
+    """Return the configured non-negative tmux scrollback line limit."""
+    return max(0, env_int(TMUX_HISTORY_LIMIT_ENV, DEFAULT_TMUX_HISTORY_LIMIT))
 
 
 def sanitize_filename(value: str) -> str:

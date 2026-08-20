@@ -1796,7 +1796,7 @@ def test_ensure_agent_runtime_falls_back_to_detached_tmux_session(monkeypatch, t
     )
     assert any(name == 'set-option' for name, _ in calls)
     assert ('set-option', ('set-option', '-g', 'mouse', 'on')) in calls
-    assert ('set-option', ('set-option', '-g', 'history-limit', '50000')) in calls
+    assert ('set-option', ('set-option', '-g', 'history-limit', '10000')) in calls
     assert ('set-option', ('set-option', '-g', 'set-clipboard', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'focus-events', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'escape-time', '10')) in calls
@@ -1981,7 +1981,7 @@ def test_ensure_agent_runtime_outside_tmux_relaunches_stale_binding_via_detached
         index for index, (name, _) in enumerate(calls) if name == 'set-option'
     )
     assert ('set-option', ('set-option', '-g', 'mouse', 'on')) in calls
-    assert ('set-option', ('set-option', '-g', 'history-limit', '50000')) in calls
+    assert ('set-option', ('set-option', '-g', 'history-limit', '10000')) in calls
     assert ('set-option', ('set-option', '-g', 'set-clipboard', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'focus-events', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'escape-time', '10')) in calls
@@ -2788,7 +2788,7 @@ def test_ensure_agent_runtime_falls_back_when_created_pane_is_too_small(monkeypa
     )
     assert any(name == 'set-option' for name, _ in calls)
     assert ('set-option', ('set-option', '-g', 'mouse', 'on')) in calls
-    assert ('set-option', ('set-option', '-g', 'history-limit', '50000')) in calls
+    assert ('set-option', ('set-option', '-g', 'history-limit', '10000')) in calls
     assert ('set-option', ('set-option', '-g', 'set-clipboard', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'focus-events', 'on')) in calls
     assert ('set-option', ('set-option', '-g', 'escape-time', '10')) in calls

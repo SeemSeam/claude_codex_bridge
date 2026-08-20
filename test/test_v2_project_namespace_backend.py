@@ -529,7 +529,7 @@ def test_prepare_server_then_create_session_and_server_policy_retry_transient_tm
     assert backend.calls.count(('start-server',)) == 2
     assert backend.calls.count(('set-option', '-g', 'destroy-unattached', 'off')) == 2
     assert backend.calls.count(('set-option', '-g', 'mouse', 'on')) == 1
-    assert backend.calls.count(('set-option', '-g', 'history-limit', '50000')) == 1
+    assert backend.calls.count(('set-option', '-g', 'history-limit', '10000')) == 1
     assert backend.calls.count(('set-option', '-g', 'set-clipboard', 'on')) == 1
     assert backend.calls.count(('set-option', '-g', 'focus-events', 'on')) == 1
     assert backend.calls.count(('set-option', '-g', 'escape-time', '10')) == 1
@@ -633,14 +633,14 @@ def test_fresh_namespace_creates_session_before_server_policy(monkeypatch, tmp_p
     assert ('start-server',) not in backend.calls
     assert ('set-option', '-g', 'destroy-unattached', 'off') not in backend.calls[:1]
     assert ('set-option', '-g', 'mouse', 'on') not in backend.calls[:1]
-    assert ('set-option', '-g', 'history-limit', '50000') not in backend.calls[:1]
+    assert ('set-option', '-g', 'history-limit', '10000') not in backend.calls[:1]
     assert ('set-option', '-g', 'set-clipboard', 'on') not in backend.calls[:1]
     assert ('set-option', '-g', 'focus-events', 'on') not in backend.calls[:1]
     assert ('set-option', '-g', 'escape-time', '10') not in backend.calls[:1]
     expected_policy_calls = [
         ('set-option', '-g', 'destroy-unattached', 'off'),
         ('set-option', '-g', 'mouse', 'on'),
-        ('set-option', '-g', 'history-limit', '50000'),
+        ('set-option', '-g', 'history-limit', '10000'),
         ('set-option', '-g', 'set-clipboard', 'on'),
         ('set-option', '-g', 'focus-events', 'on'),
         ('set-option', '-g', 'escape-time', '10'),
@@ -892,7 +892,7 @@ def test_ensure_server_policy_accepts_fast_probe_timeout(monkeypatch) -> None:
     assert backend.calls[:7] == [
         ('set-option', '-g', 'destroy-unattached', 'off'),
         ('set-option', '-g', 'mouse', 'on'),
-        ('set-option', '-g', 'history-limit', '50000'),
+        ('set-option', '-g', 'history-limit', '10000'),
         ('set-option', '-g', 'set-clipboard', 'on'),
         ('set-option', '-g', 'focus-events', 'on'),
         ('set-option', '-g', 'escape-time', '10'),
