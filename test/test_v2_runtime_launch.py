@@ -44,6 +44,7 @@ from provider_backends.codex import launcher as codex_launcher
 from provider_backends.codex.launcher_runtime.command import (
     prepare_codex_home_overrides as prepare_codex_home_overrides_for_test,
 )
+from provider_backends.codex.launcher_runtime.command_runtime import service as codex_command_service
 from provider_backends.codex.session_authority import (
     current_provider_authority_fingerprint,
 )
@@ -4379,6 +4380,39 @@ def test_codex_launcher_build_start_cmd_exports_inherited_api_env(monkeypatch, t
 
     assert f'OPENAI_API_KEY={shlex.quote("env-key")}' in cmd
     assert f'OPENAI_BASE_URL={shlex.quote("https://api.example.test/v1")}' in cmd
+
+
+def test_codex_launcher_build_start_cmd_does_not_export_model_catalog_json(
+    tmp_path: Path,
+) -> None:
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    profile = ResolvedProviderProfile(
+        provider='codex',
+        agent_name='agent1',
+        mode='isolated',
+        runtime_home=str(tmp_path / 'managed-codex-home'),
+        env={'model_catalog_json': 'model.json'},
+    )
+
+    spec = _spec('agent1')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
+
+    cmd = codex_command_service.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'sess-model-catalog',
+        load_resolved_provider_profile_fn=lambda _: profile,
+        prepare_codex_home_overrides_fn=lambda *_, **__: {'CODEX_HOME': str(tmp_path / 'managed-codex-home')},
+        provider_start_parts_fn=lambda _: ['codex'],
+        load_resume_session_id_fn=lambda *_, **__: None,
+        build_codex_shell_prefix_fn=lambda **_: [],
+        supports_managed_app_server_fn=lambda _: False,
+        prepared_state={'project_root': tmp_path, 'workspace_path': tmp_path},
+    )
+
+    assert 'model_catalog_json=' not in cmd
 
 
 def test_codex_launcher_build_start_cmd_exports_user_session_transport_without_runtime_leaks(

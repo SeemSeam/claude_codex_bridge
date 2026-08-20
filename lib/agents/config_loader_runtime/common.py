@@ -58,6 +58,7 @@ ALLOWED_AGENT_KEYS = {
     'permission',
     'queue_policy',
     'model',
+    'model_catalog_json',
     'thinking',
     'key',
     'url',

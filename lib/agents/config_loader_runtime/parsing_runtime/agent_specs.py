@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from agents.models import (
@@ -40,6 +41,26 @@ def build_agent_spec(agent_name: str, raw: dict[str, Any]) -> AgentSpec:
         if raw.get('provider_profile') is not None
         else ProviderProfileSpec()
     )
+    if raw.get('model_catalog_json') is not None:
+        if provider != 'codex':
+            raise ConfigValidationError(
+                f'agents.{agent_name}.model_catalog_json is supported only for codex'
+            )
+        model_catalog_json = expect_string(
+            raw['model_catalog_json'],
+            field_name=f'agents.{agent_name}.model_catalog_json',
+        )
+        configured_catalog = provider_profile.env.get('model_catalog_json')
+        if configured_catalog is not None and configured_catalog != model_catalog_json:
+            raise ConfigValidationError(
+                f'agents.{agent_name}.model_catalog_json conflicts with '
+                f'agents.{agent_name}.provider_profile.env.model_catalog_json'
+            )
+        if configured_catalog is None:
+            provider_profile = replace(
+                provider_profile,
+                env={**provider_profile.env, 'model_catalog_json': model_catalog_json},
+            )
     _validate_provider_profile_runtime_home(agent_name, provider=provider, provider_profile=provider_profile)
     if api != AgentApiSpec():
         provider_profile = _apply_agent_api_shortcut(
