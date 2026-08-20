@@ -6,6 +6,7 @@ import subprocess
 
 from provider_backends.codex.bridge_runtime.reconnect_autostart import (
     CodexReconnectAutostart,
+    _bundled_launcher,
 )
 
 
@@ -38,7 +39,7 @@ def test_autostart_waits_for_binding_then_arms_once_and_stops(tmp_path: Path) ->
         )
 
     runtime_dir = tmp_path / "runtime"
-    launcher = tmp_path / "ccb" / "bin" / "codex-reconnect.py"
+    launcher = tmp_path / "ccb" / "bin" / "codex-reconnect"
     autostart = CodexReconnectAutostart(
         runtime_dir,
         environment={
@@ -47,7 +48,6 @@ def test_autostart_waits_for_binding_then_arms_once_and_stops(tmp_path: Path) ->
         },
         runner=runner,
         launcher=launcher,
-        python_executable="/ccb/python",
     )
 
     assert autostart.maybe_arm() is False
@@ -59,7 +59,6 @@ def test_autostart_waits_for_binding_then_arms_once_and_stops(tmp_path: Path) ->
     assert len(calls) == 1
     command, kwargs = calls[0]
     assert command == [
-        "/ccb/python",
         str(launcher),
         "on",
         "--state-dir",
@@ -75,7 +74,7 @@ def test_autostart_waits_for_binding_then_arms_once_and_stops(tmp_path: Path) ->
     assert environment["CODEX_TMUX_SESSION"] == "%7"
 
     autostart.stop()
-    assert [call[0][2] for call in calls] == ["on", "off"]
+    assert [call[0][1] for call in calls] == ["on", "off"]
 
 
 def test_autostart_retries_failures_with_bounded_backoff(tmp_path: Path) -> None:
@@ -102,7 +101,7 @@ def test_autostart_retries_failures_with_bounded_backoff(tmp_path: Path) -> None
         runner=runner,
         monotonic=lambda: now[0],
         log=logs.append,
-        launcher=tmp_path / "codex-reconnect.py",
+        launcher=tmp_path / "codex-reconnect",
         retry_base_seconds=5.0,
         retry_max_seconds=20.0,
     )
@@ -130,7 +129,7 @@ def test_autostart_arms_a_new_bound_thread_without_rearming_old_one(
     ) -> subprocess.CompletedProcess[str]:
         environment = kwargs["env"]
         assert isinstance(environment, dict)
-        if command[2] == "on":
+        if command[1] == "on":
             observed_threads.append(str(environment["CODEX_THREAD_ID"]))
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
@@ -138,7 +137,7 @@ def test_autostart_arms_a_new_bound_thread_without_rearming_old_one(
         tmp_path / "runtime",
         environment={"CCB_SESSION_FILE": str(session_file)},
         runner=runner,
-        launcher=tmp_path / "codex-reconnect.py",
+        launcher=tmp_path / "codex-reconnect",
     )
 
     assert autostart.maybe_arm() is True
@@ -147,3 +146,9 @@ def test_autostart_arms_a_new_bound_thread_without_rearming_old_one(
     assert autostart.maybe_arm() is True
     assert autostart.maybe_arm() is False
     assert observed_threads == ["thread-1", "thread-2"]
+
+
+def test_default_launcher_is_the_python_selecting_wrapper() -> None:
+    launcher = _bundled_launcher()
+    assert launcher.name == "codex-reconnect"
+    assert launcher.suffix == ""

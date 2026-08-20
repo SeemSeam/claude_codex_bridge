@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 
+from terminal_runtime.env import tmux_history_limit
 from terminal_runtime.placeholders import pane_placeholder_argv
 
 _TMUX_ENVIRONMENT_KEYS = (
@@ -145,7 +146,10 @@ def prepare_detached_tmux_server(backend) -> None:
     prepared = True
     prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'destroy-unattached', 'off']) and prepared
     prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'mouse', 'on']) and prepared
-    prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'history-limit', '50000']) and prepared
+    prepared = best_effort_tmux_run(
+        backend,
+        ['set-option', '-g', 'history-limit', str(tmux_history_limit())],
+    ) and prepared
     prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'set-clipboard', 'on']) and prepared
     prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'focus-events', 'on']) and prepared
     prepared = best_effort_tmux_run(backend, ['set-option', '-g', 'escape-time', '10']) and prepared
@@ -174,7 +178,7 @@ def _detached_tmux_server_prepare_key(backend) -> tuple[object, ...]:
     socket_name = str(getattr(backend, 'socket_name', '') or '').strip()
     socket_key = ('path', socket_path) if socket_path else ('name', socket_name or '<default>')
     env_key = tuple((key, os.environ.get(key) or '') for key in _TMUX_ENVIRONMENT_KEYS)
-    return (*socket_key, env_key)
+    return (*socket_key, env_key, ('history-limit', tmux_history_limit()))
 
 
 def best_effort_tmux_run(backend, argv: list[str]) -> bool:

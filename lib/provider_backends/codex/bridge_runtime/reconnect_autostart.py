@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
-import sys
 import time
 from typing import Callable, Mapping
 
@@ -22,7 +21,6 @@ class CodexReconnectAutostart:
         monotonic: Callable[[], float] = time.monotonic,
         log: Callable[[str], None] | None = None,
         launcher: Path | None = None,
-        python_executable: str | None = None,
         retry_base_seconds: float = 5.0,
         retry_max_seconds: float = 60.0,
         command_timeout_seconds: float = 10.0,
@@ -33,7 +31,6 @@ class CodexReconnectAutostart:
         self.monotonic = monotonic
         self.log = log or (lambda _message: None)
         self.launcher = Path(launcher or _bundled_launcher())
-        self.python_executable = str(python_executable or sys.executable)
         self.retry_base_seconds = max(0.0, retry_base_seconds)
         self.retry_max_seconds = max(self.retry_base_seconds, retry_max_seconds)
         self.command_timeout_seconds = max(0.1, command_timeout_seconds)
@@ -114,7 +111,6 @@ class CodexReconnectAutostart:
         environment: Mapping[str, str],
     ) -> subprocess.CompletedProcess[str] | None:
         command = [
-            self.python_executable,
             str(self.launcher),
             action,
             "--state-dir",
@@ -154,7 +150,7 @@ class CodexReconnectAutostart:
 
 
 def _bundled_launcher() -> Path:
-    return Path(__file__).resolve().parents[4] / "bin" / "codex-reconnect.py"
+    return Path(__file__).resolve().parents[4] / "bin" / "codex-reconnect"
 
 
 def _result_error(result: subprocess.CompletedProcess[str] | None) -> str:
