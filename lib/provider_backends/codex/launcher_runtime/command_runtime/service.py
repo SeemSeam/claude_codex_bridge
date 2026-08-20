@@ -191,6 +191,7 @@ def _env_map(runtime_dir: Path, launch_session_id: str, *, spec, profile, codex_
     if profile is not None:
         explicit_env.update(profile.env)
     explicit_env.update(spec.env)
+    explicit_env.pop('model_catalog_json', None)
     if codex_api_authority(profile) is not None:
         explicit_env.pop('OPENAI_BASE_URL', None)
         explicit_env.pop('OPENAI_API_BASE', None)

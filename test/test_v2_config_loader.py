@@ -742,6 +742,36 @@ exclude = ["trellis-meta"]
     assert overlay.exclude == ('trellis-meta',)
 
 
+@pytest.mark.parametrize('location', ['agent', 'provider_profile_env'])
+def test_load_project_config_supports_codex_model_catalog_json(tmp_path: Path, location: str) -> None:
+    project_root = tmp_path / f'repo-{location}'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    extra = (
+        'model_catalog_json = "model.json"\n'
+        if location == 'agent'
+        else '[agents.agent1.provider_profile.env]\nmodel_catalog_json = "model.json"\n'
+    )
+    _write(
+        config_path,
+        f"""version = 2
+default_agents = ["agent1"]
+layout = "cmd; agent1"
+cmd_enabled = true
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+restore = "auto"
+permission = "manual"
+{extra}""",
+    )
+
+    spec = load_project_config(project_root).config.agents['agent1']
+
+    assert spec.provider_profile.env['model_catalog_json'] == 'model.json'
+
+
 def test_load_project_config_supports_workspace_path_and_group_fields(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     config_path = project_root / '.ccb' / 'ccb.config'
