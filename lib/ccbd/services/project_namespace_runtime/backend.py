@@ -7,6 +7,7 @@ import time
 from typing import Callable
 
 from terminal_runtime.mux_backend_contract import MuxCommandErrorV2
+from terminal_runtime.env import tmux_history_limit
 from terminal_runtime.placeholders import pane_placeholder_argv, pane_placeholder_cmd
 from terminal_runtime.tmux_readiness import (
     TmuxCommandError,
@@ -175,7 +176,12 @@ def ensure_server_policy(backend, *, timeout_s: float | None = None) -> None:
         timeout_s=timeout_s,
     )
     _apply_optional_server_policy(backend, option='mouse', value='on', timeout_s=timeout_s)
-    _apply_optional_server_policy(backend, option='history-limit', value='50000', timeout_s=timeout_s)
+    _apply_optional_server_policy(
+        backend,
+        option='history-limit',
+        value=str(tmux_history_limit()),
+        timeout_s=timeout_s,
+    )
     _apply_optional_server_policy(backend, option='set-clipboard', value='on', timeout_s=timeout_s)
     _apply_optional_server_policy(backend, option='focus-events', value='on', timeout_s=timeout_s)
     _apply_optional_server_policy(backend, option='escape-time', value='10', timeout_s=timeout_s)

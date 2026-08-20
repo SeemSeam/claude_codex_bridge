@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from runtime_env import env_bool, env_float, env_int
+from terminal_runtime.env import tmux_history_limit
 
 
 def test_env_bool_truthy_and_falsy(monkeypatch) -> None:
@@ -43,3 +44,17 @@ def test_env_float_parsing(monkeypatch) -> None:
 
     monkeypatch.setenv("X", "bad")
     assert env_float("X", 1.5) == 1.5
+
+
+def test_tmux_history_limit_defaults_and_allows_non_negative_override(monkeypatch) -> None:
+    monkeypatch.delenv("CCB_TMUX_HISTORY_LIMIT", raising=False)
+    assert tmux_history_limit() == 10000
+
+    monkeypatch.setenv("CCB_TMUX_HISTORY_LIMIT", "1234")
+    assert tmux_history_limit() == 1234
+
+    monkeypatch.setenv("CCB_TMUX_HISTORY_LIMIT", "-5")
+    assert tmux_history_limit() == 0
+
+    monkeypatch.setenv("CCB_TMUX_HISTORY_LIMIT", "invalid")
+    assert tmux_history_limit() == 10000
