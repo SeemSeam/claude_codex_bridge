@@ -116,7 +116,7 @@ def redact_text(text: str) -> str:
 
 
 def run_command(args: list[str], *, timeout: float = 5.0, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, text=True, capture_output=True, timeout=timeout, env=env, check=False)
+    return subprocess.run(args, text=True, encoding="utf-8", capture_output=True, timeout=timeout, env=env, check=False)
 
 
 def tmux(socket_path: Path, args: list[str], *, timeout: float = 5.0) -> subprocess.CompletedProcess[str]:

@@ -54,7 +54,7 @@ def extract_tool_name(tool: dict) -> str:
 def cmd_droid_test_delegation(_args) -> int:
     cmd = ["droid", "exec", "--list-tools", "--output-format", "json"]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     except FileNotFoundError:
         print("❌ `droid` not found in PATH.", file=sys.stderr)
         return 2
