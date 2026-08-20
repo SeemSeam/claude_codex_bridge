@@ -26,14 +26,26 @@ def sync_runtime(dispatcher, agent_name: str, *, state: AgentState | None = None
             queue_depth=dispatcher._state.queue_depth(agent_name),
             last_seen_at=dispatcher._clock(),
         )
-        return
-    updated = replace(
-        runtime,
-        state=next_state,
-        queue_depth=dispatcher._state.queue_depth(agent_name),
-        last_seen_at=dispatcher._clock(),
-    )
-    dispatcher._registry.upsert(updated)
+    else:
+        updated = replace(
+            runtime,
+            state=next_state,
+            queue_depth=dispatcher._state.queue_depth(agent_name),
+            last_seen_at=dispatcher._clock(),
+        )
+        dispatcher._registry.upsert(updated)
+    bridge = getattr(dispatcher, '_agent_lifecycle_bridge', None)
+    if callable(getattr(bridge, 'sync', None)):
+        try:
+            bridge.sync(
+                provider=getattr(runtime, 'provider', None),
+                state=next_state,
+                pane_id=getattr(runtime, 'pane_id', None),
+                session_id=getattr(runtime, 'session_id', None),
+                session_path=getattr(runtime, 'session_ref', None),
+            )
+        except Exception:
+            pass
 
 
 __all__ = ['sync_runtime']

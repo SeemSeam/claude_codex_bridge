@@ -100,6 +100,13 @@ def test_herdr_capability_gate_allows_supported_spike_projection() -> None:
     assert capabilities["source_ref"] == "evidence/herdr-contract-spike-evidence.json"
 
 
+def test_herdr_capability_gate_allows_session_and_release_operations() -> None:
+    gate = _supported_gate()
+
+    assert gate.require_supported("report_pane_agent_session")["backend_impl"] == "herdr"
+    assert gate.require_supported("release_pane_agent")["backend_impl"] == "herdr"
+
+
 def test_herdr_capability_gate_allows_nonrequired_windows_beta_gaps() -> None:
     gate = HerdrCapabilityGate.from_spike_evidence(
         {
@@ -692,6 +699,67 @@ def test_herdr_backend_facade_returns_refs_and_operation_evidence() -> None:
     assert "python ready" in captured
     assert capture["operation"] == "capture_pane"
     assert killed["operation"] == "kill_pane"
+
+
+def test_herdr_backend_reports_sessions_and_releases_pane_agent() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def request(operation: str, payload: dict[str, object]) -> dict[str, object]:
+        calls.append((operation, dict(payload)))
+        if operation in {"report_pane_agent", "report_pane_agent_session", "release_pane_agent"}:
+            return {"status": "ok", "pane_id": str(payload["pane_id"])}
+        return _fake_herdr_request()(operation, payload)
+
+    backend = HerdrBackend(
+        client=HerdrSocketClient(request_fn=request, socket_ref="herdr://local"),
+        capability_gate=_supported_gate(),
+    )
+    namespace = backend.create_session(project_id="demo", cwd="D:/demo", title="ccb-demo")
+    pane = backend.create_pane(namespace, command=[], cwd="D:/demo", env={}, title="workspace")
+
+    backend.report_pane_agent(
+        pane,
+        provider_kind="codex",
+        state="working",
+        seq=11,
+        session_id="ccb-session",
+        session_path="D:/demo/.ccb/session",
+    )
+    backend.report_pane_agent_session(
+        pane,
+        provider_kind="codex",
+        seq=12,
+        session_id="ccb-session",
+        session_path="D:/demo/.ccb/session",
+    )
+    backend.release_pane_agent(pane, provider_kind="codex", seq=13)
+
+    reported = [call for call in calls if call[0] == "report_pane_agent"]
+    sessions = [call for call in calls if call[0] == "report_pane_agent_session"]
+    releases = [call for call in calls if call[0] == "release_pane_agent"]
+    assert reported[-1][1] == {
+        "pane_id": "pane-1",
+        "session_name": "ccb-demo",
+        "provider_kind": "codex",
+        "state": "working",
+        "seq": 11,
+        "session_id": "ccb-session",
+        "session_path": "D:/demo/.ccb/session",
+    }
+    assert sessions[-1][1] == {
+        "pane_id": "pane-1",
+        "session_name": "ccb-demo",
+        "provider_kind": "codex",
+        "seq": 12,
+        "session_id": "ccb-session",
+        "session_path": "D:/demo/.ccb/session",
+    }
+    assert releases[-1][1] == {
+        "pane_id": "pane-1",
+        "session_name": "ccb-demo",
+        "provider_kind": "codex",
+        "seq": 13,
+    }
 
 
 def test_herdr_backend_updates_liveness_after_kill() -> None:
@@ -4153,6 +4221,158 @@ def test_herdr_cli_request_adapter_reports_pane_agent() -> None:
     ]
 
 
+def test_herdr_cli_request_adapter_reports_pane_agent_with_seq() -> None:
+    commands: list[list[str]] = []
+
+    def run_fn(command, **kwargs):
+        commands.append(list(command))
+        return _completed("")
+
+    adapter = HerdrCliRequestAdapter(
+        session_name="ccb-demo",
+        herdr_executable="herdr",
+        run_fn=run_fn,
+        which_fn=lambda name: "herdr",
+    )
+
+    result = adapter(
+        "report_pane_agent",
+        {
+            "pane_id": "w1:p2",
+            "session_name": "ccb-demo",
+            "provider_kind": "codex",
+            "state": "working",
+            "seq": 7,
+            "session_id": "ccb-agent-session",
+            "session_path": "D:/demo/.ccb/session",
+        },
+    )
+
+    assert result["status"] == "ok"
+    assert commands[0][-8:] == [
+        "--state",
+        "working",
+        "--seq",
+        "7",
+        "--agent-session-id",
+        "ccb-agent-session",
+        "--agent-session-path",
+        "D:/demo/.ccb/session",
+    ]
+
+
+def test_herdr_cli_request_adapter_reports_pane_agent_session() -> None:
+    commands: list[list[str]] = []
+
+    def run_fn(command, **kwargs):
+        commands.append(list(command))
+        return _completed("")
+
+    adapter = HerdrCliRequestAdapter(
+        session_name="ccb-demo",
+        herdr_executable="herdr",
+        run_fn=run_fn,
+        which_fn=lambda name: "herdr",
+    )
+
+    result = adapter(
+        "report_pane_agent_session",
+        {
+            "pane_id": "w1:p2",
+            "session_name": "ccb-demo",
+            "provider_kind": "codex",
+            "seq": 3,
+            "session_id": "ccb-agent-session",
+            "session_path": "D:/demo/.ccb/session",
+        },
+    )
+
+    assert result["status"] == "ok"
+    assert commands == [
+        [
+            "herdr",
+            "--session",
+            "ccb-demo",
+            "pane",
+            "report-agent-session",
+            "w1:p2",
+            "--source",
+            "ccb",
+            "--agent",
+            "codex",
+            "--seq",
+            "3",
+            "--agent-session-id",
+            "ccb-agent-session",
+            "--agent-session-path",
+            "D:/demo/.ccb/session",
+        ]
+    ]
+
+
+def test_herdr_cli_request_adapter_releases_pane_agent() -> None:
+    commands: list[list[str]] = []
+
+    def run_fn(command, **kwargs):
+        commands.append(list(command))
+        return _completed("")
+
+    adapter = HerdrCliRequestAdapter(
+        session_name="ccb-demo",
+        herdr_executable="herdr",
+        run_fn=run_fn,
+        which_fn=lambda name: "herdr",
+    )
+
+    result = adapter(
+        "release_pane_agent",
+        {
+            "pane_id": "w1:p2",
+            "session_name": "ccb-demo",
+            "provider_kind": "codex",
+            "seq": 9,
+        },
+    )
+
+    assert result["status"] == "ok"
+    assert commands == [
+        [
+            "herdr",
+            "--session",
+            "ccb-demo",
+            "pane",
+            "release-agent",
+            "w1:p2",
+            "--source",
+            "ccb",
+            "--agent",
+            "codex",
+            "--seq",
+            "9",
+        ]
+    ]
+
+
+def test_herdr_cli_request_adapter_rejects_negative_seq() -> None:
+    adapter = HerdrCliRequestAdapter(
+        session_name="ccb-demo",
+        herdr_executable="herdr",
+        run_fn=lambda command, **kwargs: _completed(""),
+        which_fn=lambda name: "herdr",
+    )
+
+    with pytest.raises(MuxCommandErrorV2):
+        adapter(
+            "release_pane_agent",
+            {
+                "pane_id": "w1:p2",
+                "session_name": "ccb-demo",
+                "provider_kind": "codex",
+                "seq": -1,
+            },
+        )
+
+
 def test_herdr_cli_request_adapter_is_alive_maps_command_not_found_to_false() -> None:
     def run_fn(command, **kwargs):
         raise _called_process_error(command, stderr="pane not found")
@@ -4364,6 +4584,8 @@ def _fake_herdr_request(
         if operation == "capture_pane":
             return {"status": "ok", "pane_id": payload["pane_id"], "text": state["pane"]["output"]}
         if operation == "kill_pane":
+            return {"status": "ok", "pane_id": payload["pane_id"]}
+        if operation in {"report_pane_agent", "report_pane_agent_session", "release_pane_agent"}:
             return {"status": "ok", "pane_id": payload["pane_id"]}
         raise AssertionError(f"unexpected fake Herdr operation {operation}")
 

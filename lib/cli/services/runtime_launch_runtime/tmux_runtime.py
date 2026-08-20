@@ -295,13 +295,26 @@ def _report_runtime_pane_agent(
 ) -> None:
     if not (isinstance(pane, dict) and str(pane.get('backend_impl') or '').strip() == 'herdr'):
         return
+    # Herdr 当前版本不会仅凭 report-agent-session 创建 agent 身份；CCB 必须用
+    # report-agent 注册 pane。先 best-effort release 旧权威，再用 idle+seq 创建
+    # 身份，后续由 HerdrAgentLifecycleBridge 在 CCB 状态切换时持续递增上报。
+    releaser = getattr(backend, 'release_pane_agent', None)
+    if callable(releaser):
+        try:
+            releaser(
+                dict(pane),
+                provider_kind=provider_kind,
+            )
+        except Exception:
+            pass
     reporter = getattr(backend, 'report_pane_agent', None)
     if not callable(reporter):
-        raise RuntimeError('Herdr backend does not support report_pane_agent')
+        return
     reporter(
         dict(pane),
         provider_kind=provider_kind,
-        state='unknown',
+        state='idle',
+        seq=1,
         session_id=session_id,
     )
 

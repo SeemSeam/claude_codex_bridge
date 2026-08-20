@@ -34,6 +34,8 @@ _OPERATION_REQUIRED_CAPABILITIES = {
     "window_root_pane": ("workspace_list", "pane_list"),
     "set_pane_identity": ("pane_list", "pane_metadata"),
     "report_pane_agent": ("pane_list", "pane_metadata"),
+    "report_pane_agent_session": ("pane_list", "pane_metadata"),
+    "release_pane_agent": ("pane_list", "pane_metadata"),
     "describe_pane": ("pane_list",),
     "list_panes_by_user_options": ("pane_list",),
     "create_pane": ("pane_list", "pane_split", "pane_run"),

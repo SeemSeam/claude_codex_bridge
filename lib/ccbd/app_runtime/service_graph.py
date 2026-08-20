@@ -115,6 +115,26 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         deps.provider_catalog,
         request_timeout_s=deps.request_timeout_s,
     )
+    agent_lifecycle_bridge = None
+    try:
+        from platforms.windows.herdr.lifecycle_bridge import HerdrAgentLifecycleBridge
+
+        project_namespace = deps.project_namespace
+        if project_namespace is not None:
+            def _bridge_namespace_ref():
+                namespace = project_namespace.load()
+                return namespace.namespace_ref() if namespace is not None else None
+
+            def _bridge_backend_factory():
+                return project_namespace._backend_factory()
+
+            agent_lifecycle_bridge = HerdrAgentLifecycleBridge(
+                backend_factory=_bridge_backend_factory,
+                namespace_ref_fn=_bridge_namespace_ref,
+                seq_start=1,
+            )
+    except Exception:
+        agent_lifecycle_bridge = None
     dispatcher = JobDispatcher(
         deps.paths,
         deps.config,
@@ -127,6 +147,7 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         provider_catalog=deps.provider_catalog,
         snapshot_writer=deps.snapshot_writer,
         timing_sink=deps.control_plane_metrics,
+        agent_lifecycle_bridge=agent_lifecycle_bridge,
         clock=deps.clock,
     )
     project_view_service = ProjectViewService(
