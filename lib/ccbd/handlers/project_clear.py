@@ -8,6 +8,11 @@ from agents.models import normalize_agent_name
 from terminal_runtime import TmuxBackend
 
 OPENCODE_CLEAR_SUBMIT_DELAY_S = 0.3
+DEFAULT_CLEAR_COMMAND = '/clear'
+CLEAR_COMMANDS: dict[str, str] = {
+    # Pi starts a fresh context with /new; it does not expose /clear.
+    'pi': '/new',
+}
 
 
 def build_project_clear_context_handler(app):
@@ -100,10 +105,11 @@ def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
     pane_id = _runtime_pane_id(runtime)
     if pane_id is None:
         return {'agent': agent_name, 'status': 'skipped', 'reason': 'pane_missing'}
+    command = CLEAR_COMMANDS.get(provider, DEFAULT_CLEAR_COMMAND)
     try:
         if not backend.pane_exists(pane_id):
             return {'agent': agent_name, 'status': 'skipped', 'reason': 'pane_missing', 'pane_id': pane_id}
-        _send_clear_sequence(backend, pane_id=pane_id, provider=provider)
+        _send_clear_sequence(backend, pane_id=pane_id, command=command, provider=provider)
     except subprocess.CalledProcessError as exc:
         return {
             'agent': agent_name,
@@ -118,7 +124,7 @@ def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
             'reason': str(exc)[:200],
             'pane_id': pane_id,
         }
-    return {'agent': agent_name, 'status': 'cleared', 'pane_id': pane_id, 'command': '/clear'}
+    return {'agent': agent_name, 'status': 'cleared', 'pane_id': pane_id, 'command': command}
 
 
 def _clear_busy_gate(app, *, agent_name: str) -> dict[str, object] | None:
@@ -173,13 +179,19 @@ def _agent_provider(app, agent_name: str) -> str:
     return str(getattr(spec, 'provider', '') or '').strip().lower()
 
 
-def _send_clear_sequence(backend, *, pane_id: str, provider: str = '') -> None:
+def _send_clear_sequence(
+    backend,
+    *,
+    pane_id: str,
+    command: str = DEFAULT_CLEAR_COMMAND,
+    provider: str = '',
+) -> None:
     try:
         backend._ensure_not_in_copy_mode(pane_id)
     except Exception:
         pass
     backend._tmux_run(['send-keys', '-t', pane_id, 'C-u'], check=True, capture=True)
-    backend._tmux_run(['send-keys', '-t', pane_id, '-l', '/clear'], check=True, capture=True)
+    backend._tmux_run(['send-keys', '-t', pane_id, '-l', command], check=True, capture=True)
     if provider == 'opencode':
         # OpenCode can drop an immediate submit after restoring an old session.
         time.sleep(OPENCODE_CLEAR_SUBMIT_DELAY_S)
