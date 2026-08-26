@@ -248,7 +248,11 @@ When `ccb` starts a managed Codex agent:
   `model_providers.<id>` authority derived from the explicit API route so Codex
   uses that route without consulting caller-global login state
 - that explicit managed route must use Codex's standard custom-provider shape
-  with `requires_openai_auth = false`
+  with `requires_openai_auth = false`; when CCB supplies an explicit
+  `OPENAI_API_KEY`, the provider must also declare
+  `env_key = "OPENAI_API_KEY"` so Codex sends that agent-local value as bearer
+  authentication, while a route without an API key must remain usable for an
+  unauthenticated local gateway
 - when such a managed explicit route is present, startup must not also export
   `OPENAI_BASE_URL` or `OPENAI_API_BASE` into the managed Codex process, so
   route authority stays singular

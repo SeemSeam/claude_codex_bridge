@@ -114,6 +114,7 @@ class CodexApiAuthority:
     base_url: str
     wire_api: str = 'responses'
     requires_openai_auth: bool = False
+    env_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -360,6 +361,7 @@ def codex_api_authority(profile) -> CodexApiAuthority | None:
     return CodexApiAuthority(
         provider_id=_CODEX_CUSTOM_PROVIDER_ID,
         base_url=base_url,
+        env_key='OPENAI_API_KEY' if env.get('OPENAI_API_KEY') else None,
     )
 
 
@@ -801,6 +803,7 @@ def _managed_codex_config_payload(source_config: Path, *, authority: CodexApiAut
             'name': authority.provider_id,
             'wire_api': authority.wire_api,
             'requires_openai_auth': authority.requires_openai_auth,
+            'env_key': authority.env_key,
             'base_url': authority.base_url,
         }
     }

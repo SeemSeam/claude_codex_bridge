@@ -1,6 +1,6 @@
 # Provider Authentication Authority Implementation Status
 
-Date: 2026-08-18
+Date: 2026-08-27
 
 ## Current Phase
 
@@ -26,6 +26,12 @@ linked continuation evidence instead of being hidden from history.
 
 ## Last Landed
 
+- Codex CLI `0.149.0` custom-provider authentication is compatible with
+  explicit CCB API authority: when an Agent supplies `OPENAI_API_KEY` and a
+  custom route, its managed `model_providers.custom` table declares
+  `env_key = "OPENAI_API_KEY"`. Route-only unauthenticated gateways continue
+  to omit `env_key`, and the token remains in the Agent-local launch
+  environment rather than being serialized into `config.toml`.
 - Issue #319 macOS Claude OAuth re-login repair was published in CCB `v8.6.10`
   from implementation commit `84f2bc73c` and release commit `705c932ec`, with
   annotated tag `v8.6.10`, GitHub Release assets, and npm
@@ -84,6 +90,10 @@ rather than block local history continuity.
 
 ## Last Verified
 
+- Codex `0.149.0` local HTTP integration: the CCB-generated managed config sent
+  `Authorization: Bearer <test-token>` to `/v1/responses`; the pre-fix config
+  sent no Authorization header under the same environment.
+- Codex provider/profile and runtime-launch regression matrix: `296 passed`.
 - Issue #319 regression tests: `4 passed`.
 - Provider/restart/authority/storage regression matrix: `406 passed`.
 - Full source suite in the qualification environment: `7170 passed, 3

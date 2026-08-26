@@ -1,6 +1,6 @@
 # Provider Authentication Authority Roadmap
 
-Date: 2026-08-18
+Date: 2026-08-27
 
 ## Status Summary
 
@@ -15,6 +15,10 @@ Date: 2026-08-18
 
 ## Done
 
+- Restored explicit API-key authentication for Codex CLI `0.149.0` custom
+  providers by declaring the Agent-local `OPENAI_API_KEY` environment source
+  in managed Codex config, while preserving unauthenticated route-only
+  providers.
 - Established the one-way external-state requirement and explicit CCB-local
   configuration boundary.
 - Confirmed current CCB already gives explicit `key/url` authority precedence

@@ -4036,9 +4036,9 @@ def test_codex_launcher_build_start_cmd_api_override_clears_global_route_config(
     assert 'base_url = "https://api.rootflowai.com"' in config_text
     assert 'wire_api = "responses"' in config_text
     assert 'requires_openai_auth = false' in config_text
+    assert 'env_key = "OPENAI_API_KEY"' in config_text
     assert 'external_migration = false' in config_text
     assert 'https://api.ikuncode.cc/v1' not in config_text
-    assert 'env_key' not in config_text
     assert (profile_home / 'auth.json').read_text(encoding='utf-8') == '{"OPENAI_API_KEY":"profile-key"}\n'
 
 

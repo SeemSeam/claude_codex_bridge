@@ -1785,9 +1785,9 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
     assert 'base_url = "https://api.rootflowai.com"' in config_text
     assert 'wire_api = "responses"' in config_text
     assert 'requires_openai_auth = false' in config_text
+    assert 'env_key = "OPENAI_API_KEY"' in config_text
     assert 'external_migration = false' in config_text
     assert 'https://stale.example.test/v1' not in config_text
-    assert 'env_key' not in config_text
     assert codex_provider_authority_fingerprint(profile)
     auth_payload = json.loads((runtime_home / 'auth.json').read_text(encoding='utf-8'))
     assert auth_payload == {'OPENAI_API_KEY': 'profile-key'}
@@ -1975,6 +1975,17 @@ def test_materialize_codex_profile_writes_agent_model_and_catalog_over_inherited
     assert (runtime_home / 'models.json').read_text(encoding='utf-8') == (
         '{"deepseek-v4-pro":{"context_window":128000}}\n'
     )
+
+
+def test_codex_route_only_authority_does_not_require_api_key_env() -> None:
+    authority = codex_home_config.codex_api_authority(
+        ProviderProfileSpec(
+            env={'OPENAI_BASE_URL': 'http://127.0.0.1:11434/v1'},
+        )
+    )
+
+    assert authority is not None
+    assert authority.env_key is None
 
 
 def test_materialize_codex_profile_refreshes_plugin_projection_when_source_changes(tmp_path: Path, monkeypatch) -> None:
