@@ -220,7 +220,7 @@ class WorkspaceMaterializer:
         return path.resolve()
 
     def _run(self, args: list[str], *, error: str) -> None:
-        result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or '').strip()
             raise RuntimeError(f'{error}: {detail}')

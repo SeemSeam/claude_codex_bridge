@@ -409,7 +409,7 @@ def _tool_probe(command: list[str]) -> dict[str, Any]:
     if executable is None:
         return {"status": "missing", "command": command, "path": None}
     try:
-        cp = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+        cp = subprocess.run(command, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
     except Exception as exc:
         return {"status": "error", "command": command, "path": executable, "error": str(exc)}
     return {
