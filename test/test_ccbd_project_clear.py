@@ -95,6 +95,29 @@ def test_project_clear_context_handler_sends_provider_clear_to_all_agent_panes(m
     ]
 
 
+def test_project_clear_context_handler_uses_new_for_pi(monkeypatch) -> None:
+    backend = _FakeBackend(existing_panes={'%1'})
+    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    handler = build_project_clear_context_handler(
+        _app(
+            agents={'pi1': SimpleNamespace(provider='pi')},
+            runtimes={'pi1': SimpleNamespace(active_pane_id='%1')},
+        )
+    )
+
+    payload = handler({'agent_names': ['pi1']})
+
+    assert payload['results'] == [
+        {'agent': 'pi1', 'status': 'cleared', 'pane_id': '%1', 'command': '/new'},
+    ]
+    assert backend.calls == [
+        ('copy-mode-quit', '%1'),
+        ('send-keys', '-t', '%1', 'C-u'),
+        ('send-keys', '-t', '%1', '-l', '/new'),
+        ('send-keys', '-t', '%1', 'Enter'),
+    ]
+
+
 def test_project_clear_context_handler_targets_requested_agents_once(monkeypatch) -> None:
     backend = _FakeBackend()
     monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
