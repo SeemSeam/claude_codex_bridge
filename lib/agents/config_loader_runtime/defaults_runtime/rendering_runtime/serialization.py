@@ -39,6 +39,9 @@ def update_optional_agent_fields(payload: dict[str, object], spec) -> None:
         payload['provider_command_template'] = spec.provider_command_template
     if spec.model is not None:
         payload['model'] = spec.model
+    model_catalog_json = spec.provider_profile.env.get('model_catalog_json')
+    if model_catalog_json is not None:
+        payload['model_catalog_json'] = model_catalog_json
     if spec.thinking is not None:
         payload['thinking'] = spec.thinking
     startup_args = _config_startup_args(spec)
@@ -99,6 +102,7 @@ def _provider_profile_config_dict(spec) -> dict[str, object] | None:
         key: value
         for key, value in profile.env.items()
         if key not in provider_api_env_keys(spec.provider)
+        and not (spec.provider == 'codex' and key == 'model_catalog_json')
     }
     payload: dict[str, object] = {}
     if profile.mode != default_profile.mode:

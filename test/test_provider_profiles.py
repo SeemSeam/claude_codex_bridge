@@ -33,13 +33,16 @@ from provider_backends.qwen.home import materialize_qwen_home_config
 import provider_core.projected_assets as projected_assets
 import provider_core.projected_settings as projected_settings
 import provider_profiles.codex_home_config as codex_home_config
-from provider_profiles.codex_home_config import codex_provider_authority_fingerprint
+from provider_profiles.codex_home_config import (
+    codex_provider_authority_fingerprint,
+    materialize_codex_home_config,
+)
 from provider_profiles import materialize_provider_profile, validate_provider_runtime_home_uniqueness
 from provider_core.pathing import session_filename_for_agent
 from storage.paths import PathLayout
 
 
-def _spec(name: str, provider: str = "codex", *, provider_profile: ProviderProfileSpec | None = None) -> AgentSpec:
+def _spec(name: str, provider: str = "codex", *, provider_profile: ProviderProfileSpec | None = None, model: str | None = None) -> AgentSpec:
     return AgentSpec(
         name=name,
         provider=provider,
@@ -51,6 +54,7 @@ def _spec(name: str, provider: str = "codex", *, provider_profile: ProviderProfi
         permission_default=PermissionMode.MANUAL,
         queue_policy=QueuePolicy.SERIAL_PER_AGENT,
         provider_profile=provider_profile or ProviderProfileSpec(),
+        model=model,
     )
 
 
@@ -1725,6 +1729,7 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
             [
                 'model_provider = "stale"',
                 'model = "gpt-5.4-openai-compact"',
+                'model_catalog_json = "model.json"',
                 'model_reasoning_effort = "xhigh"',
                 'disable_response_storage = true',
                 '',
@@ -1741,6 +1746,7 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
         ),
         encoding='utf-8',
     )
+    (source_home / 'model.json').write_text('{"deepseek-v4-flash":{"context_window":128000}}\n', encoding='utf-8')
     monkeypatch.setenv('CODEX_HOME', str(source_home))
     _write_codex_plugin_source(
         source_home,
@@ -1771,6 +1777,7 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
     config_text = (runtime_home / 'config.toml').read_text(encoding='utf-8')
     assert 'model_provider = "custom"' in config_text
     assert 'model = "gpt-5.4-openai-compact"' in config_text
+    assert 'model_catalog_json = "model.json"' in config_text
     assert 'model_reasoning_effort = "xhigh"' in config_text
     assert 'disable_response_storage = true' in config_text
     assert '[projects."/tmp/demo-project"]' in config_text
@@ -1789,9 +1796,185 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
     auth_manifest = json.loads((runtime_home / '.ccb-auth-projection.json').read_text(encoding='utf-8'))
     assert auth_manifest['status'] == 'explicit_api_authority'
     assert auth_manifest['projected_sidecars'] == []
+    assert (runtime_home / 'model.json').read_text(encoding='utf-8') == '{"deepseek-v4-flash":{"context_window":128000}}\n'
     assert (runtime_home / '.tmp' / 'plugins.sha').read_text(encoding='utf-8') == 'plugins-sha-v1\n'
     assert (runtime_home / '.tmp' / 'plugins' / '.agents' / 'plugins' / 'marketplace.json').is_file()
     assert (runtime_home / '.tmp' / 'plugins' / 'plugins' / 'weatherpromise' / 'skills' / 'weatherpromise' / 'SKILL.md').read_text(encoding='utf-8') == 'plugin skill explicit\n'
+
+
+def test_materialize_codex_profile_projects_explicit_model_catalog_without_api_base(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text('model = "deepseek-v4-flash"\n', encoding='utf-8')
+    (source_home / 'model.json').write_text('{"deepseek-v4-flash":{"context_window":128000}}\n', encoding='utf-8')
+
+    profile = ProviderProfileSpec(
+        mode='isolated',
+        env={'model_catalog_json': 'model.json'},
+    )
+
+    runtime_home = tmp_path / 'managed-home'
+    materialize_codex_home_config(
+        runtime_home,
+        profile=profile,
+        source_home=source_home,
+        project_root=project_root,
+    )
+
+    config = tomllib.loads((runtime_home / 'config.toml').read_text(encoding='utf-8'))
+    assert config['model_catalog_json'] == 'model.json'
+    assert (runtime_home / 'model.json').read_text(encoding='utf-8') == (
+        '{"deepseek-v4-flash":{"context_window":128000}}\n'
+    )
+
+
+def test_materialize_codex_profile_requires_model_catalog_file_in_managed_home(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text('model = "deepseek-v4-flash"\n', encoding='utf-8')
+    runtime_home = tmp_path / 'managed-home'
+    runtime_home.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(RuntimeError, match='Codex model catalog file is missing'):
+        materialize_codex_home_config(
+            runtime_home,
+            profile=ProviderProfileSpec(
+                mode='isolated',
+                env={'model_catalog_json': 'model.json'},
+            ),
+            source_home=source_home,
+            project_root=project_root,
+        )
+
+
+def test_materialize_codex_profile_accepts_existing_managed_model_catalog_file(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text('model = "deepseek-v4-flash"\n', encoding='utf-8')
+    runtime_home = tmp_path / 'managed-home'
+    runtime_home.mkdir(parents=True, exist_ok=True)
+    (runtime_home / 'model.json').write_text('{"deepseek-v4-flash":{"source":"managed"}}\n', encoding='utf-8')
+
+    materialize_codex_home_config(
+        runtime_home,
+        profile=ProviderProfileSpec(
+            mode='isolated',
+            env={'model_catalog_json': 'model.json'},
+        ),
+        source_home=source_home,
+        project_root=project_root,
+    )
+
+    config = tomllib.loads((runtime_home / 'config.toml').read_text(encoding='utf-8'))
+    assert config['model_catalog_json'] == 'model.json'
+    assert (runtime_home / 'model.json').read_text(encoding='utf-8') == (
+        '{"deepseek-v4-flash":{"source":"managed"}}\n'
+    )
+
+
+def test_materialize_codex_home_config_agent_model_overrides_inherited_global_model(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text('model = "gpt-global"\n', encoding='utf-8')
+
+    # Without an explicit agent model, the inherited global model is preserved.
+    plain_home = tmp_path / 'managed-plain'
+    materialize_codex_home_config(
+        plain_home,
+        profile=ProviderProfileSpec(),
+        source_home=source_home,
+        project_root=project_root,
+    )
+    assert tomllib.loads((plain_home / 'config.toml').read_text(encoding='utf-8'))['model'] == 'gpt-global'
+
+    # The agent's model field overrides the inherited global model.
+    agent_home = tmp_path / 'managed-agent'
+    materialize_codex_home_config(
+        agent_home,
+        profile=ProviderProfileSpec(),
+        source_home=source_home,
+        project_root=project_root,
+        model='deepseek-v4-pro',
+    )
+    config = tomllib.loads((agent_home / 'config.toml').read_text(encoding='utf-8'))
+    assert config['model'] == 'deepseek-v4-pro'
+
+
+def test_materialize_codex_home_config_explicit_model_catalog_wins_over_stale_profile_env(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text('model = "deepseek-v4-flash"\n', encoding='utf-8')
+    (source_home / 'models.json').write_text('{"deepseek-v4-pro":{"context_window":128000}}\n', encoding='utf-8')
+    runtime_home = tmp_path / 'managed-home'
+
+    # The resolved profile env is stale and does not carry model_catalog_json;
+    # the explicit argument (plumbed from the live spec) must still project it.
+    materialize_codex_home_config(
+        runtime_home,
+        profile=ProviderProfileSpec(
+            mode='isolated',
+            env={'OPENAI_BASE_URL': 'https://aspai.example/v1'},
+        ),
+        source_home=source_home,
+        project_root=project_root,
+        model_catalog_json='models.json',
+    )
+
+    config = tomllib.loads((runtime_home / 'config.toml').read_text(encoding='utf-8'))
+    assert config['model_catalog_json'] == 'models.json'
+    assert (runtime_home / 'models.json').read_text(encoding='utf-8') == (
+        '{"deepseek-v4-pro":{"context_window":128000}}\n'
+    )
+
+
+def test_materialize_codex_profile_writes_agent_model_and_catalog_over_inherited_global(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        'model = "gpt-global"\nmodel_reasoning_effort = "high"\n',
+        encoding='utf-8',
+    )
+    (source_home / 'models.json').write_text('{"deepseek-v4-pro":{"context_window":128000}}\n', encoding='utf-8')
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec(
+            'agent1',
+            provider_profile=ProviderProfileSpec(
+                mode='isolated',
+                env={
+                    'OPENAI_BASE_URL': 'https://aspai.example/v1',
+                    'model_catalog_json': 'models.json',
+                },
+            ),
+            model='deepseek-v4-pro',
+        ),
+        workspace_path=project_root,
+    )
+
+    runtime_home = Path(profile.runtime_home or '')
+    config = tomllib.loads((runtime_home / 'config.toml').read_text(encoding='utf-8'))
+    assert config['model'] == 'deepseek-v4-pro'
+    assert config['model_catalog_json'] == 'models.json'
+    assert (runtime_home / 'models.json').read_text(encoding='utf-8') == (
+        '{"deepseek-v4-pro":{"context_window":128000}}\n'
+    )
 
 
 def test_materialize_codex_profile_refreshes_plugin_projection_when_source_changes(tmp_path: Path, monkeypatch) -> None:
