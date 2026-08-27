@@ -47,6 +47,22 @@ def test_control_plane_env_keeps_claude_keychain_override(monkeypatch) -> None:
     assert env['CCB_KEYCHAIN_SERVICE_OVERRIDE'] == 'Claude Code-credentials-account-a'
 
 
+def test_control_plane_env_keeps_tmux_config_override(monkeypatch) -> None:
+    monkeypatch.setenv('CCB_TMUX_CONFIG', '/home/demo/.config/ccb/tmux.conf')
+
+    env = control_plane_env()
+
+    assert env['CCB_TMUX_CONFIG'] == '/home/demo/.config/ccb/tmux.conf'
+
+
+def test_control_plane_env_does_not_inject_tmux_config_override(monkeypatch) -> None:
+    monkeypatch.delenv('CCB_TMUX_CONFIG', raising=False)
+
+    env = control_plane_env()
+
+    assert 'CCB_TMUX_CONFIG' not in env
+
+
 def test_control_plane_env_keeps_agent_roles_store_pin(monkeypatch) -> None:
     monkeypatch.setenv('AGENT_ROLES_STORE', '/home/demo/.roles')
 
