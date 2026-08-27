@@ -100,6 +100,13 @@ def test_herdr_capability_gate_allows_supported_spike_projection() -> None:
     assert capabilities["source_ref"] == "evidence/herdr-contract-spike-evidence.json"
 
 
+def test_herdr_capability_gate_allows_agent_lifecycle_operations() -> None:
+    gate = _supported_gate()
+
+    assert gate.require_supported("report_pane_agent_session")["backend_impl"] == "herdr"
+    assert gate.require_supported("release_pane_agent")["backend_impl"] == "herdr"
+
+
 def test_herdr_capability_gate_allows_nonrequired_windows_beta_gaps() -> None:
     gate = HerdrCapabilityGate.from_spike_evidence(
         {
@@ -692,6 +699,60 @@ def test_herdr_backend_facade_returns_refs_and_operation_evidence() -> None:
     assert "python ready" in captured
     assert capture["operation"] == "capture_pane"
     assert killed["operation"] == "kill_pane"
+
+
+def test_herdr_backend_anchors_and_syncs_ccb_agent_lifecycle() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    fallback = _fake_herdr_request()
+
+    def request(operation: str, payload: dict[str, object]) -> dict[str, object]:
+        calls.append((operation, dict(payload)))
+        if operation in {"report_pane_agent", "release_pane_agent"}:
+            return {"status": "ok", "pane_id": payload["pane_id"]}
+        return fallback(operation, payload)
+
+    backend = HerdrBackend(
+        client=HerdrSocketClient(request_fn=request, socket_ref="herdr://local"),
+        capability_gate=_supported_gate(),
+    )
+    namespace = backend.create_session(project_id="demo", cwd="D:/demo", title="ccb-demo")
+    pane = backend.create_pane(namespace, command=[], cwd="D:/demo", env={}, title="workspace")
+
+    backend.report_pane_agent(pane, provider_kind="codex", state="unknown", session_id="thread-1")
+    assert backend.sync_pane_agent_state(
+        namespace_ref=namespace,
+        pane_id="pane-1",
+        provider_kind="codex",
+        runtime_state="busy",
+        seq=2,
+        session_id="thread-1",
+    ) is True
+    assert backend.sync_pane_agent_state(
+        namespace_ref=namespace,
+        pane_id="pane-1",
+        provider_kind="codex",
+        runtime_state="idle",
+        seq=3,
+        session_id="thread-1",
+    ) is True
+
+    lifecycle_calls = [call for call in calls if call[0] in {"report_pane_agent", "release_pane_agent"}]
+    assert [operation for operation, _ in lifecycle_calls] == [
+        "release_pane_agent",
+        "report_pane_agent",
+        "report_pane_agent",
+        "report_pane_agent",
+    ]
+    assert [payload.get("state") for operation, payload in lifecycle_calls if operation == "report_pane_agent"] == [
+        "idle",
+        "working",
+        "idle",
+    ]
+    assert [payload.get("seq") for operation, payload in lifecycle_calls if operation == "report_pane_agent"] == [
+        1,
+        2,
+        3,
+    ]
 
 
 def test_herdr_backend_updates_liveness_after_kill() -> None:
@@ -4151,6 +4212,44 @@ def test_herdr_cli_request_adapter_reports_pane_agent() -> None:
             "ccb-agent-session",
         ]
     ]
+
+
+def test_herdr_cli_request_adapter_reports_agent_seq_and_release() -> None:
+    commands: list[list[str]] = []
+
+    adapter = HerdrCliRequestAdapter(
+        session_name="ccb-demo",
+        herdr_executable="herdr",
+        run_fn=lambda command, **kwargs: commands.append(list(command)) or _completed(""),
+        which_fn=lambda name: "herdr",
+    )
+
+    adapter(
+        "report_pane_agent",
+        {
+            "pane_id": "w1:p2",
+            "provider_kind": "codex",
+            "state": "working",
+            "seq": 7,
+        },
+    )
+    adapter(
+        "release_pane_agent",
+        {
+            "pane_id": "w1:p2",
+            "provider_kind": "codex",
+            "seq": 8,
+        },
+    )
+
+    assert commands[0][-4:] == ["--state", "working", "--seq", "7"]
+    assert commands[1][-4:] == ["--agent", "codex", "--seq", "8"]
+
+    with pytest.raises(MuxCommandErrorV2):
+        adapter(
+            "release_pane_agent",
+            {"pane_id": "w1:p2", "provider_kind": "codex", "seq": -1},
+        )
 
 
 def test_herdr_cli_request_adapter_is_alive_maps_command_not_found_to_false() -> None:

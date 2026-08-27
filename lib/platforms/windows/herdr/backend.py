@@ -17,6 +17,17 @@ from terminal_runtime.mux_backend_contract import (
 )
 
 
+_HERDR_AGENT_STATE_BY_RUNTIME_STATE = {
+    "starting": "idle",
+    "idle": "idle",
+    "busy": "working",
+    "stopping": "unknown",
+    "stopped": "unknown",
+    "degraded": "unknown",
+    "failed": "unknown",
+}
+
+
 class HerdrBackend(TerminalBackend):
     backend_impl = "herdr"
 
@@ -199,18 +210,93 @@ class HerdrBackend(TerminalBackend):
         *,
         provider_kind: str,
         state: str = "unknown",
+        seq: int | None = None,
         session_id: str | None = None,
         session_path: str | None = None,
     ) -> MuxOperationEvidenceV2:
         pane_ref = self._pane_ref(pane, operation="report_pane_agent")
         self._capability_gate.require_supported("report_pane_agent")
         self._client.server_info()
+        if state == "unknown" and seq is None:
+            try:
+                self.release_pane_agent(pane_ref, provider_kind=provider_kind)
+            except Exception:
+                pass
+            state = "idle"
+            seq = 1
         return self._client.report_pane_agent(
             pane_ref,
             provider_kind=provider_kind,
             state=state,
+            seq=seq,
             session_id=session_id,
             session_path=session_path,
+        )
+
+    def sync_pane_agent_state(
+        self,
+        *,
+        namespace_ref: Mapping[str, object],
+        pane_id: str,
+        provider_kind: str,
+        runtime_state: str,
+        seq: int,
+        session_id: str | None = None,
+        session_path: str | None = None,
+    ) -> bool:
+        state = _HERDR_AGENT_STATE_BY_RUNTIME_STATE.get(str(runtime_state).strip().lower())
+        if state is None or str(namespace_ref.get("backend_impl") or "").strip() != "herdr":
+            return False
+        self.attach_persisted_session(namespace_ref, pane_id=pane_id)
+        pane_ref = {
+            "backend_impl": "herdr",
+            "pane_id": str(pane_id).strip(),
+            "session_name": str(namespace_ref.get("session_name") or "").strip(),
+        }
+        self.report_pane_agent(
+            pane_ref,  # type: ignore[arg-type]
+            provider_kind=provider_kind,
+            state=state,
+            seq=seq,
+            session_id=session_id,
+            session_path=session_path,
+        )
+        return True
+
+    def report_pane_agent_session(
+        self,
+        pane: MuxPaneRefV2,
+        *,
+        provider_kind: str,
+        seq: int | None = None,
+        session_id: str | None = None,
+        session_path: str | None = None,
+    ) -> MuxOperationEvidenceV2:
+        pane_ref = self._pane_ref(pane, operation="report_pane_agent_session")
+        self._capability_gate.require_supported("report_pane_agent_session")
+        self._client.server_info()
+        return self._client.report_pane_agent_session(
+            pane_ref,
+            provider_kind=provider_kind,
+            seq=seq,
+            session_id=session_id,
+            session_path=session_path,
+        )
+
+    def release_pane_agent(
+        self,
+        pane: MuxPaneRefV2,
+        *,
+        provider_kind: str,
+        seq: int | None = None,
+    ) -> MuxOperationEvidenceV2:
+        pane_ref = self._pane_ref(pane, operation="release_pane_agent")
+        self._capability_gate.require_supported("release_pane_agent")
+        self._client.server_info()
+        return self._client.release_pane_agent(
+            pane_ref,
+            provider_kind=provider_kind,
+            seq=seq,
         )
 
     def describe_pane(
