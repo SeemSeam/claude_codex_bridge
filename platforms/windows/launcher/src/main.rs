@@ -42,6 +42,7 @@ fn run() -> Result<i32, String> {
         command.args(&forwarded);
         command.env("CCB_WINDOWS_LAUNCHER", &executable);
         command.env("CCB_INSTALL_PREFIX", install_root);
+        configure_python_environment(&mut command);
         suppress_child_console(&mut command);
 
         match command.status() {
@@ -59,6 +60,11 @@ fn run() -> Result<i32, String> {
         "Python 3.10+ was not found. Checked: {}",
         failures.join(", ")
     ))
+}
+
+fn configure_python_environment(command: &mut Command) {
+    command.env("PYTHONUTF8", "1");
+    command.env("PYTHONIOENCODING", "utf-8");
 }
 
 fn entry_script(executable: &Path, install_root: &Path) -> Result<PathBuf, String> {
@@ -147,5 +153,15 @@ mod tests {
         let error = entry_script(Path::new(r"C:\x\bin\unknown.exe"), Path::new(r"C:\x"))
             .unwrap_err();
         assert!(error.contains("unsupported launcher name"));
+    }
+
+    #[test]
+    fn configures_utf8_for_python_and_child_processes() {
+        let mut command = Command::new("python");
+        configure_python_environment(&mut command);
+        let environment: Vec<_> = command.get_envs().collect();
+
+        assert!(environment.contains(&(OsStr::new("PYTHONUTF8"), Some(OsStr::new("1")))));
+        assert!(environment.contains(&(OsStr::new("PYTHONIOENCODING"), Some(OsStr::new("utf-8")),)));
     }
 }
