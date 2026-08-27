@@ -11,6 +11,7 @@ from ccbd.services import AgentRegistry, HealthMonitor, JobDispatcher, RuntimeSe
 from ccbd.supervision import RuntimeSupervisionLoop
 from ccbd.supervisor import RuntimeSupervisor
 from completion.tracker import CompletionTrackerService
+from terminal_runtime.agent_lifecycle import TerminalAgentLifecycleSink
 
 SERVICE_GRAPH_RETAINED_COUNT_SCOPE = 'published_graph_count_not_inflight_retention'
 
@@ -115,6 +116,19 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         deps.provider_catalog,
         request_timeout_s=deps.request_timeout_s,
     )
+    agent_lifecycle_sink = None
+    project_namespace = deps.project_namespace
+    backend_factory = getattr(project_namespace, '_backend_factory', None)
+    if project_namespace is not None and callable(backend_factory):
+        def _namespace_ref():
+            namespace = project_namespace.load()
+            return namespace.namespace_ref() if namespace is not None else None
+
+        agent_lifecycle_sink = TerminalAgentLifecycleSink(
+            backend_factory=backend_factory,
+            namespace_ref_fn=_namespace_ref,
+            seq_start=1,
+        )
     dispatcher = JobDispatcher(
         deps.paths,
         deps.config,
@@ -127,6 +141,7 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
         provider_catalog=deps.provider_catalog,
         snapshot_writer=deps.snapshot_writer,
         timing_sink=deps.control_plane_metrics,
+        agent_lifecycle_sink=agent_lifecycle_sink,
         clock=deps.clock,
     )
     project_view_service = ProjectViewService(
