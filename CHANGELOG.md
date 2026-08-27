@@ -1,5 +1,25 @@
 # Changelog
 
+## v8.6.11 (2026-08-27)
+
+- Restored bearer authentication for explicit Codex CLI `0.149.0` custom
+  providers by declaring the Agent-local `OPENAI_API_KEY` source, while
+  preserving unauthenticated route-only gateways.
+- Added per-Agent Codex `model_catalog_json` projection and model overrides,
+  preserved reconnect startup/history behavior, and retained
+  `CCB_TMUX_CONFIG` across the keeper control-plane environment (PRs #321,
+  #322, and #326).
+- Changed Pi clear to `/new`, so a clear starts a fresh native context instead
+  of relying on the previous reset command (PR #325).
+- Reworked Herdr lifecycle synchronization as an optional generic terminal
+  capability implemented only by the Windows backend, with monotonic state
+  reporting and no new shared-to-Windows imports (PR #320).
+- Enforced UTF-8 mode at the native Windows launcher boundary instead of
+  changing shared subprocess call sites (PR #323). Windows x64 and Herdr
+  remain beta.
+- Restart managed Codex Agents and CCB projects after upgrading. No project,
+  conversation, pairing, or configuration migration is required.
+
 ## v8.6.10 (2026-08-18)
 
 - Fixed Issue #319: after an external Claude OAuth re-login, a stopped managed

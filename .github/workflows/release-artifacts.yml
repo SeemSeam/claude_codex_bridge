@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to build and upload"
         required: true
-        default: "v8.6.10"
+        default: "v8.6.11"
   push:
     tags:
       - "v*"
