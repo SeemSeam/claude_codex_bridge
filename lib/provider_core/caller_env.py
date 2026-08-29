@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 
 from project.ids import compute_project_id
+from provider_core.source_home import current_provider_source_home
 from runtime_env.user_session import user_session_transport_env
 from storage.path_helpers import runtime_project_root_from_path
 
@@ -15,6 +16,26 @@ _MANAGED_PROVIDER_PROCESS_ENV = {
     'GROK_DISABLE_AUTOUPDATER': '1',
     'NO_UPDATE_NOTIFIER': '1',
 }
+
+_MAGIC_CONTEXT_HOST_PROVIDERS = frozenset({'opencode', 'pi', 'omp'})
+
+
+def magic_context_storage_env(provider: str) -> dict[str, str]:
+    """Resolve the machine-wide Magic Context directory for supported hosts."""
+    normalized = str(provider or '').strip().lower()
+    if normalized not in _MAGIC_CONTEXT_HOST_PROVIDERS:
+        return {}
+    explicit = str(os.environ.get('MAGIC_CONTEXT_STORAGE_DIR') or '').strip()
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_absolute():
+            raise ValueError('MAGIC_CONTEXT_STORAGE_DIR must be an absolute path')
+        return {'MAGIC_CONTEXT_STORAGE_DIR': str(path)}
+    return {
+        'MAGIC_CONTEXT_STORAGE_DIR': str(
+            current_provider_source_home() / '.local' / 'share' / 'cortexkit' / 'magic-context'
+        )
+    }
 
 
 def caller_context_env(*, actor: str, runtime_dir: Path, launch_session_id: str) -> dict[str, str]:
@@ -76,4 +97,10 @@ def _resolve_path(path: Path) -> Path:
         return current.absolute()
 
 
-__all__ = ['caller_context_env', 'export_env_clause', 'join_env_prefix', 'provider_user_session_env']
+__all__ = [
+    'caller_context_env',
+    'export_env_clause',
+    'join_env_prefix',
+    'magic_context_storage_env',
+    'provider_user_session_env',
+]

@@ -20,6 +20,7 @@ from completion.models import (
     CompletionStatus,
 )
 from provider_core.instance_resolution import named_agent_instance
+from provider_core.caller_env import magic_context_storage_env
 from provider_backends.native_cli_support.home import (
     build_native_private_env,
     ensure_native_provider_storage_isolation,
@@ -1087,6 +1088,7 @@ def _native_cli_env(config: NativeCliExecutionConfig, request: NativeCliExecutio
                 extra_raw_env_names=config.private_raw_env_names,
             )
         )
+    env.update(magic_context_storage_env(config.provider))
     return env
 
 
