@@ -290,16 +290,22 @@ def test_materialize_runtime_memory_bundle_writes_generated_bundle(tmp_path: Pat
     assert f'workspace_path: {workspace.resolve()}' in text
     assert '## CCB Runtime Coordination Rules' in text
     assert 'CCB `ask` is submit-only' in text
-    assert 'Do not wait, poll, or run `pend`/`watch`/`ping`' in text
+    assert 'If the submission is accepted, end the current Agent turn immediately' in text
+    assert 'Do not continue task work, wait, poll' in text
+    assert 'wait, poll, or run `pend`/`watch`/`ping` in that turn' in text
+    assert 'For an explicitly requested runtime diagnosis' in text
+    assert 'use only the bounded diagnostic commands required by that task' in text
     assert 'run `command ccb clear` for all configured agents' in text
     assert 'without deleting `.ccb` state, workspaces, auth, sessions, logs, or project memory' in text
     assert 'use `ask --chain` only when the current task cannot finish without that exact child result' in text
     assert 'never add it merely to bypass a rejected plain ask' in text
+    assert 'An accepted chain submission also ends the current Agent turn' in text
+    assert 'CCB resumes the parent through a result-chain continuation' in text
     assert 'Finish an inbound CCB task in its current turn' in text
     assert 'If the original caller is a registered CCB agent' in text
     assert "routes that turn's terminal result through the existing lineage" in text
     assert 'do not open a new `ask` to report completion to the original caller' in text
-    assert 'Direct CLI submitters read terminal results from control output' in text
+    assert 'Outside an Agent turn, a direct CLI submitter may read terminal results' in text
     assert 'such as `watch` or `trace`' in text
     assert 'During a CCB result-chain continuation, answer directly with the final result' in text
     assert 'do not use `ask`, `--chain`, or `--silence`' in text
