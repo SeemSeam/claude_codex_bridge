@@ -257,6 +257,9 @@ Examples:
 - Copilot's allowlisted `config.json.installedPlugins` metadata, aggregate
   ownership marker, per-tree markers, and agent-local `installed-plugins/`
   copies
+- Pi `models.json`, rewritten `settings.json`, and `my-pi-setup.json` in each
+  managed home, with immutable npm, Git, local-package, and direct-extension
+  assets referenced from the user-scoped content-addressed provider cache
 - Kimi inherited and role `skills/` directories under managed provider state
 - OpenCode generated `opencode.json` and generated ask skill instruction files
   under `.ccb/runtime/skills/<agent>/opencode/`
@@ -409,6 +412,9 @@ User-scoped rebuildable cache outside project/runtime authority:
     MANIFEST.json
     npm/
     xdg/
+  pi/
+    MANIFEST.json
+    profile-assets/
 ```
 
 Rules:
@@ -425,6 +431,11 @@ Rules:
   corresponding source tree into the agent-local `installed-plugins/` root.
   Authentication, settings, permissions, sessions, plugin data, MCP secrets,
   and marketplace cache remain outside projection authority.
+- Managed Pi refreshes small configuration files at launch and rewrites
+  package and extension paths to immutable snapshots under the user-scoped Pi
+  cache. Auth, sessions, logs, writable cache, and runtime data remain in the
+  agent-private provider state. Existing snapshots are not startup cleanup
+  candidates because another live Agent or project may still reference them.
 - `.ccb/provider-profiles/` must not silently become a long-lived runtime home
   unless the user explicitly configures that path as an external provider home.
 - `.ccb/shared-cache/` contains only rebuildable cache and never conversation
