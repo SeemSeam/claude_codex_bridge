@@ -85,6 +85,10 @@ def materialize_native_login_state(
             target_home=target_home,
             profile=profile,
         )
+    elif name == 'pi':
+        from provider_backends.pi.home import materialize_pi_config
+
+        materialize_pi_config(source, target_home, profile=profile)
     return target_home
 
 

@@ -622,6 +622,184 @@ def test_native_pi_auth_projection_is_one_way(tmp_path: Path) -> None:
     assert source_auth.is_file()
 
 
+def test_native_pi_projects_current_extension_profile_to_one_shared_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    shared_cache = tmp_path / "xdg-cache" / "ccb" / "provider-cache" / "pi"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    external_local = source_home / "workspace" / "pi-antigravity"
+    explicit_extension = source_home / "workspace" / "explicit-extension.ts"
+    git_extension = source_agent / "git" / "github.com" / "example" / "pi-git-extension"
+
+    npm_extension = source_agent / "npm" / "node_modules" / "pi-lens"
+    npm_extension.mkdir(parents=True)
+    (npm_extension / "package.json").write_text(
+        '{"name":"pi-lens","version":"4.1.3","pi":{"extensions":["index.ts"]}}\n',
+        encoding="utf-8",
+    )
+    (npm_extension / "index.ts").write_text("export const version = '4.1.3';\n", encoding="utf-8")
+
+    external_local.mkdir(parents=True)
+    (external_local / "package.json").write_text(
+        '{"name":"pi-antigravity","pi":{"extensions":["index.ts"]}}\n',
+        encoding="utf-8",
+    )
+    (external_local / "index.ts").write_text("export const local = true;\n", encoding="utf-8")
+    explicit_extension.write_text("export const explicit = true;\n", encoding="utf-8")
+
+    git_extension.mkdir(parents=True)
+    (git_extension / "package.json").write_text(
+        '{"name":"pi-git-extension","pi":{"extensions":["index.ts"]}}\n',
+        encoding="utf-8",
+    )
+    (git_extension / "index.ts").write_text("export const git = true;\n", encoding="utf-8")
+    (source_agent / "extensions").mkdir(parents=True, exist_ok=True)
+    (source_agent / "extensions" / "pi-git-extension").symlink_to(
+        git_extension,
+        target_is_directory=True,
+    )
+
+    direct_extension = source_agent / "extensions" / "direct-extension"
+    direct_extension.mkdir(parents=True)
+    (direct_extension / "index.ts").write_text("export const direct = 1;\n", encoding="utf-8")
+    (source_agent / "extensions" / "standalone.ts").write_text(
+        "export const standalone = 1;\n",
+        encoding="utf-8",
+    )
+    (source_agent / "settings.json").write_text(
+        json.dumps(
+            {
+                "packages": [
+                    "npm:pi-lens",
+                    "../../workspace/pi-antigravity",
+                    "git:github.com/example/pi-git-extension",
+                ],
+                "extensions": [str(explicit_extension), "!disabled/**"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (source_agent / "models.json").write_text('{"providers":{}}\n', encoding="utf-8")
+    (source_agent / "my-pi-setup.json").write_text(
+        '{"ui":{"customFooter":false}}\n',
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    assert (target_home / "models.json").read_text(encoding="utf-8") == '{"providers":{}}\n'
+    npm_target = Path(settings["packages"][0])
+    local_target = Path(settings["packages"][1])
+    git_target = Path(settings["packages"][2])
+    assert npm_target.is_relative_to(shared_cache)
+    assert npm_target.joinpath("index.ts").read_text(encoding="utf-8") == "export const version = '4.1.3';\n"
+    assert local_target.joinpath("index.ts").read_text(encoding="utf-8") == "export const local = true;\n"
+    assert git_target.joinpath("index.ts").read_text(encoding="utf-8") == "export const git = true;\n"
+    assert "!extensions/**" in settings["extensions"]
+    assert "!disabled/**" in settings["extensions"]
+    assert str(explicit_extension) not in settings["extensions"]
+    projected_explicit = next(
+        Path(value)
+        for value in settings["extensions"]
+        if isinstance(value, str) and value.endswith("/explicit-extension.ts")
+    )
+    assert projected_explicit.read_text(encoding="utf-8") == "export const explicit = true;\n"
+    assert any(
+        "/direct-extensions/" in str(value) and str(value).endswith("/direct-extension")
+        for value in settings["extensions"]
+    )
+    assert any(
+        "/direct-extension-files/" in str(value) and str(value).endswith("/standalone.ts")
+        for value in settings["extensions"]
+    )
+    assert not any(
+        "/direct-extensions/" in str(value) and str(value).endswith("/pi-git-extension")
+        for value in settings["extensions"]
+    )
+    assert json.loads((target_home / "my-pi-setup.json").read_text(encoding="utf-8"))["ui"]["customFooter"] is False
+    assert external_local.joinpath("index.ts").read_text(encoding="utf-8") == "export const local = true;\n"
+
+    second_home = tmp_path / "second-managed-home"
+    materialize_native_login_state("pi", second_home, source_home=source_home)
+    second_settings = json.loads((second_home / "settings.json").read_text(encoding="utf-8"))
+    assert (second_home / "models.json").read_text(encoding="utf-8") == '{"providers":{}}\n'
+    assert second_settings["packages"] == settings["packages"]
+    assert second_settings["extensions"] == settings["extensions"]
+    assert not (target_home / ".ccb-inherited-profile").exists()
+    assert not (second_home / ".ccb-inherited-profile").exists()
+
+
+def test_native_pi_restart_repoints_to_updated_shared_snapshot(tmp_path: Path, monkeypatch) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    npm_extension = source_agent / "npm" / "node_modules" / "pi-web-access"
+    npm_extension.mkdir(parents=True)
+    npm_lock = source_agent / "npm" / "package-lock.json"
+    npm_lock.write_text('{"packages":{"node_modules/pi-web-access":{"version":"0.18.0"}}}\n', encoding="utf-8")
+    (npm_extension / "package.json").write_text(
+        '{"name":"pi-web-access","version":"0.18.0"}\n',
+        encoding="utf-8",
+    )
+    (npm_extension / "index.ts").write_text("old\n", encoding="utf-8")
+    (source_agent / "settings.json").write_text(
+        '{"packages":["npm:pi-web-access"]}\n',
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+    first_settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    first_projected = Path(first_settings["packages"][0])
+    assert first_projected.joinpath("index.ts").read_text(encoding="utf-8") == "old\n"
+
+    (npm_extension / "package.json").write_text(
+        '{"name":"pi-web-access","version":"0.27.0"}\n',
+        encoding="utf-8",
+    )
+    npm_lock.write_text('{"packages":{"node_modules/pi-web-access":{"version":"0.27.0"}}}\n', encoding="utf-8")
+    (npm_extension / "index.ts").write_text("new\n", encoding="utf-8")
+    (source_agent / "models.json").write_text('{"providers":{"new":{}}}\n', encoding="utf-8")
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    second_settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    second_projected = Path(second_settings["packages"][0])
+    assert second_projected != first_projected
+    assert first_projected.joinpath("index.ts").read_text(encoding="utf-8") == "old\n"
+    assert second_projected.joinpath("index.ts").read_text(encoding="utf-8") == "new\n"
+    assert (target_home / "models.json").read_text(encoding="utf-8") == (
+        '{"providers":{"new":{}}}\n'
+    )
+
+
+def test_native_pi_config_opt_out_does_not_create_shared_cache(tmp_path: Path, monkeypatch) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    xdg_cache = tmp_path / "xdg-cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text('{"packages":["npm:pi-lens"]}\n', encoding="utf-8")
+    (source_agent / "my-pi-setup.json").write_text('{"ui":{"customFooter":false}}\n', encoding="utf-8")
+
+    materialize_native_login_state(
+        "pi",
+        target_home,
+        source_home=source_home,
+        profile=SimpleNamespace(inherit_auth=False, inherit_config=False),
+    )
+
+    assert not (target_home / "settings.json").exists()
+    assert not (target_home / "my-pi-setup.json").exists()
+    assert not xdg_cache.exists()
+
+
 def test_native_cursor_projection_detaches_managed_home_symlink(tmp_path: Path) -> None:
     source_home = tmp_path / "source-home"
     outside = tmp_path / "outside"
