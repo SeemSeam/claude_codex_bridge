@@ -239,3 +239,45 @@ def test_missing_source_removes_only_valid_owned_target(tmp_path: Path) -> None:
     _write_tree(target, 'user\n')
     assert not projected_assets.route_projected_tree(source, target, label=_LABEL)
     assert (target / 'asset.txt').read_text(encoding='utf-8') == 'user\n'
+
+
+def test_seed_projected_file_refreshes_and_removes_only_owned_target(tmp_path: Path) -> None:
+    source = tmp_path / 'source.ts'
+    target = tmp_path / 'target.ts'
+    source.write_text('first\n', encoding='utf-8')
+
+    assert projected_assets.seed_projected_file(source, target, label=_LABEL)
+    assert target.read_text(encoding='utf-8') == 'first\n'
+
+    source.write_text('second version\n', encoding='utf-8')
+    assert projected_assets.seed_projected_file(source, target, label=_LABEL)
+    assert target.read_text(encoding='utf-8') == 'second version\n'
+
+    assert not projected_assets.seed_projected_file(source, target, enabled=False, label=_LABEL)
+    assert not target.exists()
+    assert not _marker_path(target).exists()
+
+
+def test_seed_projected_file_preserves_unowned_target(tmp_path: Path) -> None:
+    source = tmp_path / 'source.ts'
+    target = tmp_path / 'target.ts'
+    source.write_text('source\n', encoding='utf-8')
+    target.write_text('user-owned\n', encoding='utf-8')
+
+    assert not projected_assets.seed_projected_file(source, target, label=_LABEL)
+    assert target.read_text(encoding='utf-8') == 'user-owned\n'
+    assert not _marker_path(target).exists()
+
+
+def test_seed_projected_file_rolls_back_when_marker_write_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / 'source.ts'
+    target = tmp_path / 'target.ts'
+    source.write_text('source\n', encoding='utf-8')
+    monkeypatch.setattr(projected_assets, '_write_projection_marker', lambda *args, **kwargs: False)
+
+    assert not projected_assets.seed_projected_file(source, target, label=_LABEL)
+    assert not target.exists()
+    assert not _marker_path(target).exists()
