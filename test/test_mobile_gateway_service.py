@@ -353,6 +353,13 @@ class _FakePiCcbdClientWithConversationComms(_FakeCcbdClientWithConversationComm
         return payload
 
 
+class _FakeOmpCcbdClientWithConversationComms(_FakeCcbdClientWithConversationComms):
+    def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
+        payload = super().project_view(schema_version=schema_version)
+        payload['view']['agents'][0]['provider'] = 'omp'
+        return payload
+
+
 class _FakeClaudeCcbdClient(_FakeCcbdClient):
     def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
         payload = super().project_view(schema_version=schema_version)
@@ -364,6 +371,13 @@ class _FakePiCcbdClient(_FakeCcbdClient):
     def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
         payload = super().project_view(schema_version=schema_version)
         payload['view']['agents'][0]['provider'] = 'pi'
+        return payload
+
+
+class _FakeOmpCcbdClient(_FakeCcbdClient):
+    def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
+        payload = super().project_view(schema_version=schema_version)
+        payload['view']['agents'][0]['provider'] = 'omp'
         return payload
 
 
@@ -2499,6 +2513,8 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / 'repo'
+    agent_work_dir = project_root / '.ccb' / 'workspaces' / 'mobile'
+    agent_work_dir.mkdir(parents=True)
     jobs_dir = project_root / '.ccb' / 'agents' / 'mobile'
     jobs_dir.mkdir(parents=True)
     (jobs_dir / 'jobs.jsonl').write_text(
@@ -2517,6 +2533,7 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
         project_root,
         agent='mobile',
         session_id='pi-session-native',
+        cwd=agent_work_dir,
         records=[
             {
                 'type': 'model_change',
@@ -2631,6 +2648,7 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
         agent='mobile',
         session_id='wrong-project',
         cwd=tmp_path / 'other-repo',
+        write_binding=False,
         records=[
             {
                 'type': 'message',
@@ -2672,6 +2690,7 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
         ('user_message', 'clean pi prompt'),
         ('agent_reply', 'step one\n\nstep two'),
     ]
+    assert {item['session_id'] for item in items} == {'pi-session-native'}
     assert items[0]['sent_at'] == '2026-06-25T12:00:01.000Z'
     assert items[1]['completed_at'] == '2026-06-25T12:00:02.000Z'
     public_json = json.dumps(payload)
@@ -2718,29 +2737,211 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
     ]
 
 
-def test_agent_conversation_does_not_fallback_for_pi_without_native_transcript(
+def test_agent_conversation_preserves_pi_session_boundaries(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    work_dir = project_root / '.ccb' / 'workspaces' / 'mobile'
+    work_dir.mkdir(parents=True)
+    _write_pi_transcript(
+        project_root,
+        agent='mobile',
+        session_id='pi-session-1',
+        cwd=work_dir,
+        timestamp='2026-06-25T11:00:00.000Z',
+        records=[_pi_message_record(
+            record_id='first-user',
+            parent_id=None,
+            role='user',
+            text='first session question',
+            timestamp='2026-06-25T11:00:01.000Z',
+        )],
+    )
+    _write_pi_transcript(
+        project_root,
+        agent='mobile',
+        session_id='pi-session-2',
+        cwd=work_dir,
+        timestamp='2026-06-25T12:00:00.000Z',
+        records=[_pi_message_record(
+            record_id='second-user',
+            parent_id=None,
+            role='user',
+            text='second session question',
+            timestamp='2026-06-25T12:00:01.000Z',
+        )],
+    )
+
+    items = _conversation_items_for(
+        _service(_FakePiCcbdClient(), project_root=project_root, mobile_dir=tmp_path / 'mobile')
+    )
+
+    assert [(item['body'], item['session_id']) for item in items] == [
+        ('first session question', 'pi-session-1'),
+        ('second session question', 'pi-session-2'),
+    ]
+
+
+def test_agent_conversation_reads_omp_native_transcript_and_refreshes_cache(
     tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo'
+    work_dir = project_root / '.ccb' / 'workspaces' / 'mobile'
+    work_dir.mkdir(parents=True)
+    transcript_path = _write_pi_family_transcript(
+        project_root,
+        provider='omp',
+        agent='mobile',
+        session_id='omp-session-native',
+        cwd=work_dir,
+        records=[
+            _pi_message_record(
+                record_id='omp-user',
+                parent_id=None,
+                role='user',
+                text='omp native question',
+                timestamp='2026-06-25T12:00:01.000Z',
+            ),
+            {
+                'type': 'message',
+                'id': 'omp-answer',
+                'parentId': 'omp-user',
+                'timestamp': '2026-06-25T12:00:02.000Z',
+                'message': {
+                    'role': 'assistant',
+                    'content': [
+                        {'type': 'thinking', 'thinking': 'hidden omp thinking'},
+                        {'type': 'text', 'text': 'omp native answer'},
+                        {'type': 'toolCall', 'name': 'bash', 'arguments': {'command': 'hidden'}},
+                    ],
+                },
+            },
+            _pi_message_record(
+                record_id='inactive-user',
+                parent_id='omp-user',
+                role='user',
+                text='inactive omp branch',
+                timestamp='2026-06-25T12:00:03.000Z',
+            ),
+            _pi_message_record(
+                record_id='omp-user-2',
+                parent_id='omp-answer',
+                role='user',
+                text='omp follow-up',
+                timestamp='2026-06-25T12:00:04.000Z',
+            ),
+        ],
+        partial_tail='{"type":"message","id":"partial"',
+    )
+    wrong_path = _write_pi_family_transcript(
+        project_root,
+        provider='omp',
+        agent='mobile',
+        session_id='wrong-work-dir',
+        cwd=tmp_path / 'other',
+        records=[_pi_message_record(
+            record_id='wrong-user',
+            parent_id=None,
+            role='user',
+            text='wrong omp work dir',
+            timestamp='2026-06-25T10:00:00.000Z',
+        )],
+        write_binding=False,
+    )
+    (wrong_path.parent / 'symlink.jsonl').symlink_to(transcript_path)
+    service = _service(
+        _FakeOmpCcbdClient(),
+        project_root=project_root,
+        mobile_dir=tmp_path / 'mobile',
+    )
+
+    items = _conversation_items_for(service)
+
+    assert [(item['kind'], item['body']) for item in items] == [
+        ('user_message', 'omp native question'),
+        ('agent_reply', 'omp native answer'),
+        ('user_message', 'omp follow-up'),
+    ]
+    assert [item['source'] for item in items] == ['provider_native/omp'] * 3
+    assert {item['session_id'] for item in items} == {'omp-session-native'}
+    assert 'hidden omp thinking' not in json.dumps(items)
+    assert 'inactive omp branch' not in json.dumps(items)
+    assert 'wrong omp work dir' not in json.dumps(items)
+
+    with transcript_path.open('a', encoding='utf-8') as stream:
+        stream.write('\n' + json.dumps(_pi_message_record(
+            record_id='omp-answer-2',
+            parent_id='omp-user-2',
+            role='assistant',
+            text='omp refreshed answer',
+            timestamp='2026-06-25T12:00:05.000Z',
+        )) + '\n')
+
+    refreshed = _conversation_items_for(service)
+    assert refreshed[-1]['body'] == 'omp refreshed answer'
+
+
+def test_pi_native_conversation_rejects_out_of_tree_bound_session(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    work_dir = project_root / '.ccb' / 'workspaces' / 'mobile'
+    work_dir.mkdir(parents=True)
+    _write_pi_transcript(
+        project_root,
+        agent='mobile',
+        session_id='managed-session',
+        cwd=work_dir,
+        records=[_pi_message_record(
+            record_id='managed-user',
+            parent_id=None,
+            role='user',
+            text='must stay hidden after invalid binding',
+            timestamp='2026-06-25T12:00:01.000Z',
+        )],
+    )
+    outside = tmp_path / 'outside.jsonl'
+    outside.write_text('{}\n', encoding='utf-8')
+    binding_path = project_root / '.ccb' / '.pi-mobile-session'
+    binding = json.loads(binding_path.read_text(encoding='utf-8'))
+    binding['pi_session_path'] = str(outside)
+    binding_path.write_text(json.dumps(binding), encoding='utf-8')
+
+    items = _conversation_items_for(
+        _service(_FakePiCcbdClient(), project_root=project_root, mobile_dir=tmp_path / 'mobile')
+    )
+
+    assert items == []
+
+
+@pytest.mark.parametrize(
+    ('client', 'provider'),
+    (
+        (_FakePiCcbdClientWithConversationComms(), 'pi'),
+        (_FakeOmpCcbdClientWithConversationComms(), 'omp'),
+    ),
+)
+def test_agent_conversation_does_not_fallback_without_native_transcript(
+    tmp_path: Path,
+    client: _FakeCcbdClient,
+    provider: str,
 ) -> None:
     project_root = tmp_path / 'repo'
     snapshot_dir = project_root / '.ccb' / 'ccbd' / 'snapshots'
     snapshot_dir.mkdir(parents=True)
     (snapshot_dir / 'job_mobile_reply.json').write_text(
-        json.dumps({'latest_decision': {'reply': 'stale pi completion'}}),
+        json.dumps({'latest_decision': {'reply': f'stale {provider} completion'}}),
         encoding='utf-8',
     )
     jobs_dir = project_root / '.ccb' / 'agents' / 'mobile'
     jobs_dir.mkdir(parents=True)
     (jobs_dir / 'jobs.jsonl').write_text(
         json.dumps({
-            'job_id': 'stale-pi-job',
+            'job_id': f'stale-{provider}-job',
             'status': 'completed',
             'agent_name': 'mobile',
-            'request': {'body': 'stale pi job prompt'},
+            'request': {'body': f'stale {provider} job prompt'},
         }) + '\n',
         encoding='utf-8',
     )
     service = _service(
-        _FakePiCcbdClientWithConversationComms(),
+        client,
         project_root=project_root,
         mobile_dir=tmp_path / 'mobile',
     )
@@ -2759,8 +2960,8 @@ def test_agent_conversation_does_not_fallback_for_pi_without_native_transcript(
     )
 
     assert payload['conversation']['items'] == []
-    assert 'stale pi completion' not in json.dumps(payload)
-    assert 'stale pi job prompt' not in json.dumps(payload)
+    assert f'stale {provider} completion' not in json.dumps(payload)
+    assert f'stale {provider} job prompt' not in json.dumps(payload)
     assert 'question from phone' not in json.dumps(payload)
 
 
@@ -6537,27 +6738,116 @@ def _write_pi_transcript(
     records: list[dict[str, object]],
     cwd: Path | None = None,
     partial_tail: str | None = None,
+    timestamp: str = '2026-06-25T12:00:00.000Z',
+    write_binding: bool = True,
 ) -> Path:
-    session_dir = (
-        project_root / '.ccb' / 'agents' / agent / 'provider-state' / 'pi' / 'sessions'
+    return _write_pi_family_transcript(
+        project_root,
+        provider='pi',
+        agent=agent,
+        session_id=session_id,
+        records=records,
+        cwd=cwd,
+        partial_tail=partial_tail,
+        timestamp=timestamp,
+        write_binding=write_binding,
     )
-    transcript_path = session_dir / f'2026-06-25T12-00-00-000Z_{session_id}.jsonl'
+
+
+def _write_pi_family_transcript(
+    project_root: Path,
+    *,
+    provider: str,
+    agent: str,
+    session_id: str,
+    records: list[dict[str, object]],
+    cwd: Path | None = None,
+    partial_tail: str | None = None,
+    timestamp: str = '2026-06-25T12:00:00.000Z',
+    write_binding: bool = True,
+) -> Path:
+    work_dir = cwd or project_root
+    session_dir = (
+        project_root
+        / '.ccb'
+        / 'agents'
+        / agent
+        / 'provider-state'
+        / provider
+        / 'sessions'
+    )
+    timestamp_prefix = timestamp.replace(':', '-').replace('.', '-')
+    transcript_path = session_dir / f'{timestamp_prefix}_{session_id}.jsonl'
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     header = {
         'type': 'session',
         'version': 3,
         'id': session_id,
-        'timestamp': '2026-06-25T12:00:00.000Z',
-        'cwd': str(cwd or project_root),
+        'timestamp': timestamp,
+        'cwd': str(work_dir),
     }
+    prefix_records = ({'type': 'title', 'title': 'OMP session'},) if provider == 'omp' else ()
     content = ''.join(
         f'{json.dumps(record)}\n'
-        for record in (header, *records)
+        for record in (*prefix_records, header, *records)
     )
     if partial_tail is not None:
         content += partial_tail
     transcript_path.write_text(content, encoding='utf-8')
+    if write_binding:
+        binding = {
+            'active': True,
+            'agent_name': agent,
+            'ccb_session_id': f'ccb-{provider}-{agent}',
+            'work_dir': str(work_dir),
+            'workspace_path': str(work_dir),
+        }
+        if provider == 'pi':
+            binding.update({
+                'pi_session_id': session_id,
+                'pi_session_path': str(transcript_path),
+                'pi_session_work_dir_norm': str(work_dir),
+            })
+        binding_path = project_root / '.ccb' / f'.{provider}-{agent}-session'
+        binding_path.write_text(json.dumps(binding), encoding='utf-8')
     return transcript_path
+
+
+def _pi_message_record(
+    *,
+    record_id: str,
+    parent_id: str | None,
+    role: str,
+    text: str,
+    timestamp: str,
+) -> dict[str, object]:
+    return {
+        'type': 'message',
+        'id': record_id,
+        'parentId': parent_id,
+        'timestamp': timestamp,
+        'message': {
+            'role': role,
+            'content': [{'type': 'text', 'text': text}],
+        },
+    }
+
+
+def _conversation_items_for(service: MobileGatewayService) -> list[dict[str, object]]:
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+    status, payload = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4&limit=50',
+        {'Authorization': f'Bearer {claim["device_token"]}'},
+    )
+    assert status == 200
+    return [dict(item) for item in payload['conversation']['items']]
 
 
 def _write_codex_rollout(
