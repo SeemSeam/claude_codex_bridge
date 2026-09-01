@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 
 from project.ids import compute_project_id
+from runtime_env.git_identity import managed_git_identity_env
 from runtime_env.user_session import user_session_transport_env
 from storage.path_helpers import runtime_project_root_from_path
 
@@ -38,6 +39,7 @@ def caller_context_env(*, actor: str, runtime_dir: Path, launch_session_id: str)
 def provider_user_session_env() -> dict[str, str]:
     return {
         **user_session_transport_env(),
+        **managed_git_identity_env(),
         **_MANAGED_PROVIDER_PROCESS_ENV,
     }
 

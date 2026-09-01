@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
+from runtime_env.git_identity import GIT_IDENTITY_ENV_KEYS
+
 
 NETWORK_PROXY_ENV_KEYS = frozenset(
     {
@@ -90,6 +92,7 @@ USER_SESSION_TRANSPORT_ENV_KEYS = frozenset(
     | DESKTOP_SESSION_ENV_KEYS
     | WSL_SESSION_ENV_KEYS
     | ROLE_STORE_ENV_KEYS
+    | GIT_IDENTITY_ENV_KEYS
 )
 
 
