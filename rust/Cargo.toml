@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "crates/ccb-runtime-accelerator",
+    "crates/ccb-project",
+    "crates/ccb-storage",
+    "crates/ccb-storage-classification",
+    "crates/ccb-jobs",
 ]
 
 [workspace.package]
