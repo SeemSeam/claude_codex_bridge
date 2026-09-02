@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 
 _HASH_CHUNK_SIZE = 64 * 1024
@@ -63,25 +64,82 @@ def route_projected_tree(
     return False
 
 
-def copy_projected_tree_to_cache(source: Path, bundle_root: Path, *, label: str = 'projected-tree') -> bool:
+def copy_projected_tree_to_cache(
+    source: Path,
+    bundle_root: Path,
+    *,
+    label: str = 'projected-tree',
+    marker_source: Path | None = None,
+) -> bool:
     source = Path(source).expanduser()
     bundle_root = Path(bundle_root).expanduser()
+    marker_authority = (
+        Path(marker_source).expanduser()
+        if marker_source is not None
+        else source
+    )
     if not source.is_dir():
         return False
-    if _tree_has_required_entries(source, bundle_root):
-        return write_projected_marker(bundle_root, label=label, mode='copy', source=source)
-    tmp_root = bundle_root.with_name(f'.{bundle_root.name}.tmp')
-    _remove_path(tmp_root)
-    tmp_root.parent.mkdir(parents=True, exist_ok=True)
+    if bundle_root.is_symlink() or not tree_symlinks_are_self_contained(source):
+        return False
+    source_fingerprint = tree_content_fingerprint(source)
+    if not source_fingerprint:
+        return False
+    if bundle_root.is_dir():
+        if (
+            not tree_symlinks_are_self_contained(bundle_root)
+            or tree_content_fingerprint(bundle_root) != source_fingerprint
+        ):
+            return False
+        return write_projected_marker(
+            bundle_root,
+            label=label,
+            mode='copy',
+            source=marker_authority,
+        )
+    bundle_root.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(
+        tempfile.mkdtemp(
+            prefix=f'.{bundle_root.name}.ccb-cache-',
+            dir=bundle_root.parent,
+        )
+    )
+    candidate = staging_root / 'candidate'
     try:
-        shutil.copytree(source, tmp_root)
-        _remove_path(bundle_root)
-        tmp_root.rename(bundle_root)
-        if not write_projected_marker(bundle_root, label=label, mode='copy', source=source):
+        shutil.copytree(source, candidate, symlinks=True)
+        if (
+            not tree_symlinks_are_self_contained(candidate)
+            or tree_content_fingerprint(candidate) != source_fingerprint
+        ):
+            return False
+        try:
+            candidate.rename(bundle_root)
+        except OSError:
+            # Another materializer may have published the same content-addressed
+            # bundle first. Accept only a complete winning tree.
+            if (
+                bundle_root.is_symlink()
+                or not tree_symlinks_are_self_contained(bundle_root)
+                or tree_content_fingerprint(bundle_root) != source_fingerprint
+            ):
+                return False
+        if (
+            bundle_root.is_symlink()
+            or not tree_symlinks_are_self_contained(bundle_root)
+            or tree_content_fingerprint(bundle_root) != source_fingerprint
+        ):
+            return False
+        if not write_projected_marker(
+            bundle_root,
+            label=label,
+            mode='copy',
+            source=marker_authority,
+        ):
             raise OSError(f'failed to write projection marker: {bundle_root}')
     except Exception:
-        _remove_path(tmp_root)
         return False
+    finally:
+        _remove_path(staging_root)
     return True
 
 
@@ -293,19 +351,26 @@ def tree_content_fingerprint(root: Path) -> str:
     root = Path(root).expanduser()
     digest = hashlib.sha256()
     try:
+        digest.update(b'root\0')
+        digest.update(str(stat.S_IMODE(root.stat().st_mode)).encode('ascii'))
+        digest.update(b'\0')
         for entry in sorted(root.rglob('*')):
             relative = entry.relative_to(root)
-            kind = 'd' if entry.is_dir() else 'f' if entry.is_file() else 'l' if entry.is_symlink() else 'o'
+            kind = 'l' if entry.is_symlink() else 'd' if entry.is_dir() else 'f' if entry.is_file() else 'o'
             digest.update(kind.encode('utf-8'))
             digest.update(b'\0')
             digest.update(str(relative).encode('utf-8', errors='ignore'))
             digest.update(b'\0')
-            if entry.is_file():
+            if entry.is_symlink():
+                digest.update(str(entry.readlink()).encode('utf-8', errors='ignore'))
+            elif entry.is_file():
+                digest.update(str(stat.S_IMODE(entry.stat().st_mode)).encode('ascii'))
+                digest.update(b'\0')
                 with entry.open('rb') as handle:
                     for chunk in iter(lambda: handle.read(_HASH_CHUNK_SIZE), b''):
                         digest.update(chunk)
-            elif entry.is_symlink():
-                digest.update(str(entry.readlink()).encode('utf-8', errors='ignore'))
+            elif entry.is_dir():
+                digest.update(str(stat.S_IMODE(entry.stat().st_mode)).encode('ascii'))
             digest.update(b'\0')
     except Exception:
         return ''
@@ -388,20 +453,26 @@ def _can_replace_projected_target(
     return not target.exists() and not target.is_symlink()
 
 
-def _tree_has_required_entries(source: Path, candidate: Path) -> bool:
-    if not candidate.is_dir():
-        return False
+def tree_symlinks_are_self_contained(
+    root: Path,
+    *,
+    ignored_names: tuple[str, ...] = (),
+) -> bool:
     try:
-        for entry in source.rglob('*'):
-            relative = entry.relative_to(source)
-            projected = candidate / relative
-            if entry.is_dir() and not projected.is_dir():
+        if root.is_symlink() or not root.is_dir():
+            return False
+        resolved_root = root.resolve(strict=True)
+        ignored = set(ignored_names)
+        for entry in root.rglob('*'):
+            if ignored.intersection(entry.relative_to(root).parts):
+                continue
+            if not entry.is_symlink():
+                continue
+            link = entry.readlink()
+            if link.is_absolute():
                 return False
-            if entry.is_file() and not projected.is_file():
-                return False
-            if entry.is_symlink() and not projected.exists() and not projected.is_symlink():
-                return False
-    except Exception:
+            (entry.parent / link).resolve(strict=True).relative_to(resolved_root)
+    except (OSError, RuntimeError, ValueError):
         return False
     return True
 
@@ -506,6 +577,7 @@ __all__ = [
     'seed_projected_file',
     'seed_projected_tree',
     'tree_content_fingerprint',
+    'tree_symlinks_are_self_contained',
     'tree_metadata_fingerprint',
     'write_projected_marker',
 ]
