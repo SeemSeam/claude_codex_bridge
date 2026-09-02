@@ -32,6 +32,11 @@ Date: 2026-06-09
   Pi/OMP native-conversation fix from source commit `b0b9e5db1` as standalone
   commit `4347efa52`; the complete mobile gateway, Pi session, Pi/OMP
   completion, and provider-pathing gate passed with `171 passed`.
+- The 2026-09-02 remote-maintenance audit backported merged PRs 328-330 as
+  `168545cde`, `31fa74811`, and `fc634bb37`. Review found and repaired a
+  concurrent first-publish failure in shared Provider snapshots as
+  `2c605ec2c`; the combined focused gate passed with `395 passed`, and all four
+  changes passed the Windows ownership checker as `scope=non-windows`.
 
 ## In Progress
 
@@ -42,6 +47,12 @@ Date: 2026-06-09
   work-environment state is not deleted during source testing.
 - Track restart hygiene for already-running project daemons that may still have
   inherited the old temporary smoke-prefix PATH or implementation root.
+- Harden separate-prefix maintenance installs: `CODEX_INSTALL_PREFIX` and
+  `CODEX_BIN_DIR` do not isolate shell, skill, tmux, or Provider-setting writes
+  by themselves. Until explicit installer skip controls exist, `ccb2` rebuilds
+  must also use its private `HOME` while retaining the real account only as
+  `CCB_SOURCE_HOME`, and its internal bin directory must not enter the user's
+  normal shell `PATH`.
 
 ## Next
 
