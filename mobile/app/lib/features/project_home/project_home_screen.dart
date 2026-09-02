@@ -33,11 +33,15 @@ import '../agent_chat/agent_execution_status.dart';
 import '../terminal/host_terminal_screen.dart';
 import 'project_home_connection_details_panel_host.dart';
 import 'gateway_lan_network_banner.dart';
+import 'home_terminal_host_picker_sheet.dart';
 import 'project_home_focus_coordinator.dart';
 import 'project_home_gateway_profiles.dart';
+import 'project_home_host_rename_dialog.dart';
 import 'project_home_lifecycle_coordinator.dart';
 import 'mobile_connection_supervisor.dart';
 import 'mobile_presence_coordinator.dart';
+import 'project_home_multi_host_list.dart';
+import 'project_home_multi_host_projects.dart';
 import 'project_home_notification_target.dart';
 import 'project_home_onboarding.dart';
 import 'project_home_pairing_flow.dart';
@@ -247,6 +251,23 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
   double _wideSidebarDragDelta = 0;
   bool _mobileAgentsCollapsed = false;
   bool _agentTerminalMode = false;
+  late final _multiHostProjectsLoader = ProjectHomeMultiHostProjectsLoader(
+    repositoryFactory: widget.gatewayRepositoryFactory,
+  );
+
+  /// Per-host catalogs keyed by [projectHomeGatewayProfileKey]. Each host lands
+  /// here on its own so a slow computer cannot delay the rest of the list.
+  final Map<String, ProjectHomeHostCatalog> _hostCatalogs = {};
+
+  /// Computer names the user chose on this phone, keyed by
+  /// [projectHomeCustomHostNameKey]. Empty until the stored names are read, so a
+  /// host header simply starts from its pairing-derived name.
+  Map<String, String> _customHostNames = const {};
+
+  /// Bumped on every aggregated reload so replies from a superseded round are
+  /// discarded instead of overwriting fresher catalogs.
+  int _hostCatalogsRevision = 0;
+
   late final MobileSnapshotStore _snapshotStore = MobileSnapshotStore();
   late final GatewayInvalidationCursorStore _invalidationCursorStore;
   GatewayInvalidationConnectionState _gatewayConnectionState =
@@ -347,6 +368,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
     _activeRepository = widget.repository;
     _viewFuture = _loadActiveProjectView();
     _bootstrapProfiles();
+    unawaited(_loadCustomHostNames());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_refreshBackgroundConnectionSystemStatus());
@@ -435,11 +457,15 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
       return _buildOnboardingScaffold();
     }
     final serverProjectsFuture = _serverProjectsFuture;
-    if (_mode == AppRuntimeMode.pairedGateway &&
-        _activeProjectId.isEmpty &&
-        serverProjectsFuture != null) {
-      _setVisibleTaskCompletionTarget(projectId: null, agentName: null);
-      return _buildServerProjectList(serverProjectsFuture);
+    if (_mode == AppRuntimeMode.pairedGateway && _activeProjectId.isEmpty) {
+      if (_shouldAggregateHosts) {
+        _setVisibleTaskCompletionTarget(projectId: null, agentName: null);
+        return _buildMultiHostProjectList();
+      }
+      if (serverProjectsFuture != null) {
+        _setVisibleTaskCompletionTarget(projectId: null, agentName: null);
+        return _buildServerProjectList(serverProjectsFuture);
+      }
     }
     return FutureBuilder<CcbProjectView>(
       future: _viewFuture,
@@ -722,6 +748,25 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
     );
   }
 
+  /// Caches the catalog of an explicit host. The aggregated list reads every
+  /// paired host, including the ones that are not the active gateway.
+  void _persistHostProjectsSnapshot(
+    GatewayPairedHost profile,
+    List<CcbProject> projects,
+  ) {
+    unawaited(
+      _snapshotStore.write(
+        mobileProjectsSnapshotKey(
+          mobileSnapshotNamespace(
+            hostId: profile.profile.hostId,
+            deviceId: profile.profile.deviceId,
+          ),
+        ),
+        projectsSnapshotPayload(projects),
+      ),
+    );
+  }
+
   void _persistProjectViewSnapshot(CcbProjectView view) {
     final namespace = _snapshotNamespace;
     if (namespace == null) {
@@ -893,6 +938,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
       _selectedAgentName = null;
       _agentTerminalMode = false;
       _serverProjectsFuture = _loadServerProjects();
+      _refreshMultiHostProjects();
     });
   }
 
@@ -924,6 +970,297 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
         );
       },
     );
+  }
+
+  /// True when more than one distinct computer is paired, which is the only case
+  /// where the aggregated catalog adds anything over the active-host list. Two
+  /// profiles that share a host id are the same computer paired from different
+  /// devices or routes, so they keep the single active-host list.
+  bool get _shouldAggregateHosts {
+    if (_profiles.length < 2) {
+      return false;
+    }
+    final hostIds = <String>{
+      for (final profile in _profiles) profile.profile.hostId,
+    };
+    return hostIds.length > 1;
+  }
+
+  /// One profile per paired computer, so a host reachable by several routes or
+  /// devices shows a single row set. The active profile wins for its host, then
+  /// the most recently saved one, matching how a single computer is activated.
+  List<GatewayPairedHost> get _distinctHostProfiles {
+    final selectedKey =
+        _selectedProfile == null
+            ? null
+            : projectHomeGatewayProfileKey(_selectedProfile!);
+    final byHost = <String, GatewayPairedHost>{};
+    for (final profile in _profiles) {
+      final hostId = profile.profile.hostId;
+      final current = byHost[hostId];
+      if (current == null) {
+        byHost[hostId] = profile;
+        continue;
+      }
+      if (projectHomeGatewayProfileKey(profile) == selectedKey) {
+        byHost[hostId] = profile;
+        continue;
+      }
+      if (projectHomeGatewayProfileKey(current) == selectedKey) {
+        continue;
+      }
+      if (_isMoreRecentlySaved(profile, current)) {
+        byHost[hostId] = profile;
+      }
+    }
+    return byHost.values.toList(growable: false);
+  }
+
+  /// Orders two profiles of the same computer by save time, treating an unknown
+  /// save time as oldest so a profile with a timestamp is always preferred.
+  bool _isMoreRecentlySaved(GatewayPairedHost a, GatewayPairedHost b) {
+    final aAt = a.savedAt ?? a.createdAt;
+    final bAt = b.savedAt ?? b.createdAt;
+    if (aAt == null) {
+      return false;
+    }
+    if (bAt == null) {
+      return true;
+    }
+    return aAt.isAfter(bAt);
+  }
+
+  /// Reloads every paired computer. Safe to call when only one host is paired;
+  /// the aggregated list is simply not rendered in that case.
+  void _refreshMultiHostProjects() {
+    _hostCatalogsRevision += 1;
+    if (!_shouldAggregateHosts) {
+      _hostCatalogs.clear();
+      return;
+    }
+    final revision = _hostCatalogsRevision;
+    final profiles = _distinctHostProfiles;
+    final keys = {
+      for (final profile in profiles) projectHomeGatewayProfileKey(profile),
+    };
+    // Unpaired hosts must disappear, but catalogs of still-paired hosts are kept
+    // as the pending frame so a refresh never blanks the list.
+    _hostCatalogs.removeWhere((key, _) => !keys.contains(key));
+    for (final profile in profiles) {
+      final key = projectHomeGatewayProfileKey(profile);
+      final previous = _hostCatalogs[key];
+      _hostCatalogs[key] = ProjectHomeHostCatalog(
+        profile: profile,
+        projects: previous?.projects ?? const [],
+        pending: true,
+      );
+    }
+    unawaited(_seedMultiHostProjectsFromSnapshots(revision, profiles));
+    for (final profile in profiles) {
+      unawaited(_refreshHostCatalog(revision, profile));
+    }
+  }
+
+  /// Paints cached projects of hosts that have not answered yet, so an offline
+  /// computer no longer costs a blank screen for the whole request timeout.
+  Future<void> _seedMultiHostProjectsFromSnapshots(
+    int revision,
+    List<GatewayPairedHost> profiles,
+  ) async {
+    final seeded = <String, List<CcbProject>>{};
+    for (final profile in profiles) {
+      final key = projectHomeGatewayProfileKey(profile);
+      if ((_hostCatalogs[key]?.projects ?? const []).isNotEmpty) {
+        continue;
+      }
+      final record = await _snapshotStore.readRecord(
+        mobileProjectsSnapshotKey(
+          mobileSnapshotNamespace(
+            hostId: profile.profile.hostId,
+            deviceId: profile.profile.deviceId,
+          ),
+        ),
+      );
+      if (record == null) {
+        continue;
+      }
+      final projects = projectsFromSnapshotPayload(record.payload);
+      if (projects.isNotEmpty) {
+        seeded[key] = projects;
+      }
+    }
+    if (!mounted || revision != _hostCatalogsRevision || seeded.isEmpty) {
+      return;
+    }
+    setState(() {
+      for (final entry in seeded.entries) {
+        final catalog = _hostCatalogs[entry.key];
+        if (catalog == null || !catalog.pending || catalog.projects.isNotEmpty) {
+          continue;
+        }
+        _hostCatalogs[entry.key] = ProjectHomeHostCatalog(
+          profile: catalog.profile,
+          projects: entry.value,
+          pending: true,
+        );
+      }
+    });
+  }
+
+  /// Lists one host and publishes it as soon as it answers. The fresh catalog is
+  /// cached so the next launch can paint this computer without waiting for it.
+  Future<void> _refreshHostCatalog(
+    int revision,
+    GatewayPairedHost profile,
+  ) async {
+    final catalog = await _multiHostProjectsLoader.loadHost(profile);
+    if (catalog.online) {
+      _persistHostProjectsSnapshot(profile, catalog.projects);
+    }
+    if (!mounted || revision != _hostCatalogsRevision) {
+      return;
+    }
+    setState(() {
+      _hostCatalogs[projectHomeGatewayProfileKey(profile)] = catalog;
+    });
+  }
+
+  /// Mirrors a freshly listed catalog of the active host into the aggregated
+  /// view, so gateway invalidation events also refresh the aggregated list.
+  /// Must be called inside a `setState` block.
+  void _publishActiveHostCatalog(List<CcbProject> projects) {
+    final profile = _selectedProfile;
+    if (profile == null || !_shouldAggregateHosts) {
+      return;
+    }
+    _hostCatalogs[projectHomeGatewayProfileKey(profile)] =
+        ProjectHomeHostCatalog(profile: profile, projects: projects);
+  }
+
+  /// Aggregated view of the current per-host catalogs, ordered by paired host so
+  /// rows keep a stable position while the remaining computers are still loading.
+  ProjectHomeMultiHostProjectsResult get _multiHostProjectsResult {
+    return ProjectHomeMultiHostProjectsResult.fromCatalogs([
+      for (final profile in _distinctHostProfiles)
+        if (_hostCatalogs[projectHomeGatewayProfileKey(profile)]
+            case final catalog?)
+          catalog,
+    ], optimisticActivityAt: _optimisticProjectActivityAt);
+  }
+
+  Widget _buildMultiHostProjectList() {
+    final result = _multiHostProjectsResult;
+    if (result.catalogs.isEmpty) {
+      return const Scaffold(
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+    return ProjectHomeMultiHostProjectListHost(
+      result: result,
+      onRefreshProjects: _retryMultiHostProjects,
+      // An aggregated list has no single implied host, so opening a terminal
+      // asks which computer to target first.
+      onOpenTerminal: () {
+        _openHomeTerminalLauncher(const []);
+      },
+      onOpenSettings: _openPairingSettings,
+      onOpenProject: _openHostProject,
+      onRenameHost: (profile) {
+        unawaited(_renameHost(profile));
+      },
+      customHostNames: _customHostNames,
+      unreadProjectIds: _unreadProjectIds,
+      workingProjectIds: _workingProjectIdsFor([
+        for (final entry in result.entries) entry.project,
+      ]),
+    );
+  }
+
+  void _retryMultiHostProjects() {
+    setState(_refreshMultiHostProjects);
+  }
+
+  /// Reads the computer names stored on this phone. A storage failure is not
+  /// fatal: every host header keeps its pairing-derived name.
+  Future<void> _loadCustomHostNames() async {
+    final names = await _readCustomHostNames();
+    if (names == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _customHostNames = names;
+    });
+  }
+
+  /// Never throws: a phone whose secure storage is unavailable keeps showing the
+  /// pairing-derived computer names instead of failing the aggregated list.
+  Future<Map<String, String>?> _readCustomHostNames() async {
+    try {
+      return await widget.profileStore.listHostNames();
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// Renames one paired computer. The name is stored on this phone only, because
+  /// pairing carries no computer name that the desktop could be asked to change.
+  /// The header is only repainted once the new name is actually stored.
+  Future<void> _renameHost(GatewayPairedHost profile) async {
+    final strings = CcbMobileLocalizations.of(context);
+    final key = projectHomeCustomHostNameKey(profile);
+    final result = await showProjectHomeHostRenameDialog(
+      context,
+      automaticName: projectHomeGatewayProfileHostName(profile),
+      currentName: _customHostNames[key],
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    try {
+      await widget.profileStore.writeHostName(
+        hostId: profile.profile.hostId,
+        deviceId: profile.profile.deviceId,
+        name: result.name,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showSnack(strings.hostRenameFailed);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      final names = {..._customHostNames};
+      if (result.name == null) {
+        names.remove(key);
+      } else {
+        names[key] = result.name!;
+      }
+      _customHostNames = names;
+    });
+  }
+
+  /// Opens an aggregated row. A row owned by another computer switches the
+  /// active host first so the project view and terminal talk to that host.
+  void _openHostProject(ProjectHomeHostProject entry) {
+    final selected = _selectedProfile;
+    final sameHost =
+        selected != null &&
+        projectHomeGatewayProfileKey(selected) ==
+            projectHomeGatewayProfileKey(entry.profile);
+    if (sameHost) {
+      _openServerProject(entry.project);
+      return;
+    }
+    _activateGatewayProfile(entry.profile);
+    // 切换 host 后需在下一帧打开项目，确保 repository 已切换
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _openServerProject(entry.project);
+      }
+    });
   }
 
   Widget _buildProjectCatalogError(Object error) {
@@ -1282,6 +1619,11 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
         _serverProjectsFuture = SynchronousFuture(projects);
       }
     });
+    if (_shouldAggregateHosts) {
+      // The aggregated list is what gets rendered with several paired hosts, and
+      // it already refreshes this host, so a second reload here is dead work.
+      return;
+    }
     // The cached list is only a startup frame. Authoritative data replaces it
     // in the background without requiring a user tap.
     try {
@@ -1484,6 +1826,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
       _activeRepository = session.repository;
       _activeProjectId = '';
       _serverProjectsFuture = session.projectsFuture;
+      _refreshMultiHostProjects();
       _openedProjectId = null;
       _selectedAgentName = null;
       _agentTerminalMode = false;
@@ -1594,6 +1937,9 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
     } catch (_) {
       return;
     }
+    // Unpairing drops the computer's stored name, so the header stops offering a
+    // name for a computer this phone no longer knows.
+    unawaited(_loadCustomHostNames());
     if (!_isActiveGatewayProfile(profile)) {
       return;
     }
@@ -1606,6 +1952,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
           )
           .toList(growable: false);
       _selectedProfile = null;
+      _refreshMultiHostProjects();
     });
     _requestBackgroundConnectionReconcile();
   }
@@ -2008,6 +2355,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
         if (mounted && _activeProjectId.isEmpty) {
           setState(() {
             _serverProjectsFuture = SynchronousFuture(projects);
+            _publishActiveHostCatalog(projects);
           });
         }
       } catch (_) {
@@ -2050,6 +2398,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
         if (mounted && _activeProjectId.isEmpty) {
           setState(() {
             _serverProjectsFuture = SynchronousFuture(projects);
+            _publishActiveHostCatalog(projects);
           });
         }
       } catch (_) {}
@@ -2267,6 +2616,12 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
   }
 
   Future<void> _openHomeTerminalLauncher(List<CcbProject> _) async {
+    // With several computers paired there is no single implied target, so the
+    // owning computer is asked for before a terminal is opened.
+    if (_shouldAggregateHosts) {
+      await _openHostTerminalForChosenHost();
+      return;
+    }
     final strings = CcbMobileLocalizations.of(context);
     final profile = _selectedProfile;
     final transport = _terminalTransport;
@@ -2278,6 +2633,95 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
     }
     final hostTransport = transport as HostTerminalTransport;
     await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => HostTerminalScreen(transport: hostTransport),
+      ),
+    );
+  }
+
+  /// Asks which paired computer to open, then opens that computer's terminal.
+  /// The chosen host does not have to be the active one: its transport comes from
+  /// the same pool as the project list, so no host switch is needed.
+  Future<void> _openHostTerminalForChosenHost() async {
+    final strings = CcbMobileLocalizations.of(context);
+    final options = _hostTerminalOptions(strings);
+    if (!options.any((option) => option.available)) {
+      _showSnack(strings.noHostTerminalTargets);
+      return;
+    }
+    final profile = await showHomeTerminalHostPickerSheet(
+      context,
+      options: options,
+    );
+    if (profile == null || !mounted) {
+      return;
+    }
+    _openHostTerminalFor(profile);
+  }
+
+  /// Terminal targets for every paired computer, in the same order as the
+  /// aggregated project list. A computer that did not grant terminal access or is
+  /// unreachable is listed as unavailable rather than hidden.
+  List<HomeTerminalHostOption> _hostTerminalOptions(
+    CcbMobileLocalizations strings,
+  ) {
+    return [
+      for (final profile in _distinctHostProfiles)
+        _hostTerminalOption(profile, strings),
+    ];
+  }
+
+  /// Builds one terminal target, resolving its status from the host's catalog so
+  /// the picker reports the same connection state as the project list.
+  HomeTerminalHostOption _hostTerminalOption(
+    GatewayPairedHost profile,
+    CcbMobileLocalizations strings,
+  ) {
+    final customName = projectHomeCustomHostName(_customHostNames, profile);
+    if (!profile.profile.scopes.contains('host_terminal')) {
+      return HomeTerminalHostOption(
+        profile: profile,
+        statusLabel: strings.hostTerminalScopeMissing,
+        customName: customName,
+        available: false,
+      );
+    }
+    final catalog = _hostCatalogs[projectHomeGatewayProfileKey(profile)];
+    if (catalog != null && catalog.offline) {
+      return HomeTerminalHostOption(
+        profile: profile,
+        statusLabel: strings.hostOffline,
+        customName: customName,
+        available: false,
+      );
+    }
+    final connecting = catalog == null || catalog.pending;
+    return HomeTerminalHostOption(
+      profile: profile,
+      statusLabel: connecting ? strings.hostConnecting : strings.hostOnline,
+      customName: customName,
+    );
+  }
+
+  /// Opens the host terminal of one computer. The active computer reuses the
+  /// live transport, while any other one gets its own from the transport pool.
+  void _openHostTerminalFor(GatewayPairedHost profile) {
+    final strings = CcbMobileLocalizations.of(context);
+    final selected = _selectedProfile;
+    final isActive =
+        selected != null &&
+        projectHomeGatewayProfileKey(selected) ==
+            projectHomeGatewayProfileKey(profile);
+    final transport =
+        isActive
+            ? _terminalTransport
+            : widget.gatewayTerminalTransportFactory(profile);
+    if (transport is! HostTerminalTransport) {
+      _showSnack(strings.hostTerminalAccessUnavailable);
+      return;
+    }
+    final hostTransport = transport as HostTerminalTransport;
+    Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (context) => HostTerminalScreen(transport: hostTransport),
       ),
@@ -2733,6 +3177,7 @@ class _ProjectHomeViewState extends State<_ProjectHomeView>
           _selectedAgentName = null;
           _agentTerminalMode = false;
           _serverProjectsFuture = _loadServerProjects();
+          _refreshMultiHostProjects();
         });
     }
   }

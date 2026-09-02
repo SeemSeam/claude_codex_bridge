@@ -520,6 +520,7 @@ class GatewayHostProfileStore {
 
   static const _indexKey = 'ccb_mobile.gateway_profiles.index';
   static const _profilePrefix = 'ccb_mobile.gateway_profiles.profile.';
+  static const _hostNamesKey = 'ccb_mobile.gateway_profiles.host_names';
   static const _lastSelectedKey = 'ccb_mobile.gateway_profiles.last_selected';
   static const _lastSuccessfulKey =
       'ccb_mobile.gateway_profiles.last_successful';
@@ -570,6 +571,53 @@ class GatewayHostProfileStore {
       }
     }
     return result;
+  }
+
+  /// Names the user gave paired computers on this phone, keyed by [hostNameKey].
+  /// A computer that was never renamed is simply absent, so callers keep falling
+  /// back to the name derived from the pairing itself.
+  Future<Map<String, String>> listHostNames() async {
+    final raw = await _secureStore.read(key: _hostNamesKey);
+    if (!_hasText(raw)) {
+      return const {};
+    }
+    try {
+      final decoded = jsonDecode(raw!);
+      if (decoded is! Map) {
+        return const {};
+      }
+      return {
+        for (final entry in decoded.entries)
+          if (_optionalText(entry.value) case final name?)
+            entry.key.toString(): name,
+      };
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  /// Renames one paired computer. A null or blank [name] clears the stored name
+  /// so the computer falls back to the name derived from its pairing. The name
+  /// never leaves the phone: pairing carries no computer name to write back.
+  Future<void> writeHostName({
+    required String hostId,
+    required String deviceId,
+    required String? name,
+  }) async {
+    final key = hostNameKey(hostId: hostId, deviceId: deviceId);
+    final names = {...await listHostNames()};
+    final trimmed = _optionalText(name);
+    if (trimmed == null) {
+      if (names.remove(key) == null) {
+        return;
+      }
+    } else {
+      if (names[key] == trimmed) {
+        return;
+      }
+      names[key] = trimmed;
+    }
+    await _writeHostNames(names);
   }
 
   /// Returns the most recently verified profile, falling back to a persisted
@@ -637,6 +685,9 @@ class GatewayHostProfileStore {
     final key = _profileKey(hostId, deviceId);
     await _secureStore.delete(key: key);
     await _clearPreferenceFor(key);
+    // An unpaired computer must not leave its chosen name behind, so a computer
+    // paired again later starts from its pairing-derived name.
+    await writeHostName(hostId: hostId, deviceId: deviceId, name: null);
     final keys = await _readIndex();
     keys.remove(key);
     await _writeIndex(keys);
@@ -671,6 +722,13 @@ class GatewayHostProfileStore {
   Future<void> _writeIndex(List<String> keys) {
     final unique = keys.toSet().toList()..sort();
     return _secureStore.write(key: _indexKey, value: jsonEncode(unique));
+  }
+
+  Future<void> _writeHostNames(Map<String, String> names) {
+    if (names.isEmpty) {
+      return _secureStore.delete(key: _hostNamesKey);
+    }
+    return _secureStore.write(key: _hostNamesKey, value: jsonEncode(names));
   }
 
   Future<GatewayPairedHost?> _readPreferredFrom({
@@ -752,11 +810,20 @@ class GatewayHostProfileStore {
     return _profileKey(host.profile.hostId, host.profile.deviceId);
   }
 
-  static String _profileKey(String hostId, String deviceId) {
-    final encoded = base64Url
+  /// Stable identity of one paired computer. The profile storage key and the
+  /// host name map share this encoding, so a host or device id containing a
+  /// separator can never make one computer answer for another.
+  static String hostNameKey({
+    required String hostId,
+    required String deviceId,
+  }) {
+    return base64Url
         .encode(utf8.encode('$hostId\n$deviceId'))
         .replaceAll('=', '');
-    return '$_profilePrefix$encoded';
+  }
+
+  static String _profileKey(String hostId, String deviceId) {
+    return '$_profilePrefix${hostNameKey(hostId: hostId, deviceId: deviceId)}';
   }
 }
 

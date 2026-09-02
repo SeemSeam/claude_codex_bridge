@@ -26,6 +26,46 @@ void main() {
     );
   });
 
+  test('a chosen computer name wins over the pairing derived name', () {
+    final profile = _pairedHost(hostId: 'rhost_alpha', deviceId: 'phone');
+    final customNames = {
+      projectHomeCustomHostNameKey(profile): '  公司台式机  ',
+    };
+
+    expect(projectHomeCustomHostName(customNames, profile), '公司台式机');
+    expect(
+      projectHomeGatewayProfileHostName(
+        profile,
+        customName: projectHomeCustomHostName(customNames, profile),
+      ),
+      '公司台式机',
+    );
+  });
+
+  test('a computer without a chosen name keeps its pairing name', () {
+    final named = _pairedHost(hostId: 'rhost_alpha', deviceId: 'phone');
+    final other = _pairedHost(hostId: 'rhost_beta', deviceId: 'phone');
+    final customNames = {projectHomeCustomHostNameKey(named): 'Alpha'};
+
+    expect(projectHomeCustomHostName(customNames, other), isNull);
+    expect(
+      projectHomeGatewayProfileHostName(
+        other,
+        customName: projectHomeCustomHostName(customNames, other),
+      ),
+      'rhost_beta',
+    );
+  });
+
+  test('a blank chosen name falls back to the pairing derived name', () {
+    final profile = _pairedHost(hostId: 'rhost_alpha', deviceId: 'phone');
+    final customNames = {projectHomeCustomHostNameKey(profile): '   '};
+
+    expect(projectHomeCustomHostName(customNames, profile), isNull);
+    expect(projectHomeGatewayProfileHostName(profile, customName: '   '),
+        'rhost_alpha');
+  });
+
   test('merge replaces existing profile with same host and device', () {
     final oldProfile = _pairedHost(
       hostId: 'project',
