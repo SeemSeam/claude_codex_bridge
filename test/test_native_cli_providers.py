@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import sqlite3
 import subprocess
 from types import SimpleNamespace
@@ -896,6 +897,131 @@ def test_native_pi_local_package_snapshot_includes_pnpm_linked_transitive_depend
     assert projected.joinpath("node_modules/effect/node_modules/fast-check/index.js").is_file()
 
 
+def test_native_pi_local_package_snapshot_places_scoped_runtime_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "scoped-consumer"
+    scoped_dependency = workspace / "node_modules" / "@scope" / "runtime"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "scoped-consumer",
+                "dependencies": {"@scope/runtime": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    scoped_dependency.mkdir(parents=True)
+    (scoped_dependency / "package.json").write_text(
+        '{"name":"@scope/runtime","version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+    (scoped_dependency / "index.js").write_text(
+        "module.exports = {};\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/@scope/runtime/index.js").is_file()
+
+
+def test_native_pi_local_package_snapshot_skips_missing_optional_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "packages" / "optional-consumer"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "optional-consumer",
+                "optionalDependencies": {"missing-optional": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("package.json").is_file()
+    assert not projected.joinpath("node_modules/missing-optional").exists()
+
+
+def test_native_pi_local_package_snapshot_includes_bundled_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "bundled-consumer"
+    bundled_dependency = workspace / "node_modules" / "bundled-runtime"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "bundled-consumer",
+                "bundledDependencies": ["bundled-runtime"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bundled_dependency.mkdir(parents=True)
+    (bundled_dependency / "package.json").write_text(
+        '{"name":"bundled-runtime","version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+    (bundled_dependency / "index.js").write_text(
+        "module.exports = {};\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/bundled-runtime/index.js").is_file()
+
+
 def test_native_pi_local_package_snapshot_rejects_missing_required_dependency(
     tmp_path: Path,
     monkeypatch,
@@ -934,6 +1060,9 @@ def test_native_pi_local_package_snapshot_preserves_circular_dependency_resoluti
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    if shutil.which("node") is None:
+        pytest.skip("Node.js is required to verify circular package loading")
+
     source_home = tmp_path / "source-home"
     source_agent = source_home / ".pi" / "agent"
     target_home = tmp_path / "managed-home"
