@@ -303,7 +303,7 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 - 微信: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=0a86422d" alt="CCB 微信技术群 2" width="240">
+  <img src="../assets/weixin.png?v=7335e843" alt="CCB 微信技术群 2" width="240">
 </p>
 
 > 微信群二维码有效期为 7 天。如果二维码已过期，请添加微信 `seemseam-com` 获取最新入群邀请。

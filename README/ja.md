@@ -247,7 +247,7 @@ CCB は [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec) をサ�
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=0a86422d" alt="WeChat group" width="240">
+  <img src="../assets/weixin.png?v=7335e843" alt="WeChat group" width="240">
 </p>
 
 <a id="community"></a>
