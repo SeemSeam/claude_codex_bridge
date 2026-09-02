@@ -26,6 +26,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Fork PR heads are data only: the checker below always runs from the
+      # trusted base checkout in policy/. Required after actions/checkout began
+      # blocking fork refs under pull_request_target by default.
       - name: Checkout untrusted PR head as data
         uses: actions/checkout@v4
         with:
@@ -34,6 +37,7 @@ jobs:
           path: pr
           fetch-depth: 0
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       - name: Import trusted base history into PR checkout
         shell: bash
