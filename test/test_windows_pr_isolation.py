@@ -231,6 +231,7 @@ def test_windows_pr_isolation_workflow_uses_trusted_base_policy() -> None:
     assert "repository: ${{ github.event.pull_request.head.repo.full_name }}" in text
     assert "path: policy" in text
     assert "path: pr" in text
+    assert "allow-unsafe-pr-checkout: true" in text
     assert "github.event.pull_request.base.sha" in text
     assert "github.event.pull_request.head.sha" in text
     assert 'checker="${GITHUB_WORKSPACE}/policy/platforms/windows/tools/check_pr_isolation.py"' in text
