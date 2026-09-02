@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import sys
 from typing import Iterable
 
@@ -124,6 +126,12 @@ class CliParser:
     def _read_optional_stdin(self) -> str:
         if sys.stdin.isatty():
             return ''
+        try:
+            mode = os.fstat(0).st_mode
+            if stat.S_ISSOCK(mode):
+                return ''  # Unix socket stdin (e.g. Claude Code Bash tool) — never closes; don't block on read
+        except OSError:
+            pass  # Fall through to read_stdin_text on fstat failure (AC5)
         try:
             return read_stdin_text()
         except OSError:
