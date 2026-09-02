@@ -15,6 +15,7 @@ from provider_core.caller_env import (
     caller_context_env,
     export_env_clause,
     join_env_prefix,
+    magic_context_storage_env,
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
@@ -127,6 +128,7 @@ def build_start_cmd(
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     env_prefix = join_env_prefix(
         export_env_clause(provider_user_session_env()),
+        export_env_clause(magic_context_storage_env("opencode")),
         export_env_clause(opencode_env),
         export_env_clause(
             caller_context_env(actor=spec.name, runtime_dir=runtime_dir, launch_session_id=launch_session_id)

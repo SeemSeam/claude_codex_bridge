@@ -20,6 +20,8 @@ from completion.models import (
     CompletionStatus,
 )
 from provider_core.instance_resolution import named_agent_instance
+from provider_core.caller_env import magic_context_storage_env
+from runtime_env.git_identity import managed_git_identity_env
 from provider_backends.native_cli_support.home import (
     build_native_private_env,
     ensure_native_provider_storage_isolation,
@@ -28,7 +30,6 @@ from provider_core.protocol import request_anchor_for_job
 from provider_execution.active_runtime.polling_runtime.result import runtime_error_result
 from provider_execution.base import ProviderPollResult, ProviderRuntimeContext, ProviderSubmission
 from provider_execution.common import build_item, error_submission, no_wrap_requested
-from runtime_env.git_identity import managed_git_identity_env
 
 from .prompt import clean_native_reply, wrap_native_prompt
 from .session import load_native_project_session
@@ -1091,6 +1092,7 @@ def _native_cli_env(config: NativeCliExecutionConfig, request: NativeCliExecutio
     # Preserve Git author identity after managed HOME rewrites. Explicit GIT_*
     # values already present in env win; missing ones come from source home.
     env.update(managed_git_identity_env(environ=env))
+    env.update(magic_context_storage_env(config.provider))
     return env
 
 
