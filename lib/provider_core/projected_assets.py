@@ -70,18 +70,29 @@ def copy_projected_tree_to_cache(source: Path, bundle_root: Path, *, label: str 
         return False
     if _tree_has_required_entries(source, bundle_root):
         return write_projected_marker(bundle_root, label=label, mode='copy', source=source)
-    tmp_root = bundle_root.with_name(f'.{bundle_root.name}.tmp')
-    _remove_path(tmp_root)
-    tmp_root.parent.mkdir(parents=True, exist_ok=True)
+    bundle_root.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(
+        tempfile.mkdtemp(
+            prefix=f'.{bundle_root.name}.ccb-cache-',
+            dir=bundle_root.parent,
+        )
+    )
+    candidate = staging_root / 'candidate'
     try:
-        shutil.copytree(source, tmp_root)
-        _remove_path(bundle_root)
-        tmp_root.rename(bundle_root)
+        shutil.copytree(source, candidate)
+        try:
+            candidate.rename(bundle_root)
+        except OSError:
+            # Another materializer may have published the same content-addressed
+            # bundle first. Accept only a complete winning tree.
+            if not _tree_has_required_entries(source, bundle_root):
+                return False
         if not write_projected_marker(bundle_root, label=label, mode='copy', source=source):
             raise OSError(f'failed to write projection marker: {bundle_root}')
     except Exception:
-        _remove_path(tmp_root)
         return False
+    finally:
+        _remove_path(staging_root)
     return True
 
 

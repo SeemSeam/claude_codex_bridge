@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import shutil
+import threading
 
 import pytest
 
@@ -281,3 +283,38 @@ def test_seed_projected_file_rolls_back_when_marker_write_fails(
     assert not projected_assets.seed_projected_file(source, target, label=_LABEL)
     assert not target.exists()
     assert not _marker_path(target).exists()
+
+
+def test_copy_projected_tree_to_cache_handles_concurrent_first_publish(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(source, 'shared\n')
+    copy_barrier = threading.Barrier(2)
+    original_copytree = shutil.copytree
+
+    def synchronized_copytree(*args, **kwargs):
+        result = original_copytree(*args, **kwargs)
+        copy_barrier.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(projected_assets.shutil, 'copytree', synchronized_copytree)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _: projected_assets.copy_projected_tree_to_cache(
+                    source,
+                    target,
+                    label=_LABEL,
+                ),
+                range(2),
+            )
+        )
+
+    assert results == [True, True]
+    assert (target / 'asset.txt').read_text(encoding='utf-8') == 'shared\n'
+    assert json.loads(_marker_path(target).read_text(encoding='utf-8'))['label'] == _LABEL
+    assert not list(target.parent.glob(f'.{target.name}.ccb-cache-*'))
