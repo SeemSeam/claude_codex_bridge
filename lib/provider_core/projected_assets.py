@@ -162,6 +162,83 @@ def seed_projected_tree(
         _remove_path(staging_root)
 
 
+def seed_projected_file(
+    source: Path,
+    target: Path,
+    *,
+    enabled: bool = True,
+    label: str = 'projected-file',
+    marker_path: Path | None = None,
+) -> bool:
+    """Seed a writable local file without replacing user-owned target data."""
+    source = Path(source).expanduser()
+    target = Path(target).expanduser()
+    marker = marker_path or _default_marker_path(target)
+
+    if not enabled:
+        remove_projected_path(target, label=label, marker_path=marker)
+        return False
+    if not source.is_file() or source.is_symlink():
+        return False
+    if _same_path(source, target) and not target.is_symlink():
+        return True
+
+    source_fingerprint = _file_metadata_fingerprint(source)
+    if not source_fingerprint:
+        return False
+    owned = _marker_matches(marker, label=label, source=None)
+    target_present = target.exists() or target.is_symlink()
+    if target_present and not owned:
+        return False
+    if marker.exists() and not owned:
+        return False
+
+    marker_payload = _read_projection_marker(marker) if owned else {}
+    if (
+        target.is_file()
+        and not target.is_symlink()
+        and _marker_matches(marker, label=label, source=source)
+        and marker_payload.get('mode') == 'copy-seed'
+        and marker_payload.get('source_fingerprint') == source_fingerprint
+    ):
+        return True
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(prefix=f'.{target.name}.ccb-seed-', dir=target.parent))
+    staged_target = staging_root / 'candidate'
+    previous_target = staging_root / 'previous'
+    moved_previous = False
+    installed_candidate = False
+    try:
+        shutil.copy2(source, staged_target, follow_symlinks=False)
+        if target_present:
+            target.rename(previous_target)
+            moved_previous = True
+        staged_target.rename(target)
+        installed_candidate = True
+        if not _write_projection_marker(
+            marker,
+            source=source,
+            mode='copy-seed',
+            label=label,
+            source_fingerprint=source_fingerprint,
+        ):
+            raise OSError(f'failed to write projection marker: {marker}')
+        _remove_path(previous_target)
+        return True
+    except Exception:
+        if installed_candidate:
+            _remove_path(target)
+        if moved_previous and (previous_target.exists() or previous_target.is_symlink()):
+            try:
+                previous_target.rename(target)
+            except Exception:
+                pass
+        return False
+    finally:
+        _remove_path(staging_root)
+
+
 def ensure_shared_tree_bundle(source: Path, bundle_root: Path) -> Path | None:
     return bundle_root if copy_projected_tree_to_cache(source, bundle_root) else None
 
@@ -263,6 +340,18 @@ def tree_metadata_fingerprint(root: Path) -> str:
             digest.update(b'\0')
     except Exception:
         return ''
+    return digest.hexdigest()
+
+
+def _file_metadata_fingerprint(path: Path) -> str:
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError:
+        return ''
+    digest = hashlib.sha256()
+    digest.update(str(metadata.st_size).encode('utf-8'))
+    digest.update(b'\0')
+    digest.update(str(metadata.st_mtime_ns).encode('utf-8'))
     return digest.hexdigest()
 
 
@@ -414,6 +503,7 @@ __all__ = [
     'remove_projected_path',
     'remove_projected_tree',
     'route_projected_tree',
+    'seed_projected_file',
     'seed_projected_tree',
     'tree_content_fingerprint',
     'tree_metadata_fingerprint',

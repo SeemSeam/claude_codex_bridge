@@ -8,6 +8,7 @@ from provider_backends.native_cli_support.launcher import (
     build_start_cmd,
 )
 from provider_backends.native_cli_support.execution import _native_cli_env
+import provider_core.caller_env as caller_env
 from provider_core.caller_env import magic_context_storage_env
 from provider_backends.omp.execution import _build_env as build_omp_headless_env
 from provider_backends.pi.execution import _build_env as build_pi_headless_env
@@ -33,14 +34,58 @@ def _spec(provider: str) -> SimpleNamespace:
     )
 
 
-def test_magic_context_storage_env_targets_only_supported_harnesses(monkeypatch) -> None:
+def test_magic_context_storage_env_uses_xdg_data_home_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("MAGIC_CONTEXT_STORAGE_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", "/tmp/xdg-data")
+
+    expected = "/tmp/xdg-data/cortexkit/magic-context"
+    for provider in ("pi", "omp", "opencode"):
+        assert magic_context_storage_env(provider) == {
+            "MAGIC_CONTEXT_STORAGE_DIR": expected
+        }
+
+
+def test_magic_context_storage_env_uses_linux_home_when_xdg_is_unset(monkeypatch) -> None:
+    monkeypatch.delenv("MAGIC_CONTEXT_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.setenv("CCB_SOURCE_HOME", "/tmp/ccb-source-home")
+    monkeypatch.setattr(caller_env, "is_macos", lambda: False)
+    monkeypatch.setattr(caller_env, "is_windows", lambda: False)
 
     expected = "/tmp/ccb-source-home/.local/share/cortexkit/magic-context"
     for provider in ("pi", "omp", "opencode"):
         assert magic_context_storage_env(provider) == {
             "MAGIC_CONTEXT_STORAGE_DIR": expected
         }
+
+
+def test_magic_context_storage_env_uses_macos_application_support(monkeypatch) -> None:
+    monkeypatch.delenv("MAGIC_CONTEXT_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setenv("CCB_SOURCE_HOME", "/Users/demo")
+    monkeypatch.setattr(caller_env, "is_macos", lambda: True)
+    monkeypatch.setattr(caller_env, "is_windows", lambda: False)
+
+    assert magic_context_storage_env("pi") == {
+        "MAGIC_CONTEXT_STORAGE_DIR": (
+            "/Users/demo/Library/Application Support/cortexkit/magic-context"
+        )
+    }
+
+
+def test_magic_context_storage_env_uses_windows_local_app_data(monkeypatch) -> None:
+    monkeypatch.delenv("MAGIC_CONTEXT_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setenv("CCB_SOURCE_HOME", "/tmp/Users/demo")
+    monkeypatch.setenv("LOCALAPPDATA", "/tmp/Users/demo/AppData/Local")
+    monkeypatch.setattr(caller_env, "is_macos", lambda: False)
+    monkeypatch.setattr(caller_env, "is_windows", lambda: True)
+
+    assert magic_context_storage_env("pi") == {
+        "MAGIC_CONTEXT_STORAGE_DIR": (
+            "/tmp/Users/demo/AppData/Local/cortexkit/magic-context"
+        )
+    }
     assert magic_context_storage_env("codex") == {}
     assert magic_context_storage_env("claude") == {}
 
@@ -69,10 +114,8 @@ def test_native_pane_launcher_injects_magic_context_storage_for_pi_and_omp(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("CCB_SOURCE_HOME", str(tmp_path / "source-home"))
-    expected = str(
-        tmp_path / "source-home" / ".local" / "share" / "cortexkit" / "magic-context"
-    )
+    expected = "/srv/shared/magic-context"
+    monkeypatch.setenv("MAGIC_CONTEXT_STORAGE_DIR", expected)
     command = SimpleNamespace()
     for provider in ("pi", "omp", "opencode"):
         provider_config = NativeCliLaunchConfig(provider=provider)
@@ -89,10 +132,8 @@ def test_native_pane_launcher_injects_magic_context_storage_for_pi_and_omp(
 
 
 def test_headless_pi_and_omp_env_injects_magic_context_storage(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CCB_SOURCE_HOME", str(tmp_path / "source-home"))
-    expected = str(
-        tmp_path / "source-home" / ".local" / "share" / "cortexkit" / "magic-context"
-    )
+    expected = "/srv/shared/magic-context"
+    monkeypatch.setenv("MAGIC_CONTEXT_STORAGE_DIR", expected)
     for provider, builder in (("pi", build_pi_headless_env), ("omp", build_omp_headless_env)):
         state = tmp_path / provider / "state"
         request = SimpleNamespace(

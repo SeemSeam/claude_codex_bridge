@@ -38,7 +38,7 @@ from .paths_targets import TargetPathMixin
 
 _SHARED_CACHE_PROVIDERS = frozenset({'codex'})
 _EXTERNAL_CACHE_PROVIDERS = frozenset({'claude', 'gemini'})
-_USER_PROVIDER_CACHE_PROVIDERS = frozenset({'gemini'})
+_USER_PROVIDER_CACHE_PROVIDERS = frozenset({'gemini', 'pi'})
 
 
 @dataclass(frozen=True)

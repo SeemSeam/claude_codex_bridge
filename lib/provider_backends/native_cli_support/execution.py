@@ -21,6 +21,7 @@ from completion.models import (
 )
 from provider_core.instance_resolution import named_agent_instance
 from provider_core.caller_env import magic_context_storage_env
+from runtime_env.git_identity import managed_git_identity_env
 from provider_backends.native_cli_support.home import (
     build_native_private_env,
     ensure_native_provider_storage_isolation,
@@ -1088,6 +1089,9 @@ def _native_cli_env(config: NativeCliExecutionConfig, request: NativeCliExecutio
                 extra_raw_env_names=config.private_raw_env_names,
             )
         )
+    # Preserve Git author identity after managed HOME rewrites. Explicit GIT_*
+    # values already present in env win; missing ones come from source home.
+    env.update(managed_git_identity_env(environ=env))
     env.update(magic_context_storage_env(config.provider))
     return env
 
