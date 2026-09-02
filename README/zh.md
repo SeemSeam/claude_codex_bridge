@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.11-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -230,9 +230,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.11 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.12 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.11/ccb-mobile-v8.6.11.apk)
+- [下载 CCB Mobile v8.6.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.12/ccb-mobile-v8.6.12.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -321,6 +321,16 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.6.12</b> - Provider profile 继承与 Mobile 会话</summary>
+
+- 在 CCB Mobile 中显示 Pi 和 OMP 原生会话，同时保持 Provider 私有 session 路径与 transcript 边界。
+- 通过不可变共享快照将 Pi profile 资产继承到 Agent 私有 HOME，并以原子方式发布并发首次启动生成的快照（PR #328）。
+- 在受管 Provider HOME 中保留 Git author/committer 身份，并在 ask 提交被接受后立即把控制权交还 Agent（PRs #329、#330）。
+- 刷新微信社区群二维码。请重启受管 Pi Agent 以更新投影的 profile 资产；无需迁移项目、对话、配对或配置。
+
+</details>
+
+<details>
 <summary><b>v8.6.11</b> - Provider 认证与隔离的 Windows 稳定性修复</summary>
 
 - 恢复 Codex CLI `0.149.0` 显式自定义 provider 的 bearer 认证，同时让只有 route 的本地 gateway 继续保持无认证模式。

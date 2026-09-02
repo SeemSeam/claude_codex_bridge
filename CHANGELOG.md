@@ -1,5 +1,20 @@
 # Changelog
 
+## v8.6.12 (2026-09-02)
+
+- Exposed Pi and OMP native conversations in CCB Mobile while preserving
+  Provider-private session paths, transcript boundaries, and token-aware
+  projection.
+- Added Pi profile-asset inheritance through immutable shared snapshots into
+  Agent-private homes (PR #328), and made concurrent first-start snapshot
+  publication atomic.
+- Preserved Git author and committer identity in managed Provider homes
+  (PR #330), and returned Agent control immediately after an accepted ask
+  submission (PR #329).
+- Refreshed the WeChat community QR code. Restart managed Pi Agents to refresh
+  projected profile assets; no project, conversation, pairing, or
+  configuration migration is required. Native Windows x64 remains beta.
+
 ## v8.6.11 (2026-08-27)
 
 - Restored bearer authentication for explicit Codex CLI `0.149.0` custom
