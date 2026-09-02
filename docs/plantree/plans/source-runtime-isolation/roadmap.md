@@ -28,6 +28,10 @@ Date: 2026-06-09
   temporary-prefix installs writing external bin dirs, and restored
   `/home/bfly/.local/bin/ccb` to the durable installed release. See
   [topics/stable-entrypoint-boundary.md](topics/stable-entrypoint-boundary.md).
+- The 2026-09-02 V2 maintenance migration preserved the post-v8.6.11 mobile
+  Pi/OMP native-conversation fix from source commit `b0b9e5db1` as standalone
+  commit `4347efa52`; the complete mobile gateway, Pi session, Pi/OMP
+  completion, and provider-pathing gate passed with `171 passed`.
 
 ## In Progress
 
