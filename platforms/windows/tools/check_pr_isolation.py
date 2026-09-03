@@ -59,7 +59,6 @@ WINDOWS_SUBJECT_MARKER = re.compile(
 ALLOWED_SHARED_WINDOWS_IMPORTS = frozenset(
     {
         ("lib/agents/config_loader_runtime/parsing_runtime/topology.py", "platforms.windows.os_platform"),
-        ("lib/ccbd/app_runtime/service_graph.py", "platforms.windows.herdr.lifecycle_bridge"),
         ("lib/ccbd/control_plane_transport/factory.py", "platforms.windows.control_plane.tcp"),
         ("lib/ccbd/handlers/ping_runtime/payloads.py", "platforms.windows.herdr.ccbd_surface_projection"),
         ("lib/ccbd/project_view/service.py", "platforms.windows.herdr.ccbd_surface_projection"),
