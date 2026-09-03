@@ -36,6 +36,15 @@ from provider_core.pathing import session_filename_for_agent
 from provider_execution.base import ProviderRuntimeContext
 
 
+@pytest.fixture(autouse=True)
+def _isolate_git_identity_lookup(monkeypatch) -> None:
+    """Keep provider process doubles scoped to DSH launches."""
+    monkeypatch.setattr(
+        'provider_backends.native_cli_support.execution.managed_git_identity_env',
+        lambda **_kwargs: {},
+    )
+
+
 def _event(event_type: str, seq: int, data: dict, **extra) -> dict:
     return {
         'type': event_type,

@@ -74,6 +74,15 @@ def _reset_detached_tmux_server_cache() -> None:
     tmux_panes._PREPARED_DETACHED_TMUX_SERVER_KEYS.clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_git_identity_lookup(monkeypatch) -> None:
+    """Keep provider process doubles scoped to runtime launches."""
+    monkeypatch.setattr(
+        'provider_core.caller_env.managed_git_identity_env',
+        lambda **_kwargs: {},
+    )
+
+
 def _spec(
     name: str,
     provider: str = 'codex',
