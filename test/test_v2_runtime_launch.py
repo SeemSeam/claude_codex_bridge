@@ -88,6 +88,7 @@ def _spec(
     provider: str = 'codex',
     *,
     startup_args: tuple[str, ...] = (),
+    model: str | None = None,
     provider_command_template: str | None = None,
     restore_default: RestoreMode = RestoreMode.AUTO,
 ) -> AgentSpec:
@@ -102,6 +103,7 @@ def _spec(
         permission_default=PermissionMode.MANUAL,
         queue_policy=QueuePolicy.SERIAL_PER_AGENT,
         provider_command_template=provider_command_template,
+        model=model,
         startup_args=startup_args,
     )
 
@@ -2392,6 +2394,50 @@ def test_native_cli_launcher_builds_provider_state_payload(
         assert (state_dir / 'home' / 'skills' / 'ccb-clear' / 'SKILL.md').is_file()
     else:
         assert visible_parts == [default_executable, '--demo']
+
+
+def test_pi_launcher_includes_qualified_agent_model_without_provider_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / 'source-home'
+    source_agent = source_home / '.pi' / 'agent'
+    source_agent.mkdir(parents=True)
+    (source_agent / 'models.json').write_text(
+        '{"providers":{"pay":{"models":[{"id":"gpt-5.6-terra"}]}}}\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CCB_SOURCE_HOME', str(source_home))
+    monkeypatch.setenv('PI_START_CMD', '/tmp/stub-pi')
+    project_root = tmp_path / 'repo-pi-model-launcher'
+    (project_root / '.ccb').mkdir(parents=True)
+    command = ParsedStartCommand(
+        project=None,
+        agent_names=('pi1',),
+        restore=False,
+        auto_permission=False,
+    )
+    ctx = _context(project_root, command)
+    spec = _spec('pi1', provider='pi', model='pay/gpt-5.6-terra')
+    plan = WorkspacePlanner().plan(spec, ctx.project)
+    plan.workspace_path.mkdir(parents=True, exist_ok=True)
+    runtime_dir = ctx.paths.agent_provider_runtime_dir('pi1', 'pi')
+    launcher = build_default_runtime_launcher_map(include_optional=True)['pi']
+
+    prepared = launcher.prepare_launch_context(ctx, spec, plan, runtime_dir, {})
+    start_cmd = launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'sess-pi-model',
+        prepared_state=prepared,
+    )
+    visible_parts = shlex.split(start_cmd.rsplit('; ', 1)[-1])
+
+    assert visible_parts.count('--model') == 1
+    model_index = visible_parts.index('--model')
+    assert visible_parts[model_index + 1] == 'pay/gpt-5.6-terra'
+    assert '--provider' not in visible_parts
 
 
 def test_qoder_launcher_respects_explicit_config_and_permission_options(

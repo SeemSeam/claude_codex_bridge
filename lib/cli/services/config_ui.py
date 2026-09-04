@@ -42,6 +42,7 @@ from cli.services.theme import set_theme_preference, theme_preference_payload
 from platforms.windows.herdr.ccbd_surface_projection import herdr_surface_projection_passes_gate
 from ccbd.services.project_namespace_state import ProjectNamespaceStateStore
 from provider_core.registry import CORE_PROVIDER_NAMES, OPTIONAL_PROVIDER_NAMES
+from provider_core.source_home import current_provider_source_home
 from provider_model_shortcuts import supported_provider_model_shortcuts
 from provider_profiles import supported_provider_api_shortcuts, validate_provider_runtime_home_uniqueness
 from provider_thinking_shortcuts import provider_thinking_levels
@@ -364,6 +365,7 @@ def config_ui_provider_capabilities(
     environ: dict[str, str] | None = None,
     project_root: Path | None = None,
     codex_models_path: Path | None = None,
+    pi_models_path: Path | None = None,
     cli_models: dict[str, list[str]] | None = None,
     roles: tuple[dict[str, object], ...] | list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
@@ -374,6 +376,10 @@ def config_ui_provider_capabilities(
         env,
         project_root=project_root,
         explicit_path=codex_models_path,
+    )
+    pi_models = _pi_models(
+        explicit_path=pi_models_path,
+        source_home=_pi_models_source_home(env, use_process_identity=environ is None),
     )
     discovered_cli_models = (
         {
@@ -466,6 +472,7 @@ def config_ui_provider_capabilities(
         ],
         'opencode': [_model(model_id, model_id) for model_id in discovered_cli_models.get('opencode', [])],
         'mimo': [_model(model_id, model_id) for model_id in discovered_cli_models.get('mimo', [])],
+        'pi': pi_models,
     }
     providers = []
     for provider in (*CORE_PROVIDER_NAMES, *OPTIONAL_PROVIDER_NAMES):
@@ -485,6 +492,8 @@ def config_ui_provider_capabilities(
             source = 'deepseek_v4_and_deepcode_contract'
         elif provider == 'dsh':
             source = 'deepseek_harness_official_catalog'
+        elif provider == 'pi':
+            source = 'pi_models_json'
         providers.append(
             {
                 'id': provider,
@@ -492,7 +501,7 @@ def config_ui_provider_capabilities(
                 'api_shortcut': provider in api_supported,
                 'model_source': source,
                 'models': suggestions.get(provider, []),
-                'custom_model': model_shortcut,
+                'custom_model': model_shortcut and provider != 'pi',
                 'static_thinking': bool(provider_thinking_levels(provider)),
             }
         )
@@ -603,6 +612,76 @@ def _codex_models(
         ),
         _model('gpt-5.5', 'GPT-5.5', reasoning_levels=['low', 'medium', 'high', 'xhigh']),
     ], 'ccb_catalog_fallback'
+
+
+def _source_home_from_capability_environ(environ: dict[str, str]) -> Path | None:
+    for name in ('CCB_SOURCE_HOME', 'HOME'):
+        raw = str(environ.get(name) or '').strip()
+        if raw:
+            return Path(raw).expanduser()
+    return None
+
+
+def _pi_models_source_home(
+    environ: dict[str, str],
+    *,
+    use_process_identity: bool,
+) -> Path | None:
+    if not use_process_identity:
+        return _source_home_from_capability_environ(environ)
+    try:
+        return current_provider_source_home()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _pi_models(
+    *,
+    explicit_path: Path | None,
+    source_home: Path | None,
+) -> list[dict[str, object]]:
+    path = (
+        Path(explicit_path).expanduser()
+        if explicit_path is not None
+        else Path(source_home).expanduser() / '.pi' / 'agent' / 'models.json'
+        if source_home is not None
+        else None
+    )
+    if path is None:
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return []
+    providers = payload.get('providers') if isinstance(payload, dict) else None
+    if not isinstance(providers, dict):
+        return []
+    rows: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for raw_provider, provider_payload in providers.items():
+        if not isinstance(raw_provider, str):
+            continue
+        provider = raw_provider.strip()
+        if not provider or '/' in provider or not isinstance(provider_payload, dict):
+            continue
+        models = provider_payload.get('models')
+        if not isinstance(models, list):
+            continue
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            raw_model_id = item.get('id')
+            if not isinstance(raw_model_id, str):
+                continue
+            model_id = raw_model_id.strip()
+            if not model_id:
+                continue
+            qualified_id = f'{provider}/{model_id}'
+            if qualified_id in seen:
+                continue
+            seen.add(qualified_id)
+            rows.append(_model(qualified_id, qualified_id))
+    return rows
 
 
 def _codex_models_cache_paths(

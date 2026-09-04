@@ -58,6 +58,9 @@ def test_config_ui_asset_is_packaged_source_content() -> None:
     assert 'function scanAgentHistory()' in page
     assert 'function cleanupAgentHistory()' in page
     assert '/api/storage/history' in page
+    assert '{ id: "pi", model_shortcut: true, model_source: "pi_models_json", custom_model: false' in page
+    assert 'piModelSourceSupported: "模型来源：Pi 本地模型配置。"' in page
+    assert 'piModelSourceEmpty: "未找到已配置的 Pi 模型；已有选择会被保留。"' in page
     assert 'id="config-editor-section"' in page
     assert 'id="agent-session-storage"' in page
     assert 'id="observe-section"' not in page
@@ -1469,10 +1472,40 @@ def test_config_ui_provider_capabilities_use_current_safe_model_sources(tmp_path
         ),
         encoding='utf-8',
     )
+    pi_models_path = tmp_path / 'pi-models.json'
+    pi_models_path.write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'pay': {
+                        'apiKey': 'secret-pay-key',
+                        'baseUrl': 'https://secret-pay.example.test/v1',
+                        'headers': {'Authorization': 'secret-header'},
+                        'models': [
+                            {'id': 'gpt-5.6-terra', 'name': 'Terra', 'apiKey': 'model-secret'},
+                            {'id': 'gpt-5.6-terra'},
+                            {'id': 'openai/gpt-5.6-sol'},
+                            {'id': 56},
+                            {'name': 'missing-id'},
+                        ],
+                    },
+                    'local': {
+                        'models': [{'id': 'gemini-3.8-flash-high'}],
+                    },
+                    'invalid/provider': {
+                        'models': [{'id': 'must-not-appear'}],
+                    },
+                    'wrong-models': {'models': {'id': 'not-an-array'}},
+                }
+            }
+        ),
+        encoding='utf-8',
+    )
 
     payload = config_ui_provider_capabilities(
         environ={'HOME': str(tmp_path), 'PATH': ''},
         codex_models_path=cache_path,
+        pi_models_path=pi_models_path,
         cli_models={
             'opencode': ['openai/gpt-5.6-sol'],
             'mimo': ['xiaomi/mimo-v2.5-pro'],
@@ -1521,6 +1554,25 @@ def test_config_ui_provider_capabilities_use_current_safe_model_sources(tmp_path
     assert providers['dsh']['model_source'] == 'deepseek_harness_official_catalog'
     assert [model['id'] for model in providers['opencode']['models']] == ['openai/gpt-5.6-sol']
     assert [model['id'] for model in providers['mimo']['models']] == ['xiaomi/mimo-v2.5-pro']
+    assert [model['id'] for model in providers['pi']['models']] == [
+        'pay/gpt-5.6-terra',
+        'pay/openai/gpt-5.6-sol',
+        'local/gemini-3.8-flash-high',
+    ]
+    assert [model['label'] for model in providers['pi']['models']] == [
+        'pay/gpt-5.6-terra',
+        'pay/openai/gpt-5.6-sol',
+        'local/gemini-3.8-flash-high',
+    ]
+    assert providers['pi']['model_shortcut'] is True
+    assert providers['pi']['custom_model'] is False
+    assert providers['pi']['static_thinking'] is False
+    assert providers['pi']['model_source'] == 'pi_models_json'
+    serialized_pi = json.dumps(providers['pi'])
+    assert 'secret-pay-key' not in serialized_pi
+    assert 'secret-pay.example.test' not in serialized_pi
+    assert 'secret-header' not in serialized_pi
+    assert 'model-secret' not in serialized_pi
     assert providers['codex']['static_thinking'] is True
     assert providers['claude']['static_thinking'] is True
     assert providers['deepseek']['static_thinking'] is True
@@ -1529,6 +1581,74 @@ def test_config_ui_provider_capabilities_use_current_safe_model_sources(tmp_path
         for name, provider in providers.items()
         if name not in {'codex', 'claude', 'deepseek', 'dsh'}
     )
+
+
+@pytest.mark.parametrize(
+    'payload',
+    [
+        '{not-json',
+        '[]',
+        '{}',
+        '{"providers": []}',
+    ],
+)
+def test_config_ui_pi_model_catalog_fails_closed(tmp_path: Path, payload: str) -> None:
+    pi_models_path = tmp_path / 'models.json'
+    pi_models_path.write_text(payload, encoding='utf-8')
+
+    capabilities = config_ui_provider_capabilities(
+        environ={'HOME': str(tmp_path), 'PATH': ''},
+        pi_models_path=pi_models_path,
+        cli_models={'opencode': [], 'mimo': []},
+        roles=(),
+    )
+    pi = next(provider for provider in capabilities['providers'] if provider['id'] == 'pi')
+
+    assert pi['model_shortcut'] is True
+    assert pi['custom_model'] is False
+    assert pi['models'] == []
+
+
+def test_config_ui_pi_model_catalog_missing_file_fails_closed(tmp_path: Path) -> None:
+    capabilities = config_ui_provider_capabilities(
+        environ={'HOME': str(tmp_path), 'PATH': ''},
+        pi_models_path=tmp_path / 'missing-models.json',
+        cli_models={'opencode': [], 'mimo': []},
+        roles=(),
+    )
+    pi = next(provider for provider in capabilities['providers'] if provider['id'] == 'pi')
+
+    assert pi['models'] == []
+
+
+def test_config_ui_pi_model_catalog_uses_source_home_before_home(tmp_path: Path) -> None:
+    source_home = tmp_path / 'source-home'
+    fallback_home = tmp_path / 'fallback-home'
+    source_models_path = source_home / '.pi' / 'agent' / 'models.json'
+    fallback_models_path = fallback_home / '.pi' / 'agent' / 'models.json'
+    source_models_path.parent.mkdir(parents=True)
+    fallback_models_path.parent.mkdir(parents=True)
+    source_models_path.write_text(
+        '{"providers":{"pay":{"models":[{"id":"gpt-5.6-terra"}]}}}',
+        encoding='utf-8',
+    )
+    fallback_models_path.write_text(
+        '{"providers":{"local":{"models":[{"id":"wrong-home-model"}]}}}',
+        encoding='utf-8',
+    )
+
+    capabilities = config_ui_provider_capabilities(
+        environ={
+            'CCB_SOURCE_HOME': str(source_home),
+            'HOME': str(fallback_home),
+            'PATH': '',
+        },
+        cli_models={'opencode': [], 'mimo': []},
+        roles=(),
+    )
+    pi = next(provider for provider in capabilities['providers'] if provider['id'] == 'pi')
+
+    assert [model['id'] for model in pi['models']] == ['pay/gpt-5.6-terra']
 
 
 def test_config_ui_codex_fallback_keeps_current_56_family_and_55(tmp_path: Path) -> None:

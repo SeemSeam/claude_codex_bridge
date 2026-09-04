@@ -513,10 +513,14 @@ Contract:
   - `gemini`
   - `opencode`
   - `mimo`
+  - `pi`
   - `deepseek`
 - `model` is user-facing sugar only. Providers with model flags compile it onto
   the existing startup-argument path. DeepSeek compiles it to
   `DEEPCODE_MODEL`, the Deep Code CLI's documented runtime override.
+- Pi model values may use the qualified `provider/model` form from the source
+  user's `.pi/agent/models.json`; CCB passes the complete value through one
+  `--model` argument and does not generate a separate `--provider` argument.
 - `model` may coexist with unrelated `startup_args`, but must not be combined
   with provider model flags already present in `startup_args`.
 - Config rendering and recovery must preserve the user-facing `model` field

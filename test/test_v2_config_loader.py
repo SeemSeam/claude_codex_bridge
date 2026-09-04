@@ -1217,6 +1217,7 @@ url = "https://api.example.test/v1"
         ('claude', 'opus', ('--model', 'opus')),
         ('gemini', 'gemini-2.5-pro', ('-m', 'gemini-2.5-pro')),
         ('opencode', 'openai/gpt-5', ('-m', 'openai/gpt-5')),
+        ('pi', 'pay/gpt-5.6-terra', ('--model', 'pay/gpt-5.6-terra')),
         ('dsh', 'deepseek-v4-flash', ()),
     ],
 )
@@ -1262,6 +1263,24 @@ startup_args = ["--search"]
 
     assert spec.model == 'gpt-5'
     assert spec.startup_args == ('-m', 'gpt-5', '--search')
+
+
+def test_load_project_config_supports_pi_model_shortcut_with_extra_startup_args(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-pi-model-extra-startup-args'
+    _write(
+        project_root / '.ccb' / 'ccb.config',
+        '''cmd; agent1:pi
+
+[agents.agent1]
+model = "local/gemini-3.8-flash-high"
+startup_args = ["--offline"]
+''',
+    )
+
+    spec = load_project_config(project_root).config.agents['agent1']
+
+    assert spec.model == 'local/gemini-3.8-flash-high'
+    assert spec.startup_args == ('--model', 'local/gemini-3.8-flash-high', '--offline')
 
 
 @pytest.mark.parametrize(
@@ -1382,6 +1401,23 @@ def test_load_project_config_rejects_agent_model_shortcut_mixed_with_startup_arg
 [agents.agent1]
 model = "gpt-5"
 startup_args = ["--model", "gpt-4.1"]
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='model cannot be combined with startup_args model flags'):
+        load_project_config(project_root)
+
+
+def test_load_project_config_rejects_pi_model_shortcut_mixed_with_startup_arg_model_flag(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-pi-model-startup-conflict'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """cmd; agent1:pi
+
+[agents.agent1]
+model = "pay/gpt-5.6-terra"
+startup_args = ["--model", "local/gemini-3.8-flash-high"]
 """,
     )
 
@@ -2562,6 +2598,32 @@ url = "https://api.example.test/v1"
     assert spec.model == 'gpt-5'
     assert spec.startup_args == ('-m', 'gpt-5', '--search')
     assert spec.api == AgentApiSpec(key='sk-test', url='https://api.example.test/v1')
+
+
+def test_render_project_config_text_round_trips_pi_model_shortcut(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-render-pi-model'
+    _write(
+        project_root / '.ccb' / 'ccb.config',
+        '''cmd; agent1:pi
+
+[agents.agent1]
+model = "pay/gpt-5.6-terra"
+startup_args = ["--offline"]
+''',
+    )
+
+    rendered = render_project_config_text(load_project_config(project_root).config)
+
+    assert 'model = "pay/gpt-5.6-terra"' in rendered
+    assert 'startup_args = ["--offline"]' in rendered
+    assert 'startup_args = ["--model", "pay/gpt-5.6-terra"' not in rendered
+
+    rewritten = tmp_path / 'repo-render-pi-model-roundtrip'
+    _write(rewritten / '.ccb' / 'ccb.config', rendered)
+    spec = load_project_config(rewritten).config.agents['agent1']
+
+    assert spec.model == 'pay/gpt-5.6-terra'
+    assert spec.startup_args == ('--model', 'pay/gpt-5.6-terra', '--offline')
 
 
 @pytest.mark.parametrize(

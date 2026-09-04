@@ -1817,6 +1817,8 @@ model = "gpt-5.5"</pre>
         modelSourceSupported: "Model source: {source}. Supported thinking levels are written to the static agent overlay.",
         modelSourcePending: "Model source: {source}. Selection is visible for planning, but CCB cannot write this provider model shortcut yet.",
         modelShortcutUnavailable: "This provider has no CCB model shortcut. Use provider startup configuration only after validation support is defined.",
+        piModelSourceSupported: "Model source: Pi local models.",
+        piModelSourceEmpty: "No configured Pi models were found. An existing selection is preserved.",
         thinkingLevelsTitle: "Model supports: {levels}.",
         thinkingUnavailableTitle: "The selected provider or model has no writable static thinking mapping.",
         activationBlocked: "Activation blocked",
@@ -2090,6 +2092,8 @@ model = "gpt-5.5"</pre>
         modelSourceSupported: "模型来源：{source}。受支持的思考强度会写入静态 Agent overlay。",
         modelSourcePending: "模型来源：{source}。当前仅供规划选择，CCB 尚不能写入该 provider 的模型快捷设置。",
         modelShortcutUnavailable: "该 provider 没有 CCB 模型快捷设置；请等待启动配置的校验支持。",
+        piModelSourceSupported: "模型来源：Pi 本地模型配置。",
+        piModelSourceEmpty: "未找到已配置的 Pi 模型；已有选择会被保留。",
         thinkingLevelsTitle: "模型支持：{levels}。",
         thinkingUnavailableTitle: "当前 provider 或模型没有可写入的静态 thinking 映射。",
         activationBlocked: "禁止激活",
@@ -2238,7 +2242,8 @@ model = "gpt-5.5"</pre>
         ] },
         { id: "opencode", model_shortcut: true, model_source: "provider_catalog_required", custom_model: true, static_thinking: false, models: [] },
         { id: "mimo", model_shortcut: true, model_source: "custom_only", custom_model: true, static_thinking: false, models: [] },
-        ...["droid", "agy", "kimi", "qwen", "cursor", "copilot", "crush", "kiro", "pi", "zai", "grok"].map((id) => ({
+        { id: "pi", model_shortcut: true, model_source: "pi_models_json", custom_model: false, static_thinking: false, models: [] },
+        ...["droid", "agy", "kimi", "qwen", "cursor", "copilot", "crush", "kiro", "zai", "grok"].map((id) => ({
           id,
           model_shortcut: false,
           model_source: "none",
@@ -3153,7 +3158,7 @@ main = "demo:codex"
           <label class="field"><span class="label">${t("model")}</span><select class="select model-select" data-field="model" ${isRich || (!capability.model_shortcut && !models.length) ? "disabled" : ""}><option value="inherit">${t("inherit")}</option>${models.map((item) => `<option value="${escapeAttribute(item.id)}" ${item.id === model ? "selected" : ""}>${escapeHtml(item.label || item.id)}</option>`).join("")}${model !== "inherit" && !models.some((item) => item.id === model) ? `<option value="${escapeAttribute(model)}" selected>${escapeHtml(model)}</option>` : ""}${capability.custom_model ? `<option value="__custom__">${t("customModel")}</option>` : ""}</select></label>
           <label class="field"><span class="label">${t("thinking")}</span><select class="select thinking-select" data-field="thinking" data-current="${escapeAttribute(thinking)}" disabled><option value="inherit">${t("inherit")}</option></select></label>
         </div>
-        <p class="field-note model-capability-note">${capability.model_shortcut ? tf("modelSourceSupported", { source: capability.model_source || "catalog" }) : t("modelShortcutUnavailable")}</p>
+        <p class="field-note model-capability-note">${modelCapabilityNote(capability)}</p>
         <details class="api-details" ${overlay.key || overlay.url ? "open" : ""}>
           <summary>${t("apiOverride")}</summary>
           <div class="details-body api-grid">
@@ -3642,6 +3647,14 @@ main = "demo:codex"
       return providerCapabilities.providers.find((item) => item.id === providerId);
     }
 
+    function modelCapabilityNote(capability) {
+      if (!capability || !capability.model_shortcut) return t("modelShortcutUnavailable");
+      if (capability.id === "pi") {
+        return capability.models.length ? t("piModelSourceSupported") : t("piModelSourceEmpty");
+      }
+      return tf("modelSourceSupported", { source: capability.model_source || "catalog" });
+    }
+
     function option(value, label, selected = false) {
       const node = document.createElement("option");
       node.value = value;
@@ -3677,6 +3690,9 @@ main = "demo:codex"
         capability.models.forEach((model) => {
           modelSelect.append(option(model.id, model.label || model.id, model.id === previousModel));
         });
+        if (previousModel !== "inherit" && !capability.models.some((model) => model.id === previousModel)) {
+          modelSelect.append(option(previousModel, previousModel, true));
+        }
         if (capability.custom_model) {
           modelSelect.append(option("__custom__", t("customModel")));
         }
@@ -3685,7 +3701,7 @@ main = "demo:codex"
           ? previousModel
           : "inherit";
         if (note) note.textContent = capability.model_shortcut
-          ? tf("modelSourceSupported", { source: capability.model_source })
+          ? modelCapabilityNote(capability)
           : tf("modelSourcePending", { source: capability.model_source });
       } else {
         modelSelect.replaceChildren(option("inherit", t("unsupportedModelShortcut"), true));
