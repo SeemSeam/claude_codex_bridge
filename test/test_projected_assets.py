@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import shutil
+import threading
 
 import pytest
 
@@ -280,4 +282,188 @@ def test_seed_projected_file_rolls_back_when_marker_write_fails(
 
     assert not projected_assets.seed_projected_file(source, target, label=_LABEL)
     assert not target.exists()
+    assert not _marker_path(target).exists()
+
+
+def test_copy_projected_tree_to_cache_handles_concurrent_first_publish(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(source, 'shared\n')
+    copy_barrier = threading.Barrier(2)
+    original_copytree = shutil.copytree
+
+    def synchronized_copytree(*args, **kwargs):
+        result = original_copytree(*args, **kwargs)
+        copy_barrier.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(projected_assets.shutil, 'copytree', synchronized_copytree)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _: projected_assets.copy_projected_tree_to_cache(
+                    source,
+                    target,
+                    label=_LABEL,
+                ),
+                range(2),
+            )
+        )
+
+    assert results == [True, True]
+    assert (target / 'asset.txt').read_text(encoding='utf-8') == 'shared\n'
+    assert json.loads(_marker_path(target).read_text(encoding='utf-8'))['label'] == _LABEL
+    assert not list(target.parent.glob(f'.{target.name}.ccb-cache-*'))
+
+
+def test_copy_projected_tree_to_cache_records_explicit_marker_source(tmp_path: Path) -> None:
+    staged_source = tmp_path / 'staged-source'
+    authority_source = tmp_path / 'authority-source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(staged_source, 'normalized\n')
+    _write_tree(authority_source, 'original\n')
+
+    assert projected_assets.copy_projected_tree_to_cache(
+        staged_source,
+        target,
+        label=_LABEL,
+        marker_source=authority_source,
+    )
+
+    marker = json.loads(_marker_path(target).read_text(encoding='utf-8'))
+    assert marker['source'] == str(authority_source)
+    assert (target / 'asset.txt').read_text(encoding='utf-8') == 'normalized\n'
+
+
+def test_copy_projected_tree_to_cache_rejects_tampered_cache_hit(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(source, 'trusted\n')
+
+    assert projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    (target / 'asset.txt').write_text('tampered\n', encoding='utf-8')
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert (target / 'asset.txt').read_text(encoding='utf-8') == 'tampered\n'
+
+
+def test_tree_content_fingerprint_and_cache_track_executable_mode(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    _write_tree(source, 'script\n')
+    asset = source / 'asset.txt'
+    asset.chmod(0o644)
+    first_digest = projected_assets.tree_content_fingerprint(source)
+    first_target = tmp_path / 'cache' / first_digest / 'bundle'
+    assert projected_assets.copy_projected_tree_to_cache(source, first_target, label=_LABEL)
+
+    asset.chmod(0o755)
+    second_digest = projected_assets.tree_content_fingerprint(source)
+    second_target = tmp_path / 'cache' / second_digest / 'bundle'
+    assert second_digest != first_digest
+    assert projected_assets.copy_projected_tree_to_cache(source, second_target, label=_LABEL)
+    assert second_target.joinpath('asset.txt').stat().st_mode & 0o777 == 0o755
+
+
+def test_copy_projected_tree_to_cache_rejects_symlinked_cache_root(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    external = tmp_path / 'external'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(source, 'same\n')
+    _write_tree(external, 'same\n')
+    target.parent.mkdir(parents=True)
+    target.symlink_to(external, target_is_directory=True)
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert target.is_symlink()
+    assert not _marker_path(target).exists()
+
+
+def test_tree_content_fingerprint_tracks_root_directory_mode(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    _write_tree(source, 'same\n')
+    source.chmod(0o700)
+    first_digest = projected_assets.tree_content_fingerprint(source)
+
+    source.chmod(0o755)
+
+    assert projected_assets.tree_content_fingerprint(source) != first_digest
+
+
+def test_copy_projected_tree_to_cache_preserves_internal_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    nested = source / 'nested'
+    _write_tree(nested, 'linked\n')
+    (source / 'alias').symlink_to('nested', target_is_directory=True)
+
+    assert projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert (target / 'alias').is_symlink()
+    assert (target / 'alias').readlink() == Path('nested')
+    assert (target / 'alias' / 'asset.txt').read_text(encoding='utf-8') == 'linked\n'
+
+
+def test_copy_projected_tree_to_cache_rejects_external_source_symlink(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    external = tmp_path / 'external'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    source.mkdir()
+    _write_tree(external, 'external\n')
+    (source / 'escape').symlink_to(external, target_is_directory=True)
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert not target.exists()
+
+
+def test_copy_projected_tree_to_cache_rejects_absolute_internal_symlink(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    nested = source / 'nested'
+    _write_tree(nested, 'internal\n')
+    (source / 'absolute').symlink_to(nested, target_is_directory=True)
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert not target.exists()
+
+
+@pytest.mark.parametrize('link_target', ['missing', 'loop'])
+def test_copy_projected_tree_to_cache_rejects_unresolvable_internal_symlink(
+    tmp_path: Path,
+    link_target: str,
+) -> None:
+    source = tmp_path / 'source'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    source.mkdir()
+    (source / 'loop').symlink_to(link_target)
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert not target.exists()
+
+
+def test_copy_projected_tree_to_cache_rejects_symlinked_concurrent_winner(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / 'source'
+    external = tmp_path / 'external'
+    target = tmp_path / 'cache' / 'digest' / 'bundle'
+    _write_tree(source, 'same\n')
+    _write_tree(external, 'same\n')
+    original_copytree = shutil.copytree
+
+    def copytree_with_symlinked_winner(*args, **kwargs):
+        result = original_copytree(*args, **kwargs)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(external, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(projected_assets.shutil, 'copytree', copytree_with_symlinked_winner)
+
+    assert not projected_assets.copy_projected_tree_to_cache(source, target, label=_LABEL)
+    assert target.is_symlink()
     assert not _marker_path(target).exists()

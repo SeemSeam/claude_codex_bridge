@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import tempfile
 from urllib.parse import urlparse
 
 from provider_core.one_way_inheritance import copy_regular_file
@@ -10,6 +12,7 @@ from provider_core.projected_assets import (
     copy_projected_tree_to_cache,
     seed_projected_file,
     tree_content_fingerprint,
+    tree_symlinks_are_self_contained,
 )
 from storage.atomic import atomic_write_text
 from storage.paths import ensure_provider_user_cache_dir
@@ -17,6 +20,14 @@ from storage.paths import ensure_provider_user_cache_dir
 
 _CACHE_PROJECTION_LABEL = 'pi-inherited-profile-asset'
 _FILE_HASH_CHUNK_SIZE = 64 * 1024
+
+
+class _MissingRuntimeDependency(RuntimeError):
+    pass
+
+
+class _InvalidRuntimeDependency(RuntimeError):
+    pass
 
 
 def materialize_pi_config(
@@ -103,7 +114,7 @@ def _snapshot_direct_extensions(
         if resolved_source in package_roots:
             continue
         if resolved_source.is_dir():
-            target_entry = _snapshot_tree(
+            target_entry = _snapshot_package_tree(
                 resolved_source,
                 cache_root=cache_root,
                 category='direct-extensions',
@@ -176,7 +187,7 @@ def _project_package_source(
     git_parts = _git_package_parts(source)
     if git_parts:
         installed = (source_agent / 'git' / git_parts[0] / git_parts[1]).resolve(strict=False)
-        target = _snapshot_tree(installed, cache_root=cache_root, category='git-packages')
+        target = _snapshot_package_tree(installed, cache_root=cache_root, category='git-packages')
         return str(target) if target is not None else source
 
     resolved = _resolve_source_path(source, source_agent)
@@ -184,7 +195,7 @@ def _project_package_source(
     if direct is not None:
         return str(direct)
     if resolved.is_dir():
-        target = _snapshot_tree(resolved, cache_root=cache_root, category='local-packages')
+        target = _snapshot_package_tree(resolved, cache_root=cache_root, category='local-packages')
     elif resolved.is_file():
         target = _snapshot_file(resolved, cache_root=cache_root, category='local-package-files')
     else:
@@ -207,7 +218,11 @@ def _rewrite_extensions(
             continue
         resolved = _resolve_source_path(entry, source_agent)
         if resolved.is_dir():
-            target = _snapshot_tree(resolved, cache_root=cache_root, category='explicit-extensions')
+            target = _snapshot_package_tree(
+                resolved,
+                cache_root=cache_root,
+                category='explicit-extensions',
+            )
         elif resolved.is_file():
             target = _snapshot_file(resolved, cache_root=cache_root, category='explicit-extension-files')
         else:
@@ -233,13 +248,199 @@ def _snapshot_tree(
     source_path = Path(source).expanduser()
     if not source_path.is_dir():
         return None
-    content_digest = digest or tree_content_fingerprint(source_path)
+    source_digest = tree_content_fingerprint(source_path)
+    content_digest = (
+        hashlib.sha256(f'{digest}\0{source_digest}'.encode('utf-8')).hexdigest()
+        if digest and source_digest
+        else source_digest
+    )
     if not content_digest:
         return None
     target = cache_root / category / content_digest / (target_name or source_path.name)
     if not copy_projected_tree_to_cache(source_path, target, label=_CACHE_PROJECTION_LABEL):
-        return None
+        raise RuntimeError(f'failed to publish verified Pi tree snapshot at {target}')
     return target
+
+
+def _snapshot_package_tree(
+    source: Path,
+    *,
+    cache_root: Path,
+    category: str,
+) -> Path | None:
+    source_path = Path(source).expanduser()
+    manifest = _read_json_object(source_path / 'package.json')
+    if manifest is None:
+        return _snapshot_tree(source_path, cache_root=cache_root, category=category)
+
+    staging_parent = cache_root / category
+    staging_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f'.{source_path.name}.ccb-package-',
+        dir=staging_parent,
+    ) as temporary:
+        candidate = Path(temporary) / source_path.name
+        _copy_runtime_package(
+            source_path,
+            candidate,
+            dependency_chain=(),
+        )
+        content_digest = tree_content_fingerprint(candidate)
+        if not content_digest:
+            return None
+        target = staging_parent / content_digest / source_path.name
+        if not copy_projected_tree_to_cache(
+            candidate,
+            target,
+            label=_CACHE_PROJECTION_LABEL,
+            marker_source=source_path,
+        ):
+            raise RuntimeError(
+                f'failed to publish verified Pi package snapshot for {source_path}'
+            )
+        return target
+
+
+def _copy_runtime_package(
+    source: Path,
+    target: Path,
+    *,
+    dependency_chain: tuple[Path, ...],
+) -> None:
+    resolved_source = source.resolve(strict=True)
+    _copy_package_payload(resolved_source, target)
+    manifest = _read_json_object(resolved_source / 'package.json')
+    if manifest is None:
+        return
+
+    required, optional = _runtime_dependency_names(manifest)
+    chain = (*dependency_chain, resolved_source)
+    for dependency in (*required, *optional):
+        dependency_source = _resolve_installed_dependency(resolved_source, dependency)
+        if dependency_source is None:
+            if dependency in optional:
+                continue
+            package_name = manifest.get('name')
+            owner = package_name if isinstance(package_name, str) else str(resolved_source)
+            raise _MissingRuntimeDependency(
+                f'Pi package {owner!r} cannot resolve runtime dependency {dependency!r}'
+            )
+        dependency_target = target / 'node_modules' / Path(*_package_name_parts(dependency))
+        dependency_target.parent.mkdir(parents=True, exist_ok=True)
+        if dependency_source in chain:
+            _copy_package_payload(dependency_source, dependency_target)
+            continue
+        _copy_runtime_package(
+            dependency_source,
+            dependency_target,
+            dependency_chain=chain,
+        )
+
+
+def _copy_package_payload(source: Path, target: Path) -> None:
+    if not tree_symlinks_are_self_contained(source, ignored_names=('node_modules',)):
+        manifest = _read_json_object(source / 'package.json')
+        package_name = manifest.get('name') if manifest is not None else None
+        owner = package_name if isinstance(package_name, str) else str(source)
+        raise RuntimeError(f'Pi package {owner!r} contains an unsafe symlink')
+    shutil.copytree(
+        source,
+        target,
+        ignore=shutil.ignore_patterns('node_modules'),
+        symlinks=True,
+    )
+
+
+def _runtime_dependency_names(manifest: dict[str, object]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    # Pi core imports are host-provided peers by contract. Third-party runtime
+    # modules must be declared in dependencies and belong in this closure.
+    package_name = manifest.get('name')
+    owner = package_name if isinstance(package_name, str) else '<unnamed>'
+    required = _dependency_keys(manifest.get('dependencies'), owner=owner)
+    optional = _dependency_keys(manifest.get('optionalDependencies'), owner=owner)
+    bundled = manifest.get('bundledDependencies', manifest.get('bundleDependencies'))
+    bundled_names = _bundled_dependency_names(bundled, owner=owner)
+    optional_set = set(optional)
+    required_names = tuple(
+        dict.fromkeys(
+            (
+                *(name for name in required if name not in optional_set),
+                *(name for name in bundled_names if name not in optional_set),
+            )
+        )
+    )
+    return required_names, tuple(dict.fromkeys(optional))
+
+
+def _dependency_keys(raw: object, *, owner: str) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise _InvalidRuntimeDependency(
+            f'Pi package {owner!r} has a non-object runtime dependency map'
+        )
+    names: list[str] = []
+    for name in raw:
+        if not isinstance(name, str) or not _valid_package_name(name):
+            raise _InvalidRuntimeDependency(
+                f'Pi package {owner!r} declares invalid runtime dependency {name!r}'
+            )
+        names.append(name)
+    return tuple(names)
+
+
+def _bundled_dependency_names(raw: object, *, owner: str) -> tuple[str, ...]:
+    if raw is None or isinstance(raw, bool):
+        return ()
+    if not isinstance(raw, list):
+        raise _InvalidRuntimeDependency(
+            f'Pi package {owner!r} has an invalid bundled dependency list'
+        )
+    names: list[str] = []
+    for name in raw:
+        if not isinstance(name, str) or not _valid_package_name(name):
+            raise _InvalidRuntimeDependency(
+                f'Pi package {owner!r} declares invalid runtime dependency {name!r}'
+            )
+        names.append(name)
+    return tuple(names)
+
+
+def _valid_package_name(name: str) -> bool:
+    try:
+        _package_name_parts(name)
+    except ValueError:
+        return False
+    return True
+
+
+def _package_name_parts(name: str) -> tuple[str, ...]:
+    parts = tuple(Path(name).parts)
+    valid = (
+        parts
+        and all(part not in {'', '.', '..'} for part in parts)
+        and '\\' not in name
+        and (
+            len(parts) == 1 and not name.startswith('@')
+            or len(parts) == 2 and parts[0].startswith('@') and len(parts[0]) > 1
+        )
+    )
+    if not valid:
+        raise ValueError(f'invalid package name: {name!r}')
+    return parts
+
+
+def _resolve_installed_dependency(package_root: Path, dependency: str) -> Path | None:
+    parts = _package_name_parts(dependency)
+    resolved_root = package_root.resolve(strict=True)
+    for directory in (resolved_root, *resolved_root.parents):
+        candidate = directory / 'node_modules' / Path(*parts)
+        try:
+            if candidate.is_dir():
+                return candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+    return None
 
 
 def _snapshot_file(source: Path, *, cache_root: Path, category: str) -> Path | None:
@@ -249,13 +450,17 @@ def _snapshot_file(source: Path, *, cache_root: Path, category: str) -> Path | N
         return None
     target = cache_root / category / digest / source_path.name
     if not seed_projected_file(source_path, target, label=_CACHE_PROJECTION_LABEL):
-        return None
+        raise RuntimeError(f'failed to publish verified Pi file snapshot at {target}')
+    if _file_content_fingerprint(target) != digest:
+        raise RuntimeError(f'tampered Pi file snapshot cache at {target}')
     return target
 
 
 def _file_content_fingerprint(path: Path) -> str:
     digest = hashlib.sha256()
     try:
+        digest.update(str(path.stat().st_mode & 0o7777).encode('ascii'))
+        digest.update(b'\0')
         with path.open('rb') as handle:
             for chunk in iter(lambda: handle.read(_FILE_HASH_CHUNK_SIZE), b''):
                 digest.update(chunk)

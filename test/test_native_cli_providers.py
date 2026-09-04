@@ -4,7 +4,9 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import sqlite3
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -733,6 +735,567 @@ def test_native_pi_projects_current_extension_profile_to_one_shared_snapshot(
     assert second_settings["extensions"] == settings["extensions"]
     assert not (target_home / ".ccb-inherited-profile").exists()
     assert not (second_home / ".ccb-inherited-profile").exists()
+
+
+def test_native_pi_local_package_snapshot_includes_hoisted_runtime_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "pi-accounts"
+    proper_lockfile = workspace / "node_modules" / "proper-lockfile"
+    graceful_fs = workspace / "node_modules" / "graceful-fs"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "pi-accounts",
+                "dependencies": {"proper-lockfile": "4.1.2"},
+                "pi": {"extensions": ["index.ts"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (local_package / "index.ts").write_text(
+        'import lockfile from "proper-lockfile";\nexport default lockfile;\n',
+        encoding="utf-8",
+    )
+    proper_lockfile.mkdir(parents=True)
+    (proper_lockfile / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "proper-lockfile",
+                "version": "4.1.2",
+                "dependencies": {"graceful-fs": "4.2.11"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (proper_lockfile / "index.js").write_text('require("graceful-fs");\n', encoding="utf-8")
+    graceful_fs.mkdir(parents=True)
+    (graceful_fs / "package.json").write_text(
+        '{"name":"graceful-fs","version":"4.2.11"}\n',
+        encoding="utf-8",
+    )
+    (graceful_fs / "index.js").write_text("module.exports = {};\n", encoding="utf-8")
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/proper-lockfile/index.js").is_file()
+    assert projected.joinpath(
+        "node_modules/proper-lockfile/node_modules/graceful-fs/index.js"
+    ).is_file()
+
+    projected.joinpath(
+        "node_modules/proper-lockfile/node_modules/graceful-fs/index.js"
+    ).write_text("module.exports = { tampered: true };\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="failed to publish verified Pi package snapshot"):
+        materialize_native_login_state(
+            "pi",
+            tmp_path / "tampered-managed-home",
+            source_home=source_home,
+        )
+
+    (graceful_fs / "index.js").write_text(
+        "module.exports = { updated: true };\n",
+        encoding="utf-8",
+    )
+    second_home = tmp_path / "second-managed-home"
+    materialize_native_login_state("pi", second_home, source_home=source_home)
+
+    second_settings = json.loads(
+        (second_home / "settings.json").read_text(encoding="utf-8")
+    )
+    second_projected = Path(second_settings["packages"][0])
+    dependency_path = "node_modules/proper-lockfile/node_modules/graceful-fs/index.js"
+    assert second_projected != projected
+    assert projected.joinpath(dependency_path).read_text(encoding="utf-8") == (
+        "module.exports = { tampered: true };\n"
+    )
+    assert second_projected.joinpath(dependency_path).read_text(encoding="utf-8") == (
+        "module.exports = { updated: true };\n"
+    )
+
+
+def test_native_pi_local_package_snapshot_includes_pnpm_linked_transitive_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "pi-antigravity"
+    store_modules = workspace / "node_modules" / ".pnpm" / "effect@4" / "node_modules"
+    effect = store_modules / "effect"
+    fast_check = store_modules / "fast-check"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "pi-antigravity",
+                "dependencies": {"effect": "4.0.0-beta.101"},
+                "pi": {"extensions": ["index.ts"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (local_package / "index.ts").write_text(
+        'import * as Effect from "effect";\nexport default Effect;\n',
+        encoding="utf-8",
+    )
+    effect.mkdir(parents=True)
+    (effect / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "effect",
+                "version": "4.0.0-beta.101",
+                "dependencies": {"fast-check": "4.9.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (effect / "index.js").write_text('require("fast-check");\n', encoding="utf-8")
+    fast_check.mkdir(parents=True)
+    (fast_check / "package.json").write_text(
+        '{"name":"fast-check","version":"4.9.0"}\n',
+        encoding="utf-8",
+    )
+    (fast_check / "index.js").write_text("module.exports = {};\n", encoding="utf-8")
+    package_modules = local_package / "node_modules"
+    package_modules.mkdir()
+    (package_modules / "effect").symlink_to(effect, target_is_directory=True)
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/effect/index.js").is_file()
+    assert projected.joinpath("node_modules/effect/node_modules/fast-check/index.js").is_file()
+
+
+def test_native_pi_local_package_snapshot_places_scoped_runtime_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "scoped-consumer"
+    scoped_dependency = workspace / "node_modules" / "@scope" / "runtime"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "scoped-consumer",
+                "dependencies": {"@scope/runtime": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    scoped_dependency.mkdir(parents=True)
+    (scoped_dependency / "package.json").write_text(
+        '{"name":"@scope/runtime","version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+    (scoped_dependency / "index.js").write_text(
+        "module.exports = {};\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/@scope/runtime/index.js").is_file()
+
+
+def test_native_pi_local_package_snapshot_skips_missing_optional_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "packages" / "optional-consumer"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "optional-consumer",
+                "optionalDependencies": {"missing-optional": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("package.json").is_file()
+    assert not projected.joinpath("node_modules/missing-optional").exists()
+
+
+def test_native_pi_local_package_snapshot_includes_bundled_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    local_package = workspace / "packages" / "bundled-consumer"
+    bundled_dependency = workspace / "node_modules" / "bundled-runtime"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "bundled-consumer",
+                "bundledDependencies": ["bundled-runtime"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bundled_dependency.mkdir(parents=True)
+    (bundled_dependency / "package.json").write_text(
+        '{"name":"bundled-runtime","version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+    (bundled_dependency / "index.js").write_text(
+        "module.exports = {};\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert projected.joinpath("node_modules/bundled-runtime/index.js").is_file()
+
+
+def test_native_pi_local_package_snapshot_rejects_missing_required_dependency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "pi-accounts"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "pi-accounts",
+                "dependencies": {"proper-lockfile": "4.1.2"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="pi-accounts.*cannot resolve runtime dependency 'proper-lockfile'",
+    ):
+        materialize_native_login_state("pi", target_home, source_home=source_home)
+
+
+def test_native_pi_local_package_snapshot_preserves_circular_dependency_resolution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    if shutil.which("node") is None:
+        pytest.skip("Node.js is required to verify circular package loading")
+
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    workspace = source_home / "workspace"
+    package_a = workspace / "packages" / "cycle-a"
+    package_b = workspace / "node_modules" / "cycle-b"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    package_a.mkdir(parents=True)
+    (package_a / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "cycle-a",
+                "main": "index.js",
+                "dependencies": {"cycle-b": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (package_a / "index.js").write_text(
+        'exports.name = "a"; exports.b = require("cycle-b").name;\n',
+        encoding="utf-8",
+    )
+    package_b.mkdir(parents=True)
+    (package_b / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "cycle-b",
+                "main": "index.js",
+                "dependencies": {"cycle-a": "1.0.0"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (package_b / "index.js").write_text(
+        'exports.name = "b"; exports.a = require("cycle-a").name;\n',
+        encoding="utf-8",
+    )
+    (workspace / "node_modules" / "cycle-a").symlink_to(
+        package_a,
+        target_is_directory=True,
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(package_a)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            "const value=require(process.argv[1]); console.log(JSON.stringify(value))",
+            str(projected),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"name": "a", "b": "b"}
+    assert projected.joinpath(
+        "node_modules/cycle-b/node_modules/cycle-a/index.js"
+    ).is_file()
+
+
+@pytest.mark.parametrize("dependency", ["../escape", "foo/bar"])
+def test_native_pi_local_package_snapshot_rejects_invalid_required_dependency_name(
+    tmp_path: Path,
+    monkeypatch,
+    dependency: str,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "invalid-package"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        json.dumps({"name": "invalid-package", "dependencies": {dependency: "1.0.0"}})
+        + "\n",
+        encoding="utf-8",
+    )
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="invalid-package.*invalid runtime dependency"):
+        materialize_native_login_state("pi", target_home, source_home=source_home)
+
+
+def test_native_pi_local_package_snapshot_rejects_external_payload_symlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "external-link-package"
+    external = source_home / "external-assets"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    local_package.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        '{"name":"external-link-package"}\n',
+        encoding="utf-8",
+    )
+    external.mkdir()
+    (external / "secret.txt").write_text("outside\n", encoding="utf-8")
+    (local_package / "assets").symlink_to(external, target_is_directory=True)
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="external-link-package.*unsafe symlink"):
+        materialize_native_login_state("pi", target_home, source_home=source_home)
+
+
+def test_native_pi_local_package_snapshot_preserves_internal_payload_symlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    local_package = source_home / "workspace" / "internal-link-package"
+    assets = local_package / "assets"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    assets.mkdir(parents=True)
+    (local_package / "package.json").write_text(
+        '{"name":"internal-link-package"}\n',
+        encoding="utf-8",
+    )
+    (assets / "data.txt").write_text("inside\n", encoding="utf-8")
+    (local_package / "alias").symlink_to("assets", target_is_directory=True)
+    source_agent.mkdir(parents=True)
+    (source_agent / "settings.json").write_text(
+        json.dumps({"packages": [str(local_package)]}) + "\n",
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = Path(settings["packages"][0])
+    assert (projected / "alias").is_symlink()
+    assert (projected / "alias").readlink() == Path("assets")
+    assert (projected / "alias" / "data.txt").read_text(encoding="utf-8") == "inside\n"
+
+
+def test_native_pi_direct_extension_file_snapshot_rejects_tampered_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    extension = source_agent / "extensions" / "standalone.ts"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    extension.parent.mkdir(parents=True)
+    extension.write_text("export const trusted = true;\n", encoding="utf-8")
+    (source_agent / "settings.json").write_text("{}\n", encoding="utf-8")
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+    settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    projected = next(
+        Path(entry)
+        for entry in settings["extensions"]
+        if isinstance(entry, str) and entry.endswith("standalone.ts")
+    )
+    projected.write_text("export const trusted = false;\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="tampered Pi file snapshot cache.*standalone.ts"):
+        materialize_native_login_state(
+            "pi",
+            tmp_path / "second-managed-home",
+            source_home=source_home,
+        )
+
+
+def test_native_pi_npm_content_drift_without_lock_change_uses_new_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / "source-home"
+    source_agent = source_home / ".pi" / "agent"
+    target_home = tmp_path / "managed-home"
+    npm_extension = source_agent / "npm" / "node_modules" / "pi-lens"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    npm_extension.mkdir(parents=True)
+    (source_agent / "npm" / "package-lock.json").write_text(
+        '{"packages":{"node_modules/pi-lens":{"version":"1.0.0"}}}\n',
+        encoding="utf-8",
+    )
+    (npm_extension / "package.json").write_text(
+        '{"name":"pi-lens","version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+    (npm_extension / "index.ts").write_text("old\n", encoding="utf-8")
+    (source_agent / "settings.json").write_text(
+        '{"packages":["npm:pi-lens"]}\n',
+        encoding="utf-8",
+    )
+
+    materialize_native_login_state("pi", target_home, source_home=source_home)
+    first_settings = json.loads((target_home / "settings.json").read_text(encoding="utf-8"))
+    first_projected = Path(first_settings["packages"][0])
+
+    (npm_extension / "index.ts").write_text("patched without lock change\n", encoding="utf-8")
+    second_home = tmp_path / "second-managed-home"
+    materialize_native_login_state("pi", second_home, source_home=source_home)
+    second_settings = json.loads((second_home / "settings.json").read_text(encoding="utf-8"))
+    second_projected = Path(second_settings["packages"][0])
+
+    assert second_projected != first_projected
+    assert str(second_projected).startswith(str(tmp_path / "xdg-cache"))
+    assert second_projected.joinpath("index.ts").read_text(encoding="utf-8") == (
+        "patched without lock change\n"
+    )
 
 
 def test_native_pi_restart_repoints_to_updated_shared_snapshot(tmp_path: Path, monkeypatch) -> None:
