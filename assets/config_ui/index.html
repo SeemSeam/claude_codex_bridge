@@ -654,7 +654,7 @@
       height: 100%;
       min-height: 256px;
       max-height: none;
-      overflow: auto;
+      overflow: hidden;
     }
 
     .layout-node {
@@ -664,16 +664,181 @@
     }
 
     .layout-node.branch {
-      display: grid;
-      gap: 8px;
+      display: flex;
+      gap: 0;
+      position: relative;
     }
 
     .layout-node.horizontal {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      flex-direction: row;
     }
 
     .layout-node.vertical {
-      grid-template-rows: repeat(2, minmax(0, 1fr));
+      flex-direction: column;
+    }
+
+    .pane-section {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .pane-section > * {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .resize-handle {
+      position: relative;
+      flex-shrink: 0;
+      z-index: 10;
+      background: transparent;
+      transition: background 0.15s ease;
+    }
+
+    .resize-handle:hover {
+      background: var(--blue);
+    }
+
+    .resize-handle:active {
+      background: #ef4444;
+    }
+
+    .resize-handle.horizontal {
+      width: 1px;
+      cursor: ew-resize;
+      margin: 0;
+    }
+
+    .resize-handle.vertical {
+      height: 1px;
+      cursor: ns-resize;
+      margin: 0;
+    }
+
+    .resize-handle::before {
+      content: '';
+      position: absolute;
+      background: transparent;
+    }
+
+    .resize-handle.horizontal::before {
+      width: 10px;
+      height: 100%;
+      left: -5px;
+      top: 0;
+    }
+
+    .resize-handle.vertical::before {
+      height: 10px;
+      width: 100%;
+      top: -5px;
+      left: 0;
+    }
+
+    /* ---- pane 拖拽反馈 ---- */
+
+    .pane[draggable="true"] {
+      cursor: grab;
+      transition: all 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .pane[draggable="true"]:active {
+      cursor: grabbing;
+    }
+
+    .pane[draggable="true"]:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+
+    .pane[draggable="false"] {
+      cursor: pointer;
+    }
+
+    .pane.dragging {
+      opacity: 0.4;
+      cursor: grabbing;
+      transform: scale(0.95);
+      filter: blur(1px);
+    }
+
+    .pane.tool.dragging {
+      opacity: 0.5;
+    }
+
+    .pane.drag-over {
+      border-color: var(--blue);
+      box-shadow: inset 0 0 0 2px var(--blue);
+      background: var(--blue-soft);
+      transform: scale(1.02);
+    }
+
+    :root[data-ccb-theme="dark"] .pane.drag-over {
+      box-shadow: inset 0 0 0 2px var(--blue), 0 0 12px rgba(137, 180, 250, 0.3);
+    }
+
+    .drop-indicator {
+      position: absolute;
+      background: var(--blue);
+      opacity: 0.7;
+      z-index: 100;
+      pointer-events: none;
+      transition: all 0.12s ease;
+      box-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+    }
+
+    :root[data-ccb-theme="dark"] .drop-indicator {
+      box-shadow: 0 0 12px rgba(137, 180, 250, 0.6);
+      opacity: 0.8;
+    }
+
+    .drop-indicator.vertical {
+      height: 3px;
+      width: 100%;
+      left: 0;
+      border-radius: 2px;
+    }
+
+    .drop-indicator.horizontal {
+      width: 3px;
+      height: 100%;
+      top: 0;
+      border-radius: 2px;
+    }
+
+    .drop-indicator.top { top: -2px; }
+    .drop-indicator.bottom { bottom: -2px; }
+    .drop-indicator.left { left: -2px; }
+    .drop-indicator.right { right: -2px; }
+
+    @media (prefers-contrast: high) {
+      .drop-indicator {
+        opacity: 1;
+        border: 2px solid var(--blue);
+      }
+
+      .pane.drag-over {
+        border-width: 3px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pane,
+      .drop-indicator {
+        transition: none !important;
+      }
+
+      .pane.dragging,
+      .pane.drag-over {
+        transform: none;
+      }
     }
 
     .layout-col {
@@ -695,6 +860,7 @@
       color: var(--text);
       text-align: left;
       cursor: pointer;
+      overflow: hidden;
     }
 
     .pane.selected {
@@ -2478,11 +2644,69 @@ main = "demo:codex"
       };
     }
 
-    function initializeVisualState(editor, { selectVersion = true } = {}) {
+    function extractPercents(tree, path = [], result = {}) {
+      if (!tree) return result;
+      if (tree.kind !== "leaf" && (tree.percent !== null && tree.percent !== undefined)) {
+        result[pathKey(path)] = tree.percent;
+      }
+      if (tree.kind !== "leaf") {
+        extractPercents(tree.left, [...path, "left"], result);
+        extractPercents(tree.right, [...path, "right"], result);
+      }
+      return result;
+    }
+
+    function restorePercents(tree, percents, path = []) {
+      if (!tree) return;
+      const key = pathKey(path);
+      if (tree.kind !== "leaf" && percents[key] !== undefined) {
+        tree.percent = percents[key];
+      }
+      if (tree.kind !== "leaf") {
+        restorePercents(tree.left, percents, [...path, "left"]);
+        restorePercents(tree.right, percents, [...path, "right"]);
+      }
+    }
+
+    function initializeVisualState(editor, { selectVersion = true, preservePercents = false } = {}) {
+      let savedPercents = {};
+      if (preservePercents && visualState && Array.isArray(visualState.windows)) {
+        visualState.windows.forEach((windowItem) => {
+          savedPercents[windowItem.name] = extractPercents(windowItem.tree);
+        });
+      }
+
       visualState = clone(editor || defaultVisualState());
       if (!Array.isArray(visualState.windows) || !visualState.windows.length) {
         visualState = defaultVisualState();
       }
+
+      // 尝试从 localStorage 恢复 percent（持久化支持）
+      try {
+        const storedPercents = localStorage.getItem('ccb_pane_percents');
+        if (storedPercents) {
+          const allPercents = JSON.parse(storedPercents);
+          visualState.windows.forEach((windowItem) => {
+            const percents = allPercents[windowItem.name];
+            if (percents) {
+              restorePercents(windowItem.tree, percents);
+            }
+          });
+        }
+      } catch (e) {
+        // localStorage 不可用或数据损坏，忽略
+      }
+
+      // preservePercents 优先级更高（覆盖 localStorage）
+      if (preservePercents) {
+        visualState.windows.forEach((windowItem) => {
+          const percents = savedPercents[windowItem.name];
+          if (percents) {
+            restorePercents(windowItem.tree, percents);
+          }
+        });
+      }
+
       selectedWindowIndex = Math.max(0, visualState.windows.findIndex((item) => item.name === visualState.entry_window));
       selectedPanePath = firstLeafPath(visualState.windows[selectedWindowIndex].tree);
       visualUndo = [];
@@ -2622,25 +2846,125 @@ main = "demo:codex"
       scheduleVisualRender();
     }
 
-    function renderLayoutNode(node, parentKind = null) {
+    /**
+     * 将同方向的二叉树展开为扁平列表，计算每个元素的目标尺寸比例
+     *
+     * @param {Object} node - 当前节点
+     * @param {string} targetKind - 目标分组方向 (horizontal/vertical)
+     * @param {number} parentSize - 父节点分配给当前节点的尺寸比例 (0-100)
+     * @returns {Array} [{ node, targetSize }]
+     */
+    function flattenGroup(node, targetKind, parentSize = 100) {
       if (node.kind === "leaf") {
-        let textValue = node.provider
+        return [{ node, targetSize: parentSize }];
+      }
+
+      if (node.kind !== targetKind) {
+        // 遇到不同方向的分支，作为一个整体返回
+        return [{ node, targetSize: parentSize }];
+      }
+
+      // 同方向，继续展开
+      const leftPercent = node.percent || 50;
+      const rightPercent = 100 - leftPercent;
+
+      // 计算 left 和 right 各自分配到的实际尺寸
+      const leftSize = (parentSize * leftPercent) / 100;
+      const rightSize = (parentSize * rightPercent) / 100;
+
+      const leftItems = flattenGroup(node.left, targetKind, leftSize);
+      const rightItems = flattenGroup(node.right, targetKind, rightSize);
+
+      return [...leftItems, ...rightItems];
+    }
+
+    /**
+     * 使用 CCB 倒序切分算法计算 @N 值
+     *
+     * CCB 规则：
+     * - A, B, C 表示倒序切分：先切 C，再切 B，A 拿剩余
+     * - 第一个元素的 @N 无效（它是宿主，拿最终剩余）
+     * - 后续元素的 @N 表示占当前剩余空间的百分比
+     *
+     * @param {Array} items - [{ node, targetSize }]
+     * @returns {Array} [{ node, atN }] - atN 为 null 表示不需要添加 @N
+     */
+    function calculateAtN(items) {
+      const n = items.length;
+      if (n === 0) return [];
+
+      const targets = items.map(item => item.targetSize);
+      const result = items.map(item => ({ node: item.node, atN: null }));
+      if (n === 1) return result;
+
+      // CCB 倒序切分：最后一个先切，第一个(宿主)拿最终剩余
+      // 每个 @N = 该 pane 目标尺寸 / 当前剩余空间 * 100
+      let host = 100;
+      for (let i = n - 1; i >= 1; i--) {
+        const atN = Math.round((targets[i] / host) * 100);
+        result[i].atN = Math.max(1, Math.min(99, atN));
+        const got = (host * result[i].atN) / 100;
+        host = host - got;
+      }
+      // result[0].atN 保持 null（宿主，@N 无效）
+      return result;
+    }
+
+    /**
+     * 将布局树渲染为 CCB layout DSL 字符串，并按拖拽比例生成正确的 @N。
+     *
+     * CCB 的 @N 规则：只有叶子能带 @N，不能给分组加 @N；一个分组的比例
+     * 由它的“宿主叶子”（该组第一个 pane）的 @N 承载。因此嵌套分组的比例
+     * 需要通过 inheritedAtN 逐层下传到最内层的宿主叶子。
+     *
+     * @param {Object} node - 要渲染的节点
+     * @param {number|null} inheritedAtN - 从父层继承、需由本节点宿主叶子承载的 @N
+     * @returns {string} 渲染后的 layout 字符串
+     */
+    function renderLayoutNode(node, inheritedAtN = null) {
+      if (node.kind === "leaf") {
+        let text = node.provider
           ? `${node.name}:${node.provider}${node.workspace_mode === "worktree" ? "(worktree)" : ""}`
           : node.name;
-        if (node.percent !== null && node.percent !== undefined) textValue += `@${node.percent}`;
-        return textValue;
-      }
-      const separator = node.kind === "horizontal" ? "; " : ", ";
-      const rank = { horizontal: 1, vertical: 2, leaf: 3 };
-      const renderChild = (child) => {
-        const childText = renderLayoutNode(child, node.kind);
-        if (child.kind === "leaf") return childText;
-        if (rank[child.kind] < rank[node.kind] || (node.kind === "vertical" && child.kind === "horizontal")) {
-          return `(${childText})`;
+        if (inheritedAtN !== null && inheritedAtN !== undefined) {
+          text += `@${inheritedAtN}`;
         }
-        return childText;
-      };
-      return `${renderChild(node.left)}${separator}${renderChild(node.right)}`;
+        return text;
+      }
+
+      const separator = node.kind === "horizontal" ? "; " : ", ";
+
+      // 展开同方向的分组，并为组内每个元素倒序求解 @N
+      const items = flattenGroup(node, node.kind, 100);
+      const itemsWithAtN = calculateAtN(items);
+
+      const parts = itemsWithAtN.map((item, index) => {
+        const { node: childNode, atN } = item;
+
+        // 第一个元素（宿主）承载从父层继承的 @N（父组的比例）；
+        // 后续元素用自己在本组内倒序切分算出的 @N。
+        const effectiveAtN = (index === 0) ? inheritedAtN : atN;
+
+        if (childNode.kind === "leaf") {
+          let text = childNode.provider
+            ? `${childNode.name}:${childNode.provider}${childNode.workspace_mode === "worktree" ? "(worktree)" : ""}`
+            : childNode.name;
+          if (effectiveAtN !== null && effectiveAtN !== undefined) {
+            text += `@${effectiveAtN}`;
+          }
+          return text;
+        }
+        // 分支节点：把 effectiveAtN 继续下传给它内部的宿主叶子
+        let text = renderLayoutNode(childNode, effectiveAtN);
+        // `,`(vertical) 比 `;`(horizontal) 结合更紧，所以竖向组里的横向子组
+        // 必须加括号，否则它的 `;` 会在上层被切开，拓扑被解析成另一种布局。
+        if (node.kind === "vertical" && childNode.kind === "horizontal") {
+          text = `(${text})`;
+        }
+        return text;
+      });
+
+      return parts.join(separator);
     }
 
     function syncDocumentFromVisual() {
@@ -2672,6 +2996,20 @@ main = "demo:codex"
       updateCompactPreviews();
       setActionStatus(t("draftChanged"));
       const documentValue = syncDocumentFromVisual();
+
+      // 保存 percent 到 localStorage（持久化支持）
+      try {
+        const allPercents = {};
+        if (Array.isArray(visualState.windows)) {
+          visualState.windows.forEach((windowItem) => {
+            allPercents[windowItem.name] = extractPercents(windowItem.tree);
+          });
+        }
+        localStorage.setItem('ccb_pane_percents', JSON.stringify(allPercents));
+      } catch (e) {
+        // localStorage 不可用，忽略
+      }
+
       if (!window.location.protocol.startsWith("http")) return;
       const revision = ++visualRenderRevision;
       clearTimeout(visualRenderTimer);
@@ -2703,9 +3041,18 @@ main = "demo:codex"
 
     function renderTreeHtml(node, path = []) {
       if (node.kind !== "leaf") {
-        return `<div class="layout-node branch ${node.kind}">
-          ${renderTreeHtml(node.left, [...path, "left"])}
-          ${renderTreeHtml(node.right, [...path, "right"])}
+        const isVertical = node.kind === "vertical";
+        const percent = node.percent || 50;
+        const resizeHandle = `<div class="resize-handle ${node.kind}" data-branch-path="${pathKey(path)}" data-percent="${percent}"></div>`;
+
+        return `<div class="layout-node branch ${node.kind}" data-branch-path="${pathKey(path)}">
+          <div class="pane-section left" style="${isVertical ? 'height' : 'width'}: ${percent}%;">
+            ${renderTreeHtml(node.left, [...path, "left"])}
+          </div>
+          ${resizeHandle}
+          <div class="pane-section right" style="${isVertical ? 'height' : 'width'}: ${100 - percent}%;">
+            ${renderTreeHtml(node.right, [...path, "right"])}
+          </div>
         </div>`;
       }
       const selected = pathKey(path) === pathKey(selectedPanePath);
@@ -2717,7 +3064,7 @@ main = "demo:codex"
            <span>${node.workspace_mode === "worktree" ? "worktree" : "inplace"}</span>
            ${overlay.role ? `<span>${escapeHtml(overlay.role)}</span>` : ""}`;
       return `<div class="layout-node">
-        <button type="button" class="pane ${selected ? "selected" : ""} ${rich ? "tool" : ""}" data-pane-path="${pathKey(path)}">
+        <button type="button" class="pane ${selected ? "selected" : ""} ${rich ? "tool" : ""}" data-pane-path="${pathKey(path)}" draggable="true" data-drag-agent="${escapeHtml(node.name)}">
           <span class="pane-name">${escapeHtml(node.name)}</span>
           <span class="pane-meta">${metadata}</span>
         </button>
@@ -2853,6 +3200,8 @@ main = "demo:codex"
         if (!container) return;
         container.innerHTML = renderTreeHtml(windowItem.tree);
         bindPaneSelection(container);
+        bindPaneDragDrop(container);
+        bindPaneResize(container);
       });
       renderInspector(document.getElementById("staticInspector"));
       renderInspector(document.getElementById("basicInspector"));
@@ -3160,7 +3509,7 @@ main = "demo:codex"
         state.className = "badge ok";
         state.dataset.state = "passed";
         state.textContent = t("passed");
-        if (visualDetached && result.editor) initializeVisualState(result.editor, { selectVersion: false });
+        if (visualDetached && result.editor) initializeVisualState(result.editor, { selectVersion: false, preservePercents: true });
         setActionStatus(`${t("configValid")}: ${result.agent_names.join(", ")}`);
         return true;
       } catch (error) {
@@ -3231,7 +3580,7 @@ main = "demo:codex"
         updateDigestBadge();
         draftDirty = false;
         if (result.validation && result.validation.editor) {
-          initializeVisualState(result.validation.editor, { selectVersion: false });
+          initializeVisualState(result.validation.editor, { selectVersion: false, preservePercents: true });
         }
         if (mode === "hot_reload") {
           document.getElementById("dryRunState").className = "badge ok";
@@ -3742,6 +4091,459 @@ active config: unchanged`;
     document.getElementById("saveActiveBtn").addEventListener("click", () => applyDraft("save"));
     document.getElementById("dryRunBtn").addEventListener("click", dryRunSavedConfig);
     document.getElementById("applyBtn").addEventListener("click", () => applyDraft("hot_reload"));
+
+    // ========================================================================
+    // Pane Drag & Drop 功能
+    // ========================================================================
+
+    let dragState = {
+      draggedPath: null,
+      draggedNode: null,
+      targetPath: null,
+      dropPosition: null
+    };
+
+    function calculateDropPosition(targetElement, event) {
+      const rect = targetElement.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const width = rect.width;
+      const height = rect.height;
+      const threshold = 0.35;
+
+      if (y < height * threshold) return "top";
+      if (y > height * (1 - threshold)) return "bottom";
+      if (x < width * threshold) return "left";
+      if (x > width * (1 - threshold)) return "right";
+
+      // 中心区域默认返回最近的边（不允许替换）
+      // 计算到四个边的距离，返回最近的边
+      const distances = {
+        top: y,
+        bottom: height - y,
+        left: x,
+        right: width - x
+      };
+
+      const nearest = Object.entries(distances).reduce((min, [pos, dist]) =>
+        dist < min.dist ? { pos, dist } : min
+      , { pos: 'top', dist: distances.top });
+
+      return nearest.pos;
+    }
+
+    function showDropIndicator(targetPane, position) {
+      removeDropIndicators();
+      if (position === "center") return;
+
+      const container = targetPane.closest(".layout-node");
+      if (!container) return;
+
+      const indicator = document.createElement("div");
+      indicator.className = `drop-indicator ${
+        position === "top" || position === "bottom" ? "vertical" : "horizontal"
+      } ${position}`;
+
+      // 红色指示线样式
+      indicator.style.cssText = `
+        position: absolute;
+        background: #ef4444;
+        opacity: 0.95;
+        z-index: 100;
+        pointer-events: none;
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.4);
+        ${position === "top" || position === "bottom"
+          ? "height: 6px; width: 100%; left: 0;"
+          : "width: 6px; height: 100%; top: 0;"}
+        ${position === "top" ? "top: -3px;" : ""}
+        ${position === "bottom" ? "bottom: -3px;" : ""}
+        ${position === "left" ? "left: -3px;" : ""}
+        ${position === "right" ? "right: -3px;" : ""}
+      `;
+
+      container.style.position = "relative";
+      container.appendChild(indicator);
+    }
+
+    function removeDropIndicators() {
+      document.querySelectorAll(".drop-indicator").forEach((el) => el.remove());
+    }
+
+    function findNodePath(tree, nodeName, currentPath = []) {
+      if (!tree) return null;
+      if (tree.kind === "leaf") {
+        return tree.name === nodeName ? currentPath : null;
+      }
+      const leftPath = findNodePath(tree.left, nodeName, [...currentPath, "left"]);
+      if (leftPath) return leftPath;
+      return findNodePath(tree.right, nodeName, [...currentPath, "right"]);
+    }
+
+    function removePaneFromTree(tree, path) {
+      if (!path || path.length === 0) return tree;
+
+      const parentPath = path.slice(0, -1);
+      const side = path[path.length - 1];
+
+      if (parentPath.length === 0) {
+        const parent = tree;
+        if (parent.kind === "leaf") return tree;
+        const sibling = clone(parent[side === "left" ? "right" : "left"]);
+        return sibling;
+      }
+
+      const parent = nodeAtPath(tree, parentPath);
+      if (!parent || parent.kind === "leaf") return tree;
+
+      const sibling = clone(parent[side === "left" ? "right" : "left"]);
+      return replaceNodeAtPath(tree, parentPath, sibling);
+    }
+
+    function insertPaneAtPosition(tree, targetPath, newNode, position) {
+      const target = nodeAtPath(tree, targetPath);
+      if (!target) return tree;
+
+      // 只允许插入，不允许替换
+      const kind = (position === "top" || position === "bottom") ? "vertical" : "horizontal";
+      const isLeft = (position === "top" || position === "left");
+
+      const newBranch = {
+        kind,
+        left: isLeft ? clone(newNode) : clone(target),
+        right: isLeft ? clone(target) : clone(newNode)
+      };
+
+      return replaceNodeAtPath(tree, targetPath, newBranch);
+    }
+
+    function isSamePath(path1, path2) {
+      if (!path1 || !path2) return false;
+      if (path1.length !== path2.length) return false;
+      return path1.every((part, index) => part === path2[index]);
+    }
+
+    function isAncestorPath(ancestorPath, descendantPath) {
+      if (!ancestorPath || !descendantPath) return false;
+      if (ancestorPath.length >= descendantPath.length) return false;
+      return ancestorPath.every((part, index) => part === descendantPath[index]);
+    }
+
+    function performPaneDrop(fromPath, toPath, position) {
+      if (isSamePath(fromPath, toPath)) return;
+      if (isAncestorPath(fromPath, toPath)) return;
+
+      mutateVisual(() => {
+        const windowItem = selectedWindow();
+        if (!windowItem) return;
+
+        // 1. 保存被拖拽节点和目标节点的名称（移除前保存）
+        const draggedNode = nodeAtPath(windowItem.tree, fromPath);
+        const targetNode = nodeAtPath(windowItem.tree, toPath);
+
+        if (!draggedNode || !targetNode) return;
+
+        const draggedNodeCopy = clone(draggedNode);
+        const targetNodeName = targetNode.name;
+
+        // 2. 从原位置移除（相邻 pane 自动填充）
+        windowItem.tree = removePaneFromTree(windowItem.tree, fromPath);
+
+        // 3. 通过名称重新查找目标节点（树已改变）
+        const newToPath = findNodePath(windowItem.tree, targetNodeName);
+
+        if (!newToPath) {
+          // 目标节点在移除后丢失（理论上不应发生），放弃本次操作
+          console.warn("performPaneDrop: 目标节点在移除后丢失", targetNodeName);
+          return;
+        }
+
+        // 4. 在目标位置插入（创建新的分割）
+        windowItem.tree = insertPaneAtPosition(windowItem.tree, newToPath, draggedNodeCopy, position);
+
+        // 5. 选中被拖拽的 pane
+        const finalPath = findNodePath(windowItem.tree, draggedNodeCopy.name);
+        if (finalPath) {
+          selectedPanePath = finalPath;
+        }
+      });
+    }
+
+    // 构建平衡的二叉树（尽量接近网格布局）
+    function buildBalancedTree(panes) {
+      if (panes.length === 0) {
+        return { kind: "leaf", name: uniqueAgentName(), provider: "codex", workspace_mode: "inplace", percent: null };
+      }
+
+      if (panes.length === 1) {
+        return clone(panes[0]);
+      }
+
+      // 对于偶数个 pane，尝试构建 2x2 网格
+      // 对于奇数个 pane，尝试构建接近的布局
+
+      if (panes.length === 2) {
+        // 2 个 pane：水平分割
+        return {
+          kind: "horizontal",
+          left: clone(panes[0]),
+          right: clone(panes[1])
+        };
+      }
+
+      if (panes.length === 3) {
+        // 3 个 pane：左边 1 个，右边 2 个垂直分割
+        return {
+          kind: "horizontal",
+          left: clone(panes[0]),
+          right: {
+            kind: "vertical",
+            left: clone(panes[1]),
+            right: clone(panes[2])
+          }
+        };
+      }
+
+      if (panes.length === 4) {
+        // 4 个 pane：2x2 网格
+        return {
+          kind: "horizontal",
+          left: {
+            kind: "vertical",
+            left: clone(panes[0]),
+            right: clone(panes[1])
+          },
+          right: {
+            kind: "vertical",
+            left: clone(panes[2]),
+            right: clone(panes[3])
+          }
+        };
+      }
+
+      // 5+ 个 pane：递归分割
+      const mid = Math.ceil(panes.length / 2);
+      return {
+        kind: "horizontal",
+        left: buildBalancedTree(panes.slice(0, mid)),
+        right: buildBalancedTree(panes.slice(mid))
+      };
+    }
+
+    function bindPaneDragDrop(container) {
+      if (!container) return;
+
+      const panes = container.querySelectorAll(".pane[draggable]");
+
+      panes.forEach((pane) => {
+        pane.addEventListener("dragstart", (event) => {
+          const pathStr = pane.dataset.panePath;
+          if (!pathStr) return;
+
+          dragState.draggedPath = pathStr.split(".");
+          dragState.draggedNode = nodeAtPath(selectedWindow().tree, dragState.draggedPath);
+
+          pane.classList.add("dragging");
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", pane.dataset.dragAgent || "pane");
+
+          const preview = pane.cloneNode(true);
+          preview.style.opacity = "0.8";
+          preview.style.transform = "rotate(2deg)";
+          document.body.appendChild(preview);
+          event.dataTransfer.setDragImage(preview, event.offsetX, event.offsetY);
+
+          setTimeout(() => {
+            if (document.body.contains(preview)) {
+              document.body.removeChild(preview);
+            }
+          }, 0);
+        });
+
+        pane.addEventListener("dragend", (event) => {
+          pane.classList.remove("dragging");
+          container.querySelectorAll(".pane").forEach((p) => {
+            p.classList.remove("drag-over");
+          });
+          removeDropIndicators();
+
+          dragState = {
+            draggedPath: null,
+            draggedNode: null,
+            targetPath: null,
+            dropPosition: null
+          };
+        });
+
+        pane.addEventListener("dragenter", (event) => {
+          if (!dragState.draggedPath) return;
+
+          const targetPathStr = pane.dataset.panePath;
+          if (!targetPathStr) return;
+
+          const targetPath = targetPathStr.split(".");
+
+          if (isSamePath(dragState.draggedPath, targetPath)) return;
+          if (isAncestorPath(dragState.draggedPath, targetPath)) return;
+
+          event.preventDefault();
+          pane.classList.add("drag-over");
+        });
+
+        pane.addEventListener("dragover", (event) => {
+          if (!dragState.draggedPath) return;
+
+          const targetPathStr = pane.dataset.panePath;
+          if (!targetPathStr) return;
+
+          const targetPath = targetPathStr.split(".");
+
+          if (isSamePath(dragState.draggedPath, targetPath)) return;
+          if (isAncestorPath(dragState.draggedPath, targetPath)) return;
+
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+
+          const position = calculateDropPosition(pane, event);
+          dragState.targetPath = targetPath;
+          dragState.dropPosition = position;
+
+          showDropIndicator(pane, position);
+        });
+
+        pane.addEventListener("dragleave", (event) => {
+          if (event.target === pane && !pane.contains(event.relatedTarget)) {
+            pane.classList.remove("drag-over");
+          }
+        });
+
+        pane.addEventListener("drop", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          pane.classList.remove("drag-over");
+          removeDropIndicators();
+
+          if (!dragState.draggedPath || !dragState.targetPath || !dragState.dropPosition) {
+            return;
+          }
+
+          performPaneDrop(
+            dragState.draggedPath,
+            dragState.targetPath,
+            dragState.dropPosition
+          );
+        });
+      });
+    }
+
+    // ============================================================================
+    // Pane Resize 功能
+    // ============================================================================
+
+    function bindPaneResize(container) {
+      if (!container) return;
+
+      const resizeHandles = container.querySelectorAll(".resize-handle");
+
+      resizeHandles.forEach((handle) => {
+        let isResizing = false;
+        let startX = 0;
+        let startY = 0;
+        let startPercent = 0;
+        let branchPath = null;
+        let branchElement = null;
+        let isVertical = false;
+
+        handle.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          isResizing = true;
+          startX = e.clientX;
+          startY = e.clientY;
+
+          const pathStr = handle.dataset.branchPath;
+          // 空字符串表示根节点，路径是 []
+          branchPath = pathStr === "" ? [] : pathStr.split(".");
+          startPercent = parseFloat(handle.dataset.percent) || 50;
+          branchElement = handle.parentElement;
+          isVertical = handle.classList.contains("vertical");
+
+          document.body.style.cursor = isVertical ? "ns-resize" : "ew-resize";
+          document.body.style.userSelect = "none";
+        });
+
+        const handleMouseMove = (e) => {
+          if (!isResizing || !branchElement) {
+            return;
+          }
+
+          const rect = branchElement.getBoundingClientRect();
+          let newPercent;
+
+          if (isVertical) {
+            const deltaY = e.clientY - startY;
+            const totalHeight = rect.height;
+            const deltaPercent = (deltaY / totalHeight) * 100;
+            newPercent = startPercent + deltaPercent;
+          } else {
+            const deltaX = e.clientX - startX;
+            const totalWidth = rect.width;
+            const deltaPercent = (deltaX / totalWidth) * 100;
+            newPercent = startPercent + deltaPercent;
+          }
+
+          // 限制在 10% - 90% 之间
+          newPercent = Math.max(10, Math.min(90, newPercent));
+
+          // 实时更新视觉
+          const leftSection = branchElement.querySelector(".pane-section.left");
+          const rightSection = branchElement.querySelector(".pane-section.right");
+
+          if (leftSection && rightSection) {
+            if (isVertical) {
+              leftSection.style.height = `${newPercent}%`;
+              rightSection.style.height = `${100 - newPercent}%`;
+            } else {
+              leftSection.style.width = `${newPercent}%`;
+              rightSection.style.width = `${100 - newPercent}%`;
+            }
+          }
+
+          handle.dataset.percent = newPercent.toFixed(1);
+        };
+
+        const handleMouseUp = (e) => {
+          if (!isResizing) return;
+
+          isResizing = false;
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+
+          if (!branchPath) return;
+
+          const finalPercent = parseFloat(handle.dataset.percent);
+
+          // 更新树结构中的 percent 值
+          mutateVisual(() => {
+            const windowItem = selectedWindow();
+            if (!windowItem) return;
+
+            const branchNode = nodeAtPath(windowItem.tree, branchPath);
+            if (branchNode && branchNode.kind !== "leaf") {
+              branchNode.percent = finalPercent;
+            }
+          });
+
+          branchPath = null;
+          branchElement = null;
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+      });
+    }
+
   </script>
 </body>
 </html>
