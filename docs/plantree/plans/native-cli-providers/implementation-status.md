@@ -53,6 +53,14 @@ skill inheritance. The installed dev runtime materialized those four skills
 for both `demo` and `agent3`; after restart, job `job_2f830698377f` visibly
 returned the exact four-skill inventory from the `demo` pane.
 
+A later release workflow exposed that OMP can emit
+`agent_end(willContinue=false)` with assistant `stop_reason=tool_use` and then
+continue executing tools. CCB prematurely terminalized that sequence and
+cleared request attribution. The source repair now keeps `tool_use` pending in
+both the generated extension and the Python pane adapter. Focused automated
+verification and installed-runtime multi-tool requalification are the current
+gate before release publication.
+
 Kimi follow-up receipt and diagnostics hardening has landed in source. This work
 is explicitly Kimi-only: it does not change default provider behavior for Codex,
 Claude, Gemini, OpenCode, DeepSeek, MiMo, AGY, or next-wave native CLI

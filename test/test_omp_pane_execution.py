@@ -11,6 +11,7 @@ from provider_backends.omp.execution import (
     OMP_EXECUTION_MODE_ENV,
     OmpExecutionAdapter,
 )
+from provider_backends.omp.launcher import _omp_completion_extension_source
 from provider_backends.omp.pane_execution import (
     OMP_PANE_MODE,
     OmpPaneExecutionAdapter,
@@ -132,6 +133,16 @@ def _assistant(text: str, *, response_id: str = "response-final") -> dict:
     }
 
 
+def _tool_use_assistant(*, response_id: str = "response-tool") -> dict:
+    return {
+        "text": "",
+        "stop_reason": "tool_use",
+        "error": "",
+        "response_id": response_id,
+        "timestamp": 123,
+    }
+
+
 def _append(path: Path, *events: dict) -> None:
     with path.open("a", encoding="utf-8") as stream:
         for event in events:
@@ -201,6 +212,54 @@ def test_omp_visible_pane_dispatches_exact_prompt_and_waits_for_final_agent_end(
     assert result.decision.reply == "OMP_OK"
     assert result.decision.diagnostics["terminal_authority"] == (
         "omp_extension_agent_end_final"
+    )
+
+
+def test_omp_tool_use_settle_is_progress_until_final_stop(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    adapter, submission, _, events, _ = _start_ready(monkeypatch, tmp_path)
+    req_id = submission.job_id
+    _append(
+        events,
+        _event("request_start", req_id=req_id, dispatch_matched=True),
+        _event("tool_start", req_id=req_id, tool_name="bash", tool_call_id="call-1"),
+        _event("tool_end", req_id=req_id, tool_name="bash", tool_call_id="call-1"),
+        _event(
+            "agent_end",
+            req_id=req_id,
+            will_continue=False,
+            assistant=_tool_use_assistant(),
+        ),
+        _event("agent_settled", req_id=req_id, assistant=_tool_use_assistant()),
+    )
+
+    progress = adapter.poll(submission, now="2026-09-05T00:00:02Z")
+
+    assert progress is not None
+    assert progress.decision is None
+    assert progress.submission.runtime_state["anchor_seen"] is True
+    _append(
+        events,
+        _event("assistant_message", req_id=req_id, assistant=_assistant("OMP_FINAL")),
+        _event("agent_end", req_id=req_id, assistant=_assistant("OMP_FINAL")),
+        _event("agent_settled", req_id=req_id, assistant=_assistant("OMP_FINAL")),
+    )
+
+    result = adapter.poll(progress.submission, now="2026-09-05T00:00:03Z")
+
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert result.decision.reply == "OMP_FINAL"
+
+
+def test_omp_extension_keeps_tool_use_agent_end_bound_to_active_request() -> None:
+    source = _omp_completion_extension_source()
+
+    assert (
+        'event?.willContinue === true || latestAssistant?.stop_reason === "tool_use"'
+        in source
     )
 
 

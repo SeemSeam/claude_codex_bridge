@@ -1,7 +1,7 @@
 # OMP Visible-Pane Completion
 
 Date: 2026-09-05
-Status: source implementation plus authenticated source and installed-runtime acceptance complete; awaiting commit
+Status: tool-loop terminalization repair implemented; live installed-runtime requalification pending
 
 ## Goal
 
@@ -23,8 +23,12 @@ for explicit rollback and persisted-job compatibility.
   launch session, runtime instance, and one-time dispatch id before terminal
   evidence is accepted.
 - OMP 18.1.10 exposes `agent_end.willContinue` rather than Pi's
-  `agent_settled`. The OMP extension emits the normalized settle event only
-  when `willContinue !== true`; continuation events remain progress.
+  `agent_settled`. The field is not sufficient terminal evidence: multi-tool
+  runs can emit `willContinue=false` with assistant `stop_reason=tool_use` and
+  continue afterward. The OMP extension therefore emits the normalized settle
+  event only when `willContinue !== true` and the assistant stop reason is not
+  `tool_use`; the Python adapter independently ignores a legacy or stale
+  `agent_settled` carrying `tool_use`.
 - Malformed complete sidecar records fail closed. Partial trailing records wait
   for completion. Foreign actor, launch-session, runtime-instance, and request
   events cannot complete a job.
@@ -109,3 +113,21 @@ through `job_1aca6c4f562d`. Both panes visibly showed the skill load, chained
 command, child request/reply, and continuation result. Each child and
 continuation trace recorded one attempt, one reply, `status=completed`, and
 `omp_run_stop`; all queues returned to zero.
+
+## Multi-Tool Incident And Repair
+
+Three release-oriented asks on 2026-09-05 exposed a lifecycle edge case that
+the earlier short acceptance prompts did not cover. Job `job_33df6daf00c2`
+executed several tools and then called `yield`; OMP emitted
+`agent_end(will_continue=false, stop_reason=tool_use)`, while the native agent
+continued for about 98 seconds and eventually produced a normal `stop`. The
+extension had already emitted `agent_settled` and cleared the active request,
+so CCB returned `incomplete / omp_run_finished:tool_use` and all later tool and
+final-answer events lost their request id. A following ask was then admitted
+into the still-running native turn and aborted.
+
+The repair treats `tool_use` as progress in both the generated OMP extension
+and the Python pane adapter. Regression coverage replays the observed false
+settle followed by a final `stop` and requires exactly the latter to complete
+the job. Live installed-runtime qualification must include a multi-tool ask,
+not only a direct text reply, before this repair is considered landed.
