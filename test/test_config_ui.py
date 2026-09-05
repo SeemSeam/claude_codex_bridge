@@ -110,6 +110,7 @@ def test_config_ui_capabilities_expose_role_catalog_without_private_paths(monkey
 
     assert payload['roles'] == [
         {
+            'v2_selectable': True,
             'role_id': 'agentroles.mother',
             'name': 'Role Mother',
             'description': 'Role design and source audit',
@@ -119,6 +120,47 @@ def test_config_ui_capabilities_expose_role_catalog_without_private_paths(monkey
             'source': 'agentroles',
         }
     ]
+
+
+def test_config_ui_marks_ccb_workflow_roles_unselectable_in_v2_but_keeps_ccb_self(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rolepacks.sources as role_sources
+
+    monkeypatch.setattr(
+        role_sources,
+        'role_catalog_status',
+        lambda **_: tuple(
+            {'role_id': role_id, 'status': 'current'}
+            for role_id in (
+                'agentroles.ccb_frontdesk',
+                'agentroles.ccb_worker',
+                'agentroles.ccb_self',
+                'agentroles.coder',
+                'agentroles.code_reviewer',
+                'agentroles.frontend_engineer',
+            )
+        ),
+    )
+
+    rows = {
+        str(row['role_id']): row
+        for row in config_ui_module._config_ui_role_catalog()
+    }
+
+    assert rows['agentroles.ccb_frontdesk']['v2_selectable'] is False
+    assert rows['agentroles.ccb_worker']['v2_selectable'] is False
+    assert rows['agentroles.ccb_self']['v2_selectable'] is True
+    assert rows['agentroles.coder']['v2_selectable'] is True
+    assert rows['agentroles.code_reviewer']['v2_selectable'] is True
+    assert rows['agentroles.frontend_engineer']['v2_selectable'] is True
+
+
+def test_config_ui_v2_role_options_filter_catalog_but_preserve_current_value() -> None:
+    page = config_ui_asset_path().read_text(encoding='utf-8')
+
+    assert '.filter((row) => row && row.v2_selectable !== false)' in page
+    assert 'if (currentRole) ids.add(currentRole);' in page
 
 
 def test_config_ui_role_catalog_never_downloads_missing_default(

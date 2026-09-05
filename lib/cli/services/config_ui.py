@@ -513,18 +513,21 @@ def _config_ui_role_catalog() -> tuple[dict[str, object], ...]:
 
         return tuple(
             {
-                key: row.get(key)
-                for key in (
-                    'role_id',
-                    'name',
-                    'description',
-                    'version',
-                    'installed_version',
-                    'status',
-                    'source',
-                    'warning',
-                )
-                if key in row
+                'v2_selectable': _config_ui_v2_role_selectable(row.get('role_id')),
+                **{
+                    key: row.get(key)
+                    for key in (
+                        'role_id',
+                        'name',
+                        'description',
+                        'version',
+                        'installed_version',
+                        'status',
+                        'source',
+                        'warning',
+                    )
+                    if key in row
+                },
             }
             for row in role_catalog_status(
                 refresh_default=False,
@@ -536,6 +539,11 @@ def _config_ui_role_catalog() -> tuple[dict[str, object], ...]:
         # unusable.  The editor still preserves a currently configured role
         # and the full TOML editor remains available.
         return ()
+
+
+def _config_ui_v2_role_selectable(role_id: object) -> bool:
+    logical_name = str(role_id or '').strip().lower().rsplit('.', 1)[-1]
+    return logical_name == 'ccb_self' or not logical_name.startswith('ccb_')
 
 
 def _codex_models(
