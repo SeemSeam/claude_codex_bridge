@@ -1,11 +1,38 @@
 from __future__ import annotations
 
-from provider_backends.native_cli_support import build_native_cli_manifest
+from agents.models import RuntimeMode
+from completion.models import (
+    CompletionFamily,
+    CompletionSourceKind,
+    SelectorFamily,
+)
+from completion.profiles import CompletionManifest
 from provider_core.manifests import ProviderManifest
 
 
 def build_manifest() -> ProviderManifest:
-    return build_native_cli_manifest(provider="omp")
+    return ProviderManifest(
+        provider="omp",
+        supports_resume=True,
+        supports_permission_auto=False,
+        supports_stream_watch=False,
+        supports_subagents=False,
+        supports_workspace_attach=True,
+        runtime_profiles={
+            RuntimeMode.PANE_BACKED: CompletionManifest(
+                provider="omp",
+                runtime_mode=RuntimeMode.PANE_BACKED.value,
+                completion_family=CompletionFamily.SESSION_BOUNDARY,
+                completion_source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
+                supports_exact_completion=True,
+                supports_observed_completion=False,
+                supports_anchor_binding=True,
+                supports_reply_stability=False,
+                supports_terminal_reason=True,
+                selector_family=SelectorFamily.FINAL_MESSAGE,
+            ),
+        },
+    )
 
 
 __all__ = ["build_manifest"]

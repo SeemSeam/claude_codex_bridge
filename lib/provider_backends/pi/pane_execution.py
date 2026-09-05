@@ -56,15 +56,37 @@ class PiPaneExecutionAdapter:
     provider = "pi"
     restart_resume_supported = True
 
+    def __init__(
+        self,
+        *,
+        provider: str = "pi",
+        pane_mode: str = PI_PANE_MODE,
+        session_field_prefix: str = "pi",
+        session_loader=None,
+        terminal_event_type: str = "agent_settled",
+        terminal_authority: str = "pi_extension_agent_settled",
+        extension_ready_timeout_env: str = PI_EXTENSION_READY_TIMEOUT_ENV,
+        extension_ready_timeout_default: float = PI_EXTENSION_READY_TIMEOUT_DEFAULT,
+        persist_native_session: bool = True,
+    ) -> None:
+        self.provider = provider
+        self.pane_mode = pane_mode
+        self.session_field_prefix = session_field_prefix
+        self.session_loader = session_loader
+        self.terminal_event_type = terminal_event_type
+        self.terminal_authority = terminal_authority
+        self.extension_ready_timeout_env = extension_ready_timeout_env
+        self.extension_ready_timeout_default = extension_ready_timeout_default
+        self.persist_native_session = persist_native_session
+
     def restore_diagnostics(self) -> dict[str, object]:
         return {
             "resume_supported": True,
             "restore_mode": "exact_native_session",
-            "restore_reason": "pi_native_session_resume",
+            "restore_reason": f"{self.provider}_native_session_resume",
             "restore_detail": (
-                "Pi pane jobs persist the native session id and path after startup; "
-                "restore selects that session only when its managed path and working "
-                "directory still match"
+                f"{self.provider} pane jobs rebind to the exact live lifecycle "
+                "extension instance after execution-service restore"
             ),
         }
 
@@ -81,8 +103,8 @@ class PiPaneExecutionAdapter:
             provider=self.provider,
             source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
             now=now,
-            missing_session_reason="missing_pi_session",
-            load_session_fn=_load_session,
+            missing_session_reason=f"missing_{self.provider}_session",
+            load_session_fn=self._load_session,
             backend_for_session_fn=get_backend_for_session,
         )
         if isinstance(prepared, ProviderSubmission):
@@ -93,18 +115,24 @@ class PiPaneExecutionAdapter:
             return _start_error(
                 job,
                 now=now,
-                reason="pi_runtime_state_missing",
-                error="pi_session_payload_invalid",
+                provider=self.provider,
+                reason=f"{self.provider}_runtime_state_missing",
+                error=f"{self.provider}_session_payload_invalid",
             )
         launch_session_id = _text(
             session_data.get("ccb_session_id")
-            or session_data.get("pi_session_id")
+            or session_data.get(f"{self.session_field_prefix}_session_id")
         )
-        event_path = _path_value(session_data.get("pi_completion_event_log"))
-        dispatch_path = _path_value(session_data.get("pi_dispatch_event_log"))
+        event_path = _path_value(
+            session_data.get(f"{self.session_field_prefix}_completion_event_log")
+        )
+        dispatch_path = _path_value(
+            session_data.get(f"{self.session_field_prefix}_dispatch_event_log")
+        )
         runtime_dir = _path_value(session_data.get("runtime_dir"))
         path_error = _validate_runtime_paths(
             runtime_dir,
+            provider=self.provider,
             event_path=event_path,
             dispatch_path=dispatch_path,
         )
@@ -112,8 +140,9 @@ class PiPaneExecutionAdapter:
             return _start_error(
                 job,
                 now=now,
-                reason="pi_completion_extension_unavailable",
-                error=path_error or "pi_launch_session_id_missing",
+                provider=self.provider,
+                reason=f"{self.provider}_completion_extension_unavailable",
+                error=path_error or f"{self.provider}_launch_session_id_missing",
             )
 
         request_anchor = request_anchor_for_job(job.job_id)
@@ -129,8 +158,13 @@ class PiPaneExecutionAdapter:
         )
         actor = _text(job.agent_name)
         state: dict[str, object] = {
-            "mode": PI_PANE_MODE,
+            "mode": self.pane_mode,
             "provider": self.provider,
+            "session_field_prefix": self.session_field_prefix,
+            "terminal_authority": self.terminal_authority,
+            "extension_ready_timeout_env": self.extension_ready_timeout_env,
+            "extension_ready_timeout_default": self.extension_ready_timeout_default,
+            "persist_native_session": self.persist_native_session,
             "backend": prepared.backend,
             "pane_id": prepared.pane_id,
             "work_dir": str(prepared.work_dir),
@@ -139,7 +173,9 @@ class PiPaneExecutionAdapter:
             "launch_session_id": launch_session_id,
             "runtime_instance_id": "",
             "session_file": str(getattr(prepared.session, "session_file", "") or ""),
-            "session_dir": _text(session_data.get("pi_session_dir")),
+            "session_dir": _text(
+                session_data.get(f"{self.session_field_prefix}_session_dir")
+            ),
             "event_path": str(event_path),
             "dispatch_path": str(dispatch_path),
             "event_offset": 0,
@@ -172,7 +208,7 @@ class PiPaneExecutionAdapter:
             reply="",
             diagnostics={
                 "provider": self.provider,
-                "mode": PI_PANE_MODE,
+                "mode": self.pane_mode,
                 "workspace_path": str(prepared.work_dir),
                 "pane_id": prepared.pane_id,
                 "event_path": str(event_path),
@@ -186,10 +222,11 @@ class PiPaneExecutionAdapter:
             return _start_error(
                 job,
                 now=now,
+                provider=self.provider,
                 reason=(
                     str(decision.reason)
                     if decision is not None
-                    else "pi_pane_start_failed"
+                    else f"{self.provider}_pane_start_failed"
                 ),
                 error=str(
                     (decision.diagnostics if decision is not None else {}).get(
@@ -210,7 +247,7 @@ class PiPaneExecutionAdapter:
         *,
         now: str,
     ) -> ProviderPollResult | None:
-        if _text(submission.runtime_state.get("mode")) != PI_PANE_MODE:
+        if _text(submission.runtime_state.get("mode")) != self.pane_mode:
             return None
         state = dict(submission.runtime_state)
         backend = state.get("backend")
@@ -221,7 +258,7 @@ class PiPaneExecutionAdapter:
                 state,
                 now=now,
                 status=CompletionStatus.FAILED,
-                reason="pi_runtime_state_corrupt",
+                reason=f"{self.provider}_runtime_state_corrupt",
                 reply="",
                 confidence=CompletionConfidence.DEGRADED,
             )
@@ -256,7 +293,7 @@ class PiPaneExecutionAdapter:
                 state,
                 now=now,
                 status=CompletionStatus.INCOMPLETE,
-                reason="pi_native_protocol_invalid",
+                reason=f"{self.provider}_native_protocol_invalid",
                 reply="",
                 confidence=CompletionConfidence.DEGRADED,
                 diagnostics_extra={"protocol_error": batch.protocol_error},
@@ -287,7 +324,7 @@ class PiPaneExecutionAdapter:
                         state,
                         now=now,
                         status=CompletionStatus.INCOMPLETE,
-                        reason="pi_runtime_restarted",
+                        reason=f"{self.provider}_runtime_restarted",
                         reply="",
                         confidence=CompletionConfidence.DEGRADED,
                         diagnostics_extra={
@@ -297,8 +334,12 @@ class PiPaneExecutionAdapter:
                     )
                 _persist_native_session_fields(
                     state,
-                    native_session_id=_text(event.get("pi_session_id")),
-                    native_session_path=_text(event.get("pi_session_path")),
+                    native_session_id=_text(
+                        event.get(f"{self.session_field_prefix}_session_id")
+                    ),
+                    native_session_path=_text(
+                        event.get(f"{self.session_field_prefix}_session_path")
+                    ),
                     observed_at=_text(event.get("timestamp")),
                 )
                 continue
@@ -336,7 +377,7 @@ class PiPaneExecutionAdapter:
                                 seq=_next_seq(state),
                                 payload={
                                     "turn_id": request_anchor,
-                                    "source": "pi_completion_extension",
+                                    "source": f"{self.provider}_completion_extension",
                                     "runtime_instance_id": runtime_instance_id,
                                 },
                             )
@@ -389,7 +430,7 @@ class PiPaneExecutionAdapter:
                         },
                     )
                 )
-            elif event_type == "agent_settled":
+            elif event_type == self.terminal_event_type:
                 terminal_snapshot = snapshot or _snapshot_from_state(state)
                 break
 
@@ -403,7 +444,7 @@ class PiPaneExecutionAdapter:
                 state,
                 now=now,
                 status=CompletionStatus.INCOMPLETE,
-                reason="pi_request_binding_invalid",
+                reason=f"{self.provider}_request_binding_invalid",
                 reply="",
                 confidence=CompletionConfidence.DEGRADED,
                 items=items,
@@ -415,7 +456,7 @@ class PiPaneExecutionAdapter:
                 state,
                 now=now,
                 status=CompletionStatus.INCOMPLETE,
-                reason="pi_request_superseded",
+                reason=f"{self.provider}_request_superseded",
                 reply="",
                 confidence=CompletionConfidence.DEGRADED,
                 items=items,
@@ -428,7 +469,7 @@ class PiPaneExecutionAdapter:
                     state,
                     now=now,
                     status=CompletionStatus.INCOMPLETE,
-                    reason="pi_native_anchor_missing",
+                    reason=f"{self.provider}_native_anchor_missing",
                     reply="",
                     confidence=CompletionConfidence.DEGRADED,
                     items=items,
@@ -448,7 +489,7 @@ class PiPaneExecutionAdapter:
         return None
 
     def cancel(self, submission: ProviderSubmission) -> None:
-        if _text(submission.runtime_state.get("mode")) != PI_PANE_MODE:
+        if _text(submission.runtime_state.get("mode")) != self.pane_mode:
             return
         backend = submission.runtime_state.get("backend")
         pane_id = _text(submission.runtime_state.get("pane_id"))
@@ -475,11 +516,11 @@ class PiPaneExecutionAdapter:
     ) -> ProviderSubmission | None:
         del persisted_state
         state = dict(submission.runtime_state)
-        if _text(state.get("mode")) != PI_PANE_MODE:
+        if _text(state.get("mode")) != self.pane_mode:
             return None
         if context is None or not context.workspace_path:
             return None
-        session = _load_session(
+        session = self._load_session(
             Path(context.workspace_path).expanduser(),
             agent_name=_text(
                 getattr(job, "provider_instance", None) or job.agent_name
@@ -496,10 +537,14 @@ class PiPaneExecutionAdapter:
 
         launch_session_id = _text(
             session.data.get("ccb_session_id")
-            or session.data.get("pi_session_id")
+            or session.data.get(f"{self.session_field_prefix}_session_id")
         )
-        event_path = _text(session.data.get("pi_completion_event_log"))
-        dispatch_path = _text(session.data.get("pi_dispatch_event_log"))
+        event_path = _text(
+            session.data.get(f"{self.session_field_prefix}_completion_event_log")
+        )
+        dispatch_path = _text(
+            session.data.get(f"{self.session_field_prefix}_dispatch_event_log")
+        )
         if (
             launch_session_id != _text(state.get("launch_session_id"))
             or event_path != _text(state.get("event_path"))
@@ -537,6 +582,11 @@ class PiPaneExecutionAdapter:
         state["pane_id"] = str(pane_or_error)
         return replace(submission, runtime_state=state)
 
+    def _load_session(self, work_dir: Path, *, agent_name: str):
+        if self.session_loader is None:
+            return _load_session(work_dir, agent_name=agent_name)
+        return self.session_loader(work_dir, instance=agent_name)
+
 
 def _dispatch_if_ready(
     submission: ProviderSubmission,
@@ -558,7 +608,7 @@ def _dispatch_if_ready(
             state,
             now=now,
             status=CompletionStatus.INCOMPLETE,
-            reason="pi_native_protocol_invalid",
+            reason=_provider_reason(state, "native_protocol_invalid"),
             reply="",
             confidence=CompletionConfidence.DEGRADED,
             diagnostics_extra={"protocol_error": observation.protocol_error},
@@ -568,14 +618,14 @@ def _dispatch_if_ready(
             submission,
             state,
             now=now,
-            detail="pi_completion_event_tail_partial",
+            detail=_provider_reason(state, "completion_event_tail_partial"),
         )
     if not observation.ready or not observation.runtime_instance_id:
         return _ready_timeout_or_pending(
             submission,
             state,
             now=now,
-            detail="pi_completion_extension_not_ready",
+            detail=_provider_reason(state, "completion_extension_not_ready"),
         )
     if observation.busy:
         state["runtime_instance_id"] = observation.runtime_instance_id
@@ -590,7 +640,7 @@ def _dispatch_if_ready(
             state,
             now=now,
             status=CompletionStatus.FAILED,
-            reason="pi_runtime_state_corrupt",
+            reason=_provider_reason(state, "runtime_state_corrupt"),
             reply="",
             confidence=CompletionConfidence.DEGRADED,
             diagnostics_extra={"missing_pending_prompt": True},
@@ -611,7 +661,7 @@ def _dispatch_if_ready(
             state,
             now=now,
             status=CompletionStatus.FAILED,
-            reason="pi_pane_send_failed",
+            reason=_provider_reason(state, "pane_send_failed"),
             reply="",
             confidence=CompletionConfidence.DEGRADED,
             diagnostics_extra={"send_error": f"{type(exc).__name__}: {exc}"},
@@ -643,6 +693,8 @@ def _persist_native_session_fields(
     native_session_path: str,
     observed_at: str,
 ) -> None:
+    if not bool(state.get("persist_native_session")):
+        return
     session_file = _text(state.get("session_file"))
     session_dir = _text(state.get("session_dir"))
     if not native_session_id or not native_session_path or not session_file or not session_dir:
@@ -682,7 +734,7 @@ def _ready_timeout_or_pending(
         _text(state.get("ready_wait_started_at")) or submission.accepted_at,
         now,
     )
-    timeout_s = _extension_ready_timeout_s()
+    timeout_s = _extension_ready_timeout_s(state)
     state["extension_ready_wait_s"] = elapsed
     state["extension_ready_detail"] = detail
     if elapsed < timeout_s:
@@ -692,7 +744,7 @@ def _ready_timeout_or_pending(
         state,
         now=now,
         status=CompletionStatus.INCOMPLETE,
-        reason="pi_completion_extension_not_ready",
+        reason=_provider_reason(state, "completion_extension_not_ready"),
         reply="",
         confidence=CompletionConfidence.DEGRADED,
         diagnostics_extra={
@@ -753,27 +805,27 @@ def _settled_result(
 
     if outcome == "stop" and reply:
         status = CompletionStatus.COMPLETED
-        reason = "pi_run_stop"
+        reason = _provider_reason(state, "run_stop")
         confidence = CompletionConfidence.EXACT
         item_kind = CompletionItemKind.TURN_BOUNDARY
     elif outcome == "error":
         status = CompletionStatus.FAILED
-        reason = "pi_run_error"
+        reason = _provider_reason(state, "run_error")
         confidence = CompletionConfidence.EXACT
         item_kind = CompletionItemKind.ERROR
     elif outcome == "stop":
         status = CompletionStatus.INCOMPLETE
-        reason = "pi_empty_reply"
+        reason = _provider_reason(state, "empty_reply")
         confidence = CompletionConfidence.DEGRADED
         item_kind = CompletionItemKind.TURN_ABORTED
     elif not outcome:
         status = CompletionStatus.INCOMPLETE
-        reason = "pi_native_outcome_missing"
+        reason = _provider_reason(state, "native_outcome_missing")
         confidence = CompletionConfidence.DEGRADED
         item_kind = CompletionItemKind.TURN_ABORTED
     else:
         status = CompletionStatus.INCOMPLETE
-        reason = f"pi_run_finished:{outcome}"
+        reason = f"{_provider_reason(state, 'run_finished')}:{outcome}"
         confidence = CompletionConfidence.EXACT
         item_kind = CompletionItemKind.TURN_ABORTED
 
@@ -822,7 +874,7 @@ def _settled_result(
             "outcome_reason": outcome,
             "outcome_error": snapshot.error,
             "runtime_instance_id": _text(state.get("runtime_instance_id")),
-            "terminal_authority": "pi_extension_agent_settled",
+            "terminal_authority": _text(state.get("terminal_authority")),
         },
     )
 
@@ -859,7 +911,7 @@ def _terminal_result(
     )
     diagnostics = {
         **dict(submission.diagnostics or {}),
-        "mode": PI_PANE_MODE,
+        "mode": _text(state.get("mode")),
         "anchor_seen": bool(state.get("anchor_seen")),
         "prompt_sent": bool(state.get("prompt_sent")),
         "reply_chars": len(reply),
@@ -906,7 +958,7 @@ def _reply_delivery_result(
         diagnostics_extra={
             "reply_delivery": True,
             "delivery_status": "sent",
-            "submission_mode": PI_PANE_MODE,
+            "submission_mode": _text(state.get("mode")),
         },
     )
 
@@ -945,19 +997,20 @@ def _start_error(
     job: JobRecord,
     *,
     now: str,
+    provider: str,
     reason: str,
     error: str,
 ) -> ProviderSubmission:
     return ProviderSubmission(
         job_id=job.job_id,
         agent_name=job.agent_name,
-        provider="pi",
+        provider=provider,
         accepted_at=now,
         ready_at=now,
         source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
         reply="",
         diagnostics={
-            "provider": "pi",
+            "provider": provider,
             "mode": "error",
             "reason": reason,
             "error": error,
@@ -974,19 +1027,20 @@ def _start_error(
 def _validate_runtime_paths(
     runtime_dir: Path | None,
     *,
+    provider: str,
     event_path: Path | None,
     dispatch_path: Path | None,
 ) -> str:
     if runtime_dir is None:
-        return "pi_runtime_dir_missing"
+        return f"{provider}_runtime_dir_missing"
     if event_path is None:
-        return "pi_completion_event_log_missing"
+        return f"{provider}_completion_event_log_missing"
     if dispatch_path is None:
-        return "pi_dispatch_event_log_missing"
+        return f"{provider}_dispatch_event_log_missing"
     completion_dir = (runtime_dir / "completion").resolve()
     for label, path in (
-        ("pi_completion_event_log", event_path),
-        ("pi_dispatch_event_log", dispatch_path),
+        (f"{provider}_completion_event_log", event_path),
+        (f"{provider}_dispatch_event_log", dispatch_path),
     ):
         try:
             resolved = path.resolve()
@@ -1043,14 +1097,31 @@ def _int_value(value: object, default: int) -> int:
         return default
 
 
-def _extension_ready_timeout_s() -> float:
-    raw = _text(os.environ.get(PI_EXTENSION_READY_TIMEOUT_ENV))
+def _extension_ready_timeout_s(state: dict[str, object]) -> float:
+    timeout_env = _text(state.get("extension_ready_timeout_env"))
+    timeout_default = _float_value(
+        state.get("extension_ready_timeout_default"),
+        PI_EXTENSION_READY_TIMEOUT_DEFAULT,
+    )
+    raw = _text(os.environ.get(timeout_env)) if timeout_env else ""
     if not raw:
-        return PI_EXTENSION_READY_TIMEOUT_DEFAULT
+        return timeout_default
     try:
         return max(1.0, float(raw))
     except ValueError:
-        return PI_EXTENSION_READY_TIMEOUT_DEFAULT
+        return timeout_default
+
+
+def _float_value(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _provider_reason(state: dict[str, object], suffix: str) -> str:
+    provider = _text(state.get("provider")) or "pi"
+    return f"{provider}_{suffix}"
 
 
 def _seconds_between(start: str, end: str) -> float:

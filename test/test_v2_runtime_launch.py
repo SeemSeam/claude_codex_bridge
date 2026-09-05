@@ -2357,16 +2357,48 @@ def test_native_cli_launcher_builds_provider_state_payload(
         assert completion_event_log.stat().st_mode & 0o077 == 0
         assert dispatch_event_log.stat().st_mode & 0o077 == 0
     elif provider == 'omp':
+        extension_path = Path(payload['omp_completion_extension'])
+        completion_event_log = Path(payload['omp_completion_event_log'])
+        dispatch_event_log = Path(payload['omp_dispatch_event_log'])
         assert (
             f'PI_CODING_AGENT_DIR={shlex.quote(str(state_dir / "home" / ".omp" / "agent"))}'
+            in start_cmd
+        )
+        assert (
+            f'PI_CODING_AGENT_SESSION_DIR={shlex.quote(str(state_dir / "sessions"))}'
+            in start_cmd
+        )
+        assert (
+            f'CCB_OMP_COMPLETION_EVENTS={shlex.quote(str(completion_event_log))}'
+            in start_cmd
+        )
+        assert (
+            f'CCB_OMP_DISPATCH_EVENTS={shlex.quote(str(dispatch_event_log))}'
             in start_cmd
         )
         assert visible_parts == [
             default_executable,
             '--session-dir',
             str(state_dir / 'sessions'),
+            '--extension',
+            str(extension_path),
+            '--approval-mode',
+            'yolo',
             '--demo',
         ]
+        assert payload['omp_completion_schema_version'] == 1
+        assert extension_path.is_file()
+        assert completion_event_log.is_file()
+        assert dispatch_event_log.is_file()
+        extension_source = extension_path.read_text(encoding='utf-8')
+        assert 'pi.on("agent_settled"' not in extension_source
+        assert 'event?.willContinue === true' in extension_source
+        assert 'appendEvent("agent_settled"' in extension_source
+        assert 'pi.on("input"' in extension_source
+        assert 'CCB_OMP_COMPLETION_EVENTS' in extension_source
+        assert extension_path.stat().st_mode & 0o077 == 0
+        assert completion_event_log.stat().st_mode & 0o077 == 0
+        assert dispatch_event_log.stat().st_mode & 0o077 == 0
     elif provider == 'zai':
         assert visible_parts == [
             default_executable,

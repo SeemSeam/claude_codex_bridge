@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from provider_core.runtime_shared import provider_start_parts
+from provider_execution.active_runtime.polling_runtime.result import (
+    runtime_error_result,
+)
+from provider_execution.base import (
+    ProviderPollResult,
+    ProviderRuntimeContext,
+    ProviderSubmission,
+)
+from provider_execution.reliability import CompletionReliabilityPolicy
 
 from provider_backends.native_cli_support import (
     NativeCliExecutionConfig,
@@ -13,8 +23,139 @@ from provider_backends.native_cli_support import (
     NativeCliSubprocessAdapter,
 )
 
+OMP_EXECUTION_MODE_ENV = "CCB_OMP_EXECUTION_MODE"
+OMP_HEADLESS_MODE = "omp_run"
 
-def build_execution_adapter() -> NativeCliSubprocessAdapter:
+
+class OmpExecutionAdapter:
+    provider = "omp"
+    restart_resume_supported = True
+    completion_reliability_policy = CompletionReliabilityPolicy(
+        provider="omp",
+        primary_authority="omp_extension_agent_end_final",
+        no_terminal_timeout_s=0.0,
+    )
+
+    def __init__(self) -> None:
+        from .pane_execution import OmpPaneExecutionAdapter
+
+        self.pane = OmpPaneExecutionAdapter()
+        self.headless = build_headless_execution_adapter()
+
+    def restore_diagnostics(self) -> dict[str, object]:
+        return {
+            "resume_supported": True,
+            "restore_mode": "persisted_mode_dispatch",
+            "restore_reason": "omp_execution_mode_aware_restore",
+            "restore_detail": (
+                "Visible-pane jobs rebind to the exact live OMP extension "
+                "instance; persisted omp_run jobs retain the headless "
+                "resubmit contract"
+            ),
+        }
+
+    def start(
+        self,
+        job,
+        *,
+        context: ProviderRuntimeContext | None,
+        now: str,
+    ) -> ProviderSubmission:
+        adapter = (
+            self.headless
+            if _configured_execution_mode() == "headless"
+            else self.pane
+        )
+        return adapter.start(job, context=context, now=now)
+
+    def poll(
+        self,
+        submission: ProviderSubmission,
+        *,
+        now: str,
+    ) -> ProviderPollResult | None:
+        mode = str(submission.runtime_state.get("mode") or "")
+        if mode in {"passive", "error"}:
+            return runtime_error_result(
+                submission,
+                now=now,
+                reason=str(
+                    submission.runtime_state.get("reason")
+                    or "runtime_unavailable"
+                ),
+                error=str(submission.runtime_state.get("error") or ""),
+            )
+        adapter = self._adapter_for_mode(mode)
+        if adapter is None:
+            return runtime_error_result(
+                submission,
+                now=now,
+                reason="runtime_state_corrupt",
+                error=f"unsupported_omp_execution_mode:{mode or 'missing'}",
+            )
+        return adapter.poll(submission, now=now)
+
+    def cancel(self, submission: ProviderSubmission) -> None:
+        adapter = self._adapter_for_mode(
+            str(submission.runtime_state.get("mode") or "")
+        )
+        cancel = getattr(adapter, "cancel", None)
+        if callable(cancel):
+            cancel(submission)
+
+    def export_runtime_state(
+        self,
+        submission: ProviderSubmission,
+    ) -> dict[str, object]:
+        adapter = self._adapter_for_mode(
+            str(submission.runtime_state.get("mode") or "")
+        )
+        export = getattr(adapter, "export_runtime_state", None)
+        if callable(export):
+            return dict(export(submission))
+        state = dict(submission.runtime_state)
+        state.pop("backend", None)
+        return state
+
+    def resume(
+        self,
+        job,
+        submission: ProviderSubmission,
+        *,
+        context: ProviderRuntimeContext | None,
+        persisted_state,
+        now: str,
+    ) -> ProviderSubmission | None:
+        mode = str(submission.runtime_state.get("mode") or "")
+        if isinstance(persisted_state, dict):
+            mode = str(persisted_state.get("mode") or mode)
+        adapter = self._adapter_for_mode(mode)
+        resume = getattr(adapter, "resume", None)
+        if not callable(resume):
+            return None
+        return resume(
+            job,
+            submission,
+            context=context,
+            persisted_state=persisted_state,
+            now=now,
+        )
+
+    def _adapter_for_mode(self, mode: str):
+        from .pane_execution import OMP_PANE_MODE
+
+        if mode == OMP_PANE_MODE:
+            return self.pane
+        if mode == OMP_HEADLESS_MODE:
+            return self.headless
+        return None
+
+
+def build_execution_adapter() -> OmpExecutionAdapter:
+    return OmpExecutionAdapter()
+
+
+def build_headless_execution_adapter() -> NativeCliSubprocessAdapter:
     return NativeCliSubprocessAdapter(
         NativeCliExecutionConfig(
             provider="omp",
@@ -43,6 +184,11 @@ def build_execution_adapter() -> NativeCliSubprocessAdapter:
             require_outcome_reason=True,
         )
     )
+
+
+def _configured_execution_mode() -> str:
+    raw = str(os.environ.get(OMP_EXECUTION_MODE_ENV) or "").strip().lower()
+    return "headless" if raw == "headless" else "pane"
 
 
 def _build_command(request: NativeCliExecutionRequest) -> list[str]:
@@ -377,4 +523,11 @@ def _omp_time(value: Any) -> object | None:
     return None
 
 
-__all__ = ["build_execution_adapter", "observe_omp_json_output"]
+__all__ = [
+    "OMP_EXECUTION_MODE_ENV",
+    "OMP_HEADLESS_MODE",
+    "OmpExecutionAdapter",
+    "build_execution_adapter",
+    "build_headless_execution_adapter",
+    "observe_omp_json_output",
+]

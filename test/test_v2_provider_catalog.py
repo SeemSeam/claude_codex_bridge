@@ -91,7 +91,14 @@ def test_default_provider_catalog_contains_expected_profiles() -> None:
     assert pi.completion_source_kind is CompletionSourceKind.SESSION_EVENT_LOG
     assert pi.supports_exact_completion is True
     assert pi.supports_anchor_binding is True
-    for provider in ('qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'kiro', 'omp', 'zai', 'grok'):
+    omp = catalog.resolve_completion_manifest('omp', RuntimeMode.PANE_BACKED)
+    assert catalog.get('omp').supports_resume is True
+    assert omp.completion_family is CompletionFamily.SESSION_BOUNDARY
+    assert omp.completion_source_kind is CompletionSourceKind.SESSION_EVENT_LOG
+    assert omp.supports_exact_completion is True
+    assert omp.supports_observed_completion is False
+    assert omp.supports_anchor_binding is True
+    for provider in ('qwen', 'qoder', 'qoderclicn', 'cursor', 'copilot', 'crush', 'kiro', 'zai', 'grok'):
         native = catalog.resolve_completion_manifest(provider, RuntimeMode.PANE_BACKED)
         assert native.completion_family is CompletionFamily.STRUCTURED_RESULT
         assert native.completion_source_kind is CompletionSourceKind.STRUCTURED_RESULT_STREAM
