@@ -21,6 +21,7 @@ class OmpPaneExecutionAdapter(PiPaneExecutionAdapter):
             extension_ready_timeout_env=OMP_EXTENSION_READY_TIMEOUT_ENV,
             extension_ready_timeout_default=OMP_EXTENSION_READY_TIMEOUT_DEFAULT,
             persist_native_session=False,
+            intermediate_stop_reasons=("tool_use",),
         )
 
 

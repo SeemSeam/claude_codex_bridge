@@ -68,6 +68,7 @@ class PiPaneExecutionAdapter:
         extension_ready_timeout_env: str = PI_EXTENSION_READY_TIMEOUT_ENV,
         extension_ready_timeout_default: float = PI_EXTENSION_READY_TIMEOUT_DEFAULT,
         persist_native_session: bool = True,
+        intermediate_stop_reasons: tuple[str, ...] = (),
     ) -> None:
         self.provider = provider
         self.pane_mode = pane_mode
@@ -78,6 +79,7 @@ class PiPaneExecutionAdapter:
         self.extension_ready_timeout_env = extension_ready_timeout_env
         self.extension_ready_timeout_default = extension_ready_timeout_default
         self.persist_native_session = persist_native_session
+        self.intermediate_stop_reasons = frozenset(intermediate_stop_reasons)
 
     def restore_diagnostics(self) -> dict[str, object]:
         return {
@@ -431,7 +433,10 @@ class PiPaneExecutionAdapter:
                     )
                 )
             elif event_type == self.terminal_event_type:
-                terminal_snapshot = snapshot or _snapshot_from_state(state)
+                candidate = snapshot or _snapshot_from_state(state)
+                if candidate.stop_reason in self.intermediate_stop_reasons:
+                    continue
+                terminal_snapshot = candidate
                 break
 
         state["event_offset"] = batch.next_offset

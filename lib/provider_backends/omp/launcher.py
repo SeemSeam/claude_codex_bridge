@@ -304,7 +304,8 @@ def _omp_completion_extension_source() -> str:
         }
       }
     }
-    const willContinue = event?.willContinue === true;
+    const willContinue =
+      event?.willContinue === true || latestAssistant?.stop_reason === "tool_use";
     appendEvent("agent_end", {
       assistant: latestAssistant,
       will_continue: willContinue,
