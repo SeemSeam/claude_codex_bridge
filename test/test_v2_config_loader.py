@@ -2626,6 +2626,45 @@ startup_args = ["--offline"]
     assert spec.startup_args == ('--model', 'pay/gpt-5.6-terra', '--offline')
 
 
+@pytest.mark.parametrize('provider', ['codex', 'pi'])
+@pytest.mark.parametrize('thinking', ['low', 'medium', 'high', 'xhigh', 'max'])
+def test_astra_thinking_round_trip(tmp_path: Path, provider: str, thinking: str) -> None:
+    model = 'gpt-6-astra' if provider == 'codex' else 'pay/gpt-6-astra'
+    config_path = tmp_path / '.ccb' / 'ccb.config'
+    _write(config_path, f'''cmd; agent1:{provider}
+
+[agents.agent1]
+model = "{model}"
+thinking = "{thinking}"
+startup_args = ["--offline"]
+''')
+    loaded = load_project_config(tmp_path).config
+    expected_args = (
+        ('-m', model, '-c', f'model_reasoning_effort="{thinking}"', '--offline')
+        if provider == 'codex'
+        else ('--model', model, '--thinking', thinking, '--offline')
+    )
+    assert loaded.agents['agent1'].startup_args == expected_args
+    rendered = render_project_config_text(loaded)
+    assert f'thinking = "{thinking}"' in rendered
+    assert 'startup_args = ["--offline"]' in rendered
+    _write(config_path, rendered)
+    assert load_project_config(tmp_path).config.agents['agent1'].startup_args == expected_args
+
+
+@pytest.mark.parametrize('args', ['["--thinking", "low"]', '["--thinking=low"]'])
+def test_pi_thinking_rejects_duplicate_startup_override(tmp_path: Path, args: str) -> None:
+    _write(tmp_path / '.ccb' / 'ccb.config', f'''cmd; agent1:pi
+
+[agents.agent1]
+model = "pay/gpt-6-astra"
+thinking = "max"
+startup_args = {args}
+''')
+    with pytest.raises(ConfigValidationError, match='thinking cannot be combined with startup_args'):
+        load_project_config(tmp_path)
+
+
 @pytest.mark.parametrize(
     ('provider', 'model_name', 'thinking'),
     [

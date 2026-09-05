@@ -14,7 +14,30 @@ Pi also stores custom provider and model definitions in its local
 existing Config UI model selector, persists the selected qualified identifier
 in CCB's existing `model` field, and compiles it to Pi's `--model` startup flag.
 
-Status: implemented and verified.
+Status: model selection and Codex/Pi thinking support are implemented and
+verified.
+
+## Codex And Pi Thinking Extension
+
+The extension is limited to Codex and Pi. Astra (`gpt-6-astra`, qualified with
+the configured provider for Pi) must expose `low`, `medium`, `high`, `xhigh`,
+and `max` in that order. Other providers retain their existing behavior.
+
+- Codex accepts Astra cache entries and retains cache-first discovery. Its
+  backend and frontend fallbacks include Astra with the known five-level
+  catalog. A usable cache is never supplemented with invented entries.
+- Pi reads model-specific `reasoning` and `thinkingLevelMap` metadata and
+  compiles the existing `thinking` field to `--thinking <level>`.
+- Pi's custom Astra entry requires an explicit mapping for `xhigh` and `max`;
+  Pi 0.84.4 otherwise clamps these levels to `high`. No managed runtime is
+  restarted by this configuration/code change.
+- Existing Codex cache metadata stays authoritative: Astra levels are ordered
+  and limited to the five supported values, without expanding a restricted
+  cache entry. Other Codex models retain their existing levels, including
+  `ultra` where configured. Cache discovery and service caching are unchanged.
+- Verification covers catalogs, parameter validation, TOML round trips, the
+  Pi launch command, and the Config UI selector. Actual API requests are
+  outside this verification scope.
 
 ## Goals And Scope
 
@@ -24,6 +47,8 @@ In scope:
 - Display each item as the exact qualified identifier `provider/model`.
 - Save the identifier through the existing static agent `model` setting.
 - Compile Pi models to `--model provider/model` without `--provider`.
+- Read Pi thinking capabilities and compile the existing `thinking` field to
+  `--thinking <level>` through the shared shortcut module.
 - Preserve existing V2 and V3 config rendering and validation behavior.
 - Fail closed when the catalog is missing or malformed and never expose secrets.
 
@@ -32,7 +57,6 @@ Out of scope:
 - Editing `models.json`, provider URLs, API keys, headers, or authentication.
 - Remote API probes or claims that a configured endpoint is currently healthy.
 - Adding a separate Pi-provider field to the CCB schema.
-- Deriving Pi `--thinking` from model metadata in the first delivery.
 - Changing Pi headless job execution, whose command currently does not consume
   an `AgentSpec`; static CCB pane launch is the target of this feature.
 
@@ -122,7 +146,12 @@ Parsing rules:
 - Deduplicate by the final qualified identifier, keeping the first occurrence.
 - Do not reject `/` inside a model ID. Pi splits only the first slash, and some
   upstream model IDs legitimately contain further slashes.
-- Do not infer static CCB thinking levels from Pi's `reasoning` boolean.
+- Models without `reasoning: true` expose no thinking selector.
+- Read `thinkingLevelMap` using Pi 0.84.4 semantics: `null` disables a level,
+  a string enables it, omitted standard levels use Pi defaults, and omitted
+  `xhigh`/`max` levels remain unsupported. Malformed mappings yield no levels.
+- Return only supported level names in Pi order, never the provider's mapping
+  values. CCB does not write or normalize the source catalog.
 
 Security rule: never copy arbitrary fields from `models.json`. In particular,
 `apiKey`, `baseUrl`, `headers`, command substitutions, and provider display
@@ -154,7 +183,7 @@ The capability record for Pi becomes:
     }
   ],
   "custom_model": false,
-  "static_thinking": false
+  "static_thinking": true
 }
 ```
 
@@ -175,7 +204,9 @@ dense native selector is preferable to a new modal or custom picker.
   option. Do not silently reset it to `inherit` when capabilities refresh.
 - Provider change away from Pi: retain the current existing behavior that
   clears model and thinking overlays to avoid cross-provider inheritance.
-- Thinking selector: remains disabled for Pi in this delivery.
+- Thinking selector: enabled for a catalog model with non-empty reasoning
+  levels. `inherit` clears the override. Selecting a new model retains a
+  supported level and clears an incompatible one, matching existing behavior.
 - Fallback/offline page data: mark Pi as model-shortcut capable with an empty
   catalog and custom entry disabled. The static HTML must not embed
   machine-local model names.
@@ -205,6 +236,15 @@ This single shared registration intentionally drives all existing contracts:
 - `provider_backends/pi/launcher.py` already appends `spec.startup_args`, so no
   Pi-launcher special case is needed.
 
+Thinking follows the existing Claude/Codex pattern in
+`lib/provider_thinking_shortcuts.py`: Pi registers its CLI-level superset
+(`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), compiles to
+`--thinking`, detects conflicting explicit flags, and strips generated flags
+when rendering. `AgentSpec` and the launcher remain generic. The catalog
+restricts the UI to each model's capabilities; Pi performs final native
+model-specific validation. A structured `thinking` flag takes precedence over
+Pi's model-pattern thinking suffix according to Pi's CLI contract.
+
 The model string is treated as an opaque non-empty value by the shared compiler.
 The Pi dropdown emits only qualified values from the catalog. Manually authored
 TOML remains compatible and is ultimately validated by Pi at startup; Config UI
@@ -212,15 +252,36 @@ does not add an arbitrary model-entry path for Pi.
 
 ## Data And Persistence
 
-There is no new persisted field or migration. The only stored value is:
+There is no new persisted field or migration. Selection uses existing fields:
 
 ```toml
 [agents.agent_name]
 model = "provider/model-id"
+thinking = "high"
 ```
 
 The Pi provider prefix belongs inside this string. CCB must not split it into a
-new field, and must not persist the generated `--model` arguments.
+new field, and must not persist the generated `--model` or `--thinking` arguments.
+
+For a custom Astra model to expose exactly five levels, its Pi-native model
+entry needs `reasoning: true` and this metadata:
+
+```json
+"thinkingLevelMap": {
+  "off": null,
+  "minimal": null,
+  "low": "low",
+  "medium": "medium",
+  "high": "high",
+  "xhigh": "xhigh",
+  "max": "max"
+}
+```
+
+This is provider configuration supplied by its owner, not a new CCB setting or
+a Config UI write operation. Existing one-way inheritance copies it into a
+managed Pi home on normal launch. Refresh the Config UI service to rebuild its
+cached capabilities after changing the catalog.
 
 The value may contain `/`, `:`, dots, or hyphens because it is TOML string data
 and Pi owns model-pattern interpretation. CCB's existing TOML serializer handles
@@ -253,7 +314,7 @@ visible validation error, matching Codex, Claude, Gemini, and OpenCode.
   an empty list without failing the capability response;
 - payload serialization contains no API key, URL, header, or source path;
 - Pi advertises `model_shortcut = true`, `custom_model = false`,
-  `static_thinking = false`, and `model_source = "pi_models_json"`;
+  `static_thinking = true`, and `model_source = "pi_models_json"`;
 - the embedded fallback capability marks Pi writable but embeds no local models.
 
 ### Config compiler and rendering tests
@@ -307,24 +368,33 @@ the saved config. The launch test builds the Pi start command with a stub
 - Invalid/unavailable catalogs do not break Config UI or erase an existing
   configured model.
 - `/api/capabilities` exposes no Pi credentials, endpoints, headers, or paths.
-- Existing non-Pi model behavior and focused regression suites remain green.
+- Other providers retain their existing behavior; Codex cache precedence and
+  non-Astra levels remain covered by regression tests.
 
 ## Verification Status
 
 - Design discovery: complete.
 - Local Pi CLI contract: verified against version `0.84.4`.
 - Current upstream documentation: verified through Context7 and installed docs.
-- Implementation: complete in the shared model-shortcut compiler, Config UI
-  capability service, and browser model-selector state.
-- Catalog acceptance: the effective local catalog exposes the expected five
-  qualified IDs: `pay/gpt-5.6-sol`, `pay/gpt-5.6-terra`,
-  `pay/gpt-5.6-luna`, `pay/gpt-image-2`, and
-  `local/gemini-3.8-flash-high`.
-- Automated and shared-contract verification: `python3 -m pytest -q
-  test/test_config_ui.py test/test_v2_config_loader.py
+- Implementation: complete in the shared model/thinking shortcut compilers,
+  Config UI capability service, and existing browser selector.
+- Catalog acceptance: Codex fallback and the local Pi `pay/gpt-6-astra` entry
+  both expose `low`, `medium`, `high`, `xhigh`, `max`. Pi 0.84.4's native
+  `getSupportedThinkingLevels` and `clampThinkingLevel` confirm that the
+  explicit mapping preserves `max` rather than lowering it to `high`.
+- Automated and shared-contract verification on 2026-09-06:
+  `env NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
+  python3 -m pytest -q test/test_config_ui.py
+  test/test_provider_thinking_shortcuts.py test/test_v2_config_loader.py
   test/test_v2_runtime_launch.py test/test_mobile_gateway_service.py
   test/test_v3_config_loader.py test/test_provider_control_settings.py` passes
-  with 486 tests.
+  with 522 tests. Localhost bypass is limited to the test process because the
+  host proxy otherwise returns HTTP 503 for local test servers.
+- Browser verification: Playwright with installed Chrome, using a temporary
+  project and the real Config UI HTTP handlers, selected all five levels for
+  both providers, saved/reloaded `max`, checked the 390px mobile control and
+  Codex fallback after an API failure, and reported no JavaScript errors.
+  The temporary server was stopped after verification.
 - Static verification: `python3 -m py_compile` for all modified Python source
   and test files, plus `git diff --check`, passes.
 
@@ -337,9 +407,9 @@ the saved config. The launch test builds the Pi start command with a stub
 - The catalog proves local configuration, not provider authentication or remote
   endpoint availability. Pi remains the runtime authority and reports launch
   errors normally.
-- Pi supports thinking suffixes and `--thinking`, but mapping CCB's thinking
-  selector to Pi is intentionally deferred until its precedence and
-  round-trip behavior are designed separately.
+- V3 workflow policy and loop role profiles retain their existing
+  `low`/`medium`/`high` validation. This change targets static agent overlays
+  in Config UI and does not expand workflow-policy enums.
 - Headless Pi execution currently builds a job command without agent model
   policy. Propagating static model selection into that path requires a separate
   execution-contract change.

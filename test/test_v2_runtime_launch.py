@@ -89,6 +89,7 @@ def _spec(
     *,
     startup_args: tuple[str, ...] = (),
     model: str | None = None,
+    thinking: str | None = None,
     provider_command_template: str | None = None,
     restore_default: RestoreMode = RestoreMode.AUTO,
 ) -> AgentSpec:
@@ -104,6 +105,7 @@ def _spec(
         queue_policy=QueuePolicy.SERIAL_PER_AGENT,
         provider_command_template=provider_command_template,
         model=model,
+        thinking=thinking,
         startup_args=startup_args,
     )
 
@@ -2396,15 +2398,17 @@ def test_native_cli_launcher_builds_provider_state_payload(
         assert visible_parts == [default_executable, '--demo']
 
 
+@pytest.mark.parametrize('thinking', [None, 'low', 'medium', 'high', 'xhigh', 'max'])
 def test_pi_launcher_includes_qualified_agent_model_without_provider_flag(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    thinking: str | None,
 ) -> None:
     source_home = tmp_path / 'source-home'
     source_agent = source_home / '.pi' / 'agent'
     source_agent.mkdir(parents=True)
     (source_agent / 'models.json').write_text(
-        '{"providers":{"pay":{"models":[{"id":"gpt-5.6-terra"}]}}}\n',
+        '{"providers":{"pay":{"models":[{"id":"gpt-6-astra"}]}}}\n',
         encoding='utf-8',
     )
     monkeypatch.setenv('CCB_SOURCE_HOME', str(source_home))
@@ -2418,7 +2422,7 @@ def test_pi_launcher_includes_qualified_agent_model_without_provider_flag(
         auto_permission=False,
     )
     ctx = _context(project_root, command)
-    spec = _spec('pi1', provider='pi', model='pay/gpt-5.6-terra')
+    spec = _spec('pi1', provider='pi', model='pay/gpt-6-astra', thinking=thinking)
     plan = WorkspacePlanner().plan(spec, ctx.project)
     plan.workspace_path.mkdir(parents=True, exist_ok=True)
     runtime_dir = ctx.paths.agent_provider_runtime_dir('pi1', 'pi')
@@ -2436,8 +2440,13 @@ def test_pi_launcher_includes_qualified_agent_model_without_provider_flag(
 
     assert visible_parts.count('--model') == 1
     model_index = visible_parts.index('--model')
-    assert visible_parts[model_index + 1] == 'pay/gpt-5.6-terra'
+    assert visible_parts[model_index + 1] == 'pay/gpt-6-astra'
     assert '--provider' not in visible_parts
+    if thinking is None:
+        assert '--thinking' not in visible_parts
+    else:
+        assert visible_parts.count('--thinking') == 1
+        assert visible_parts[visible_parts.index('--thinking') + 1] == thinking
 
 
 def test_qoder_launcher_respects_explicit_config_and_permission_options(
