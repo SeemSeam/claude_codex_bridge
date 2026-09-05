@@ -8,25 +8,24 @@
 <p>
   <img src="https://img.shields.io/badge/version-8.6.10-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
-  <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
+  <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
 
 <p>
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
-  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-4D6BFE?style=flat-square" alt="DeepSeek Harness">
-  <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
+  <img src="https://img.shields.io/badge/Pi-111111?style=flat-square" alt="Pi">
+  <img src="https://img.shields.io/badge/OMP-111111?style=flat-square" alt="OMP">
   <img src="https://img.shields.io/badge/Kimi-111111?style=flat-square&logo=moonshotai&logoColor=white" alt="Kimi">
+  <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
   <img src="https://img.shields.io/badge/MiMo-FF6900?style=flat-square&logo=xiaomi&logoColor=white" alt="MiMo">
   <img src="https://img.shields.io/badge/Qwen-6A5CFF?style=flat-square" alt="Qwen">
   <img src="https://img.shields.io/badge/Cursor-111111?style=flat-square" alt="Cursor">
   <img src="https://img.shields.io/badge/Copilot-111111?style=flat-square&logo=githubcopilot&logoColor=white" alt="GitHub Copilot">
   <img src="https://img.shields.io/badge/Crush-FF5A5F?style=flat-square" alt="Crush">
   <img src="https://img.shields.io/badge/Kiro-6D5EF6?style=flat-square" alt="Kiro">
-  <img src="https://img.shields.io/badge/Pi-111111?style=flat-square" alt="Pi">
-  <img src="https://img.shields.io/badge/Z.ai-111111?style=flat-square" alt="Z.ai">
-  <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
   <img src="https://img.shields.io/badge/Antigravity-6D5EF6?style=flat-square&logo=google&logoColor=white" alt="Antigravity">
   <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
 </p>
@@ -100,24 +99,6 @@ report-only, non-interactive update, or skip behavior. Declining prompts again
 on the next `ccb update`; skipping a version hides only that exact version.
 CCB never restarts active provider panes during this flow, so an accepted
 provider update applies when that pane next starts or is explicitly restarted.
-
-The official DeepSeek Harness integration is available as the separate
-Developer Preview provider key `dsh` (`deepseek` continues to mean the Deep
-Code CLI). Install its current npm release with a supported Node runtime, then
-select `dsh` in Config UI or use an Agent leaf such as `research:dsh`:
-
-```bash
-npm install -g @deepseek-ai/dsh
-dsh --version
-```
-
-CCB starts `dsh web` on loopback and communicates through DSH's structured
-HTTP/WebSocket carrier. The current POSIX runtime may host that service in a
-managed pane only for lifecycle/log ownership; prompts, replies, native
-completion, `ccb compact`, and restore do not depend on terminal input or
-pane-text heuristics. Configure `DEEPSEEK_API_KEY` (and
-optionally `DEEPSEEK_BASE_URL`) in user-owned DSH state or through CCB's
-provider-profile/API controls; CCB does not obtain credentials automatically.
 
 After a release change, the newly installed CCB also retires old
 project-scoped Claude/Gemini caches. Manifest-valid caches for deleted projects
