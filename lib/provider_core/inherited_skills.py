@@ -20,10 +20,13 @@ _REQUIRED_CONTROL_SKILLS = {
     'gemini': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'grok': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'kimi': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
+    'omp': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'qoder': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
     'qoderclicn': ('ask', 'ccb-clear', 'ccb-compact', 'ccb-diagnose'),
 }
 _PACKAGED_SKILL_PROVIDER_ALIASES = {
+    # OMP consumes the same Agent Skills contract as Codex.
+    'omp': 'codex',
     # Both released Qoder provider keys consume the same CCB control contract.
     # Keep qoderclicn stable rather than adopting PR #280's incompatible rename.
     'qoderclicn': 'qoder',

@@ -10,7 +10,12 @@ import pytest
 from ccbd.api_models import DeliveryScope, JobRecord, JobStatus, MessageEnvelope
 from provider_backends.native_cli_support import NativeCliExecutionRequest
 from provider_backends.native_cli_support.home import materialize_native_login_state
-from provider_backends.omp.launcher import _omp_visible_args, _omp_visible_env
+from provider_backends.omp.launcher import (
+    _materialize_completion_extension,
+    _omp_completion_extension_source,
+    _omp_visible_args,
+    _omp_visible_env,
+)
 from provider_backends.omp.execution import _build_command, _build_env
 
 
@@ -72,16 +77,50 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         "omp_state_dir": str(tmp_path / "provider-state"),
         "omp_home": str(tmp_path / "provider-state" / "home"),
     }
+    runtime_dir = tmp_path / "provider-runtime"
+    _materialize_completion_extension(
+        prepared,
+        runtime_dir=runtime_dir,
+        launch_session_id="ccb-omp-launch",
+    )
 
     assert _omp_visible_args(prepared) == (
         "--session-dir",
         str(tmp_path / "provider-state" / "sessions"),
+        "--extension",
+        str(runtime_dir / "completion" / "ccb-omp-completion.ts"),
+        "--approval-mode",
+        "yolo",
     )
     assert _omp_visible_env(prepared) == {
         "PI_CODING_AGENT_DIR": str(
             tmp_path / "provider-state" / "home" / ".omp" / "agent"
-        )
+        ),
+        "PI_CODING_AGENT_SESSION_DIR": str(
+            tmp_path / "provider-state" / "sessions"
+        ),
+        "CCB_OMP_COMPLETION_EVENTS": str(
+            prepared["omp_completion_event_log"]
+        ),
+        "CCB_OMP_DISPATCH_EVENTS": str(prepared["omp_dispatch_event_log"]),
     }
+    for key in (
+        "omp_completion_extension",
+        "omp_completion_event_log",
+        "omp_dispatch_event_log",
+    ):
+        assert Path(str(prepared[key])).stat().st_mode & 0o777 == 0o600
+
+
+def test_omp_extension_normalizes_only_final_agent_end_to_settled() -> None:
+    source = _omp_completion_extension_source()
+
+    assert 'pi.on("agent_settled"' not in source
+    assert "event?.willContinue === true" in source
+    assert "if (!willContinue)" in source
+    assert 'appendEvent("agent_settled"' in source
+    assert "CCB_OMP_COMPLETION_EVENTS" in source
+    assert "CCB_OMP_DISPATCH_EVENTS" in source
 
 
 def test_omp_headless_launch_uses_same_private_agent_and_session_roots(
@@ -126,6 +165,32 @@ def test_omp_projects_current_and_legacy_config_files_one_way(tmp_path: Path) ->
     assert (source_agent / "models.yml").read_text(encoding="utf-8") == fixtures[
         "models.yml"
     ]
+
+
+def test_omp_projects_required_ccb_skills_when_optional_inheritance_is_disabled(
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    target_home = tmp_path / "managed-home"
+
+    materialize_native_login_state(
+        "omp",
+        target_home,
+        source_home=source_home,
+        profile=SimpleNamespace(
+            inherit_auth=False,
+            inherit_config=False,
+            inherit_skills=False,
+        ),
+    )
+
+    skills_root = target_home / ".omp" / "agent" / "skills"
+    for skill_name in ("ask", "ccb-clear", "ccb-compact", "ccb-diagnose"):
+        skill_file = skills_root / skill_name / "SKILL.md"
+        marker = skills_root / f"{skill_name}.ccb-projection.json"
+        assert skill_file.is_file()
+        assert marker.is_file()
+        assert f"name: {skill_name}" in skill_file.read_text(encoding="utf-8")
 
 
 def test_omp_auth_capable_config_requires_both_inheritance_gates(tmp_path: Path) -> None:

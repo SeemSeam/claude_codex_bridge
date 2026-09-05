@@ -76,6 +76,9 @@ override the shipped contracts.
 - [topics/pi-visible-pane-completion.md](topics/pi-visible-pane-completion.md):
   active Pi visible-pane execution, exact `agent_settled` completion, legacy
   headless migration, timeout, restore, rollback, and test contract.
+- [topics/omp-visible-pane-completion.md](topics/omp-visible-pane-completion.md):
+  OMP visible-pane execution, final `agent_end` normalization, exact dispatch
+  binding, and explicit headless rollback.
 - [../../../plans/2026-08-11-cursor-visible-pane-execution-design.md](../../../plans/2026-08-11-cursor-visible-pane-execution-design.md):
   landed Cursor visible-pane execution, anchored transcript completion,
   readiness fencing, timeout, cancellation, and headless rollback contract.

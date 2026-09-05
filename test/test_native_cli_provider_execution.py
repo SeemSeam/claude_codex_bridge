@@ -26,6 +26,9 @@ from provider_backends.native_cli_support import (
     NativeCliExecutionRequest,
 )
 from provider_backends.native_cli_support.execution import _native_cli_env
+from provider_backends.omp.execution import (
+    build_headless_execution_adapter as build_omp_headless_execution_adapter,
+)
 from provider_backends.pi.execution import (
     build_headless_execution_adapter as build_pi_headless_execution_adapter,
 )
@@ -114,6 +117,8 @@ def _adapter(provider: str):
         return build_cursor_headless_execution_adapter()
     if provider == "pi":
         return build_pi_headless_execution_adapter()
+    if provider == "omp":
+        return build_omp_headless_execution_adapter()
     backend = build_default_backend_registry(include_optional=True, include_test_doubles=False).get(provider)
     assert backend is not None
     assert backend.execution_adapter is not None

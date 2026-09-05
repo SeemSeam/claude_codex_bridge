@@ -1,7 +1,7 @@
 # Native CLI Providers Roadmap
 
 Date: 2026-06-13
-Last updated: 2026-08-17
+Last updated: 2026-09-05
 
 ## Status Summary
 
@@ -56,9 +56,34 @@ Last updated: 2026-08-17
   `agent_settled` completion, persisted headless-mode compatibility, an
   explicit rollback switch, and pane/trace evidence tracked in
   [topics/pi-visible-pane-completion.md](topics/pi-visible-pane-completion.md).
+  OMP now has the equivalent source candidate, using final
+  `agent_end(willContinue != true)` as terminal authority while preserving
+  `omp_run` jobs and `CCB_OMP_EXECUTION_MODE=headless`. Authenticated OMP
+  18.1.10 visible-pane acceptance passed in both the isolated source runtime
+  and a copied dev installation used by the original project, with exact pane,
+  sidecar, trace, and single-reply evidence. OMP managed homes now also receive
+  the four required CCB control skills independently of optional user skill
+  inheritance; the installed runtime discovered all four after rematerializing
+  and restarting both existing OMP agents.
 
 ## Done
 
+- Implemented OMP visible-pane ask execution with owner-only lifecycle and
+  dispatch sidecars, exact prompt/request/actor/launch/runtime binding,
+  fail-closed malformed-event handling, scoped cancellation, mode-aware
+  restore, explicit headless rollback, and persisted `omp_run` compatibility.
+  Focused and expanded tests passed `70` and `231` cases respectively.
+  Authenticated job `job_f8f68d50ae6c` visibly appeared and replied in the
+  managed OMP pane, matched exact sidecar identity, and completed once with
+  `omp_run_stop`. Installed-runtime job `job_f173b0f5b0d6` then passed the same
+  visible-pane and exact-binding checks in the original project; bare `ccb`
+  used the managed copied installation and the final queue depth was zero.
+  Added required `ask`, `ccb-clear`, `ccb-compact`, and `ccb-diagnose` Agent
+  Skills for OMP using the packaged Codex-compatible skill contract. Focused
+  and expanded tests passed `29` and `225` cases. After installing the source
+  candidate and restarting `demo` and `agent3`, job `job_2f830698377f`
+  returned the exact four-skill inventory visibly in pane `%1` with one reply
+  and all queues idle.
 - Published stable `v8.6.9` from commit `677edc72c` through an annotated tag,
   bilingual GitHub Release, Linux/macOS/Windows/Mobile and Sidebar assets, and
   npm Trusted Publishing. Public checksum and fresh npm-install verification

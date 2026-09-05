@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from provider_core.keyring_read import read_keyring_password
+from provider_core.inherited_skills import materialize_required_control_skills
 from provider_core.one_way_inheritance import (
     copy_regular_file,
     copy_regular_tree,
@@ -84,6 +85,10 @@ def materialize_native_login_state(
             source,
             target_home=target_home,
             profile=profile,
+        )
+        materialize_required_control_skills(
+            provider='omp',
+            target_dir=target_home / '.omp' / 'agent' / 'skills',
         )
     elif name == 'pi':
         from provider_backends.pi.home import materialize_pi_config
