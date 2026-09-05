@@ -101,6 +101,11 @@ Date: 2026-06-12
   README path.
 - Added a compact first-screen supported-CLI logo/badge strip for Codex,
   Claude, Gemini, Kimi, OpenCode, Antigravity, and Droid.
+- Reprioritized the public support strip across all localized READMEs to show
+  Codex, Claude, Pi, OMP, Kimi, and OpenCode first. Removed `zai`, the
+  unofficial `deepseek` Deep Code CLI, and the official `dsh` DeepSeek Harness
+  from current support promotion while retaining all provider implementation
+  code and historical release notes.
 - Follow-up release review blocked npm-first publication until the source tree
   restored the `@seemseam/ccb` npm package surface.
 - Earlier chose `7.4.4` as the next patch version instead of reusing the

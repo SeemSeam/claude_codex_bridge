@@ -1,6 +1,7 @@
 # README Design Non-Drift Contract
 
 Date: 2026-06-12
+Last amended: 2026-09-05
 
 ## Context
 
@@ -42,11 +43,13 @@ Stable homepage claims:
 
 - CCB is a visible, controllable multi-agent CLI workspace.
 - CCB shows real provider CLIs in real terminal panes.
-- CCB can mix Codex, Claude, Gemini, Kimi, OpenCode, Antigravity, and related
-  providers in one project-owned tmux workspace.
-- The first-screen CLI support strip should make Codex, Claude, Gemini, Kimi,
-  OpenCode, Antigravity, and Droid visible at a glance when the README claims
-  that breadth.
+- CCB can mix Codex, Claude, Pi, OMP, Kimi, OpenCode, and related providers in
+  one project-owned tmux workspace.
+- The first-screen CLI support strip prioritizes Codex, Claude, Pi, and OMP,
+  followed by Kimi, OpenCode, and the remaining publicly supported providers.
+- The public support strip does not advertise the unofficial `deepseek` Deep
+  Code CLI or `zai`. The official DeepSeek Harness Developer Preview provider, `dsh`, is also
+  excluded from current public promotion.
 - `ccb_self` is CCB's built-in self-understanding expert for usage guidance,
   active layout explanation, config design, runtime diagnostics, recovery, and
   workflow repair.
@@ -58,8 +61,9 @@ Stable homepage claims:
 
 ## Must Preserve
 
-- Bilingual parity: `README_zh.md` and `README.md` must preserve the same
-  section order, asset roles, install path, and `ccb_self` positioning.
+- Localized parity: `README.md` and the files under `README/` must preserve the
+  same support-strip priority, section order, asset roles, install path, and
+  `ccb_self` positioning.
 - Canonical hero assets: public README hero references should use
   `assets/readme_v7/ccb-hero-zh.png` and
   `assets/readme_v7/ccb-hero-en.png`; these should be derived from the newer
@@ -96,6 +100,9 @@ Stable homepage claims:
   why the visual direction changed.
 - Do not drop the supported-CLI logo/badge strip when editing the first-read
   path.
+- Do not restore `deepseek`, `zai`, or `dsh` to current public promotion without
+  a new maintainer decision; retaining implementation code or historical
+  release notes does not make them publicly advertised providers.
 - Do not duplicate multiple large screenshots before Quick Start.
 - Do not let release notes, detailed config examples, or tmux reference tables
   dominate the homepage.
@@ -122,9 +129,9 @@ state why the old rule no longer applies and link the replacement decision.
 Before landing README homepage changes, run or manually verify:
 
 ```bash
-rg -n "release-first|Release first|Release 优先|seemseam@ccb|@seemseam/ccb@latest|New users should start from a release package|首次安装推荐使用 \\[GitHub Releases\\]" README.md README_zh.md docs/plantree/plans/readme-v7-redesign/README.md docs/plantree/plans/readme-v7-redesign/roadmap.md docs/plantree/plans/readme-v7-redesign/topics
-rg -n "@seemseam/ccb|docs/manuals/user-guide|docs/manuals/developer-guide|ccb_self" README.md README_zh.md
-git diff --check -- README.md README_zh.md docs/plantree/plans/readme-v7-redesign
+rg -n "release-first|Release first|Release 优先|seemseam@ccb|@seemseam/ccb@latest|New users should start from a release package|首次安装推荐使用 \\[GitHub Releases\\]" README.md README docs/plantree/plans/readme-v7-redesign/README.md docs/plantree/plans/readme-v7-redesign/roadmap.md docs/plantree/plans/readme-v7-redesign/topics
+rg -n "@seemseam/ccb|docs/manuals/user-guide|docs/manuals/developer-guide|ccb_self" README.md README
+git diff --check -- README.md README docs/plantree/plans/readme-v7-redesign
 ```
 
 Expected result:

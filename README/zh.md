@@ -8,25 +8,24 @@
 <p>
   <img src="https://img.shields.io/badge/version-8.6.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
-  <img src="https://img.shields.io/badge/providers-17%20CLI%20families-0B7285.svg" alt="providers">
+  <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
 
 <p>
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
-  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-4D6BFE?style=flat-square" alt="DeepSeek Harness">
-  <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
+  <img src="https://img.shields.io/badge/Pi-111111?style=flat-square" alt="Pi">
+  <img src="https://img.shields.io/badge/OMP-111111?style=flat-square" alt="OMP">
   <img src="https://img.shields.io/badge/Kimi-111111?style=flat-square&logo=moonshotai&logoColor=white" alt="Kimi">
+  <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/Grok-000000?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
   <img src="https://img.shields.io/badge/MiMo-FF6900?style=flat-square&logo=xiaomi&logoColor=white" alt="MiMo">
   <img src="https://img.shields.io/badge/Qwen-6A5CFF?style=flat-square" alt="Qwen">
   <img src="https://img.shields.io/badge/Cursor-111111?style=flat-square" alt="Cursor">
   <img src="https://img.shields.io/badge/Copilot-111111?style=flat-square&logo=githubcopilot&logoColor=white" alt="GitHub Copilot">
   <img src="https://img.shields.io/badge/Crush-FF5A5F?style=flat-square" alt="Crush">
   <img src="https://img.shields.io/badge/Kiro-6D5EF6?style=flat-square" alt="Kiro">
-  <img src="https://img.shields.io/badge/Pi-111111?style=flat-square" alt="Pi">
-  <img src="https://img.shields.io/badge/Z.ai-111111?style=flat-square" alt="Z.ai">
-  <img src="https://img.shields.io/badge/OpenCode-111111?style=flat-square" alt="OpenCode">
   <img src="https://img.shields.io/badge/Antigravity-6D5EF6?style=flat-square&logo=google&logoColor=white" alt="Antigravity">
   <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
 </p>
@@ -77,23 +76,6 @@ CLI，并只提示一次可安全管理的更新。可使用 `--providers check`
 本次跳过。选择“暂不更新”后，下次 `ccb update` 会再次提示；选择“跳过此
 版本”只会静默当前检测到的准确版本。该流程不会自动重启正在运行的
 provider pane；已接受的新版本会在 pane 下次启动或显式重启后生效。
-
-官方 DeepSeek Harness 以独立的 Developer Preview provider key `dsh`
-接入（`deepseek` 仍表示 Deep Code CLI）。使用受支持的 Node runtime 安装其
-npm 包，然后在 Config UI 选择 `dsh`，或使用 `research:dsh` 这样的 Agent
-leaf：
-
-```bash
-npm install -g @deepseek-ai/dsh
-dsh --version
-```
-
-CCB 会在 loopback 上启动 `dsh web`，并通过 DSH 的结构化
-HTTP/WebSocket carrier 通信。当前 POSIX 运行时可以把该服务放在受管 pane
-中，但 pane 仅承担 lifecycle/log 所有权；prompt、reply、原生结束判定、
-`ccb compact` 和恢复都不依赖终端输入或 pane 文本启发式。请在用户自有 DSH
-状态或 CCB provider profile/API 控制中配置
-`DEEPSEEK_API_KEY`，并按需配置 `DEEPSEEK_BASE_URL`；CCB 不会自动获取凭据。
 
 版本发生更新后，新安装的 CCB 还会迁移旧的项目级 Claude/Gemini 缓存：
 manifest 校验通过且项目已经删除的缓存会立即清理；当前项目已经停止时会
