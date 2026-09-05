@@ -99,11 +99,20 @@ Date: 2026-07-13
   `role_catalog_status()`, preserving currently configured ids and exposing
   installed, available, updateable, and source-missing roles without leaking
   local source paths or digests to the browser.
+- Scoped the V1/V2 RolePack selector to general-purpose roles. Catalog roles
+  whose logical id starts with `ccb_` are hidden from new V1/V2 selection,
+  except `agentroles.ccb_self`; the complete catalog remains available to the
+  V3 surface, and an already configured filtered role remains visible as the
+  current value so opening the editor does not rewrite it.
 
 ## Validation Evidence
 
 Date: 2026-07-13
 
+- 2026-09-06 V1/V2 Role Catalog filtering: Config UI suite `40 passed`;
+  Python compilation, embedded JavaScript syntax, and `git diff --check`
+  passed. A live catalog audit marked every `ccb_*` role V2-unselectable except
+  `agentroles.ccb_self`, while retaining all general-purpose roles.
 - Focused Config UI/parser/phase2 plus full config-loader suites: `112 passed`.
 - Rust Sidebar suite: `74 passed`.
 - External config-validation matrix:

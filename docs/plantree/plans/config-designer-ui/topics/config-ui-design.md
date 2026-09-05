@@ -160,6 +160,14 @@ Each provider entry reports model suggestions, their source, whether CCB can
 compile `model` into provider startup arguments, and whether the current config
 schema can write thinking effort. These are separate capabilities.
 
+Role Catalog entries similarly carry a V2 selection policy. V1/V2 Agent
+overlays offer general-purpose Role Packs plus `agentroles.ccb_self`; workflow
+roles whose logical id starts with `ccb_` are V3-only choices and are omitted
+from the V1/V2 datalist. The backend still exposes the complete safe catalog
+for the V3 surface. If a V1/V2 config already contains a filtered role, the
+editor preserves that exact current value without offering it for new
+selection.
+
 The first catalog covers:
 
 - Codex GPT-5.6 variants found in the local cache and GPT-5.5;

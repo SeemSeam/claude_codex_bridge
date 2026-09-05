@@ -2258,7 +2258,10 @@ model = "gpt-5.5"</pre>
 
     function roleCatalogOptions(currentRole) {
       const rows = Array.isArray(providerCapabilities.roles) ? providerCapabilities.roles : [];
-      const ids = new Set(rows.map((row) => String(row && row.role_id || "").trim()).filter(Boolean));
+      const ids = new Set(rows
+        .filter((row) => row && row.v2_selectable !== false)
+        .map((row) => String(row.role_id || "").trim())
+        .filter(Boolean));
       if (currentRole) ids.add(currentRole);
       return [...ids].sort((a, b) => a.localeCompare(b)).map((id) => `<option value="${escapeAttribute(id)}"></option>`).join("");
     }
