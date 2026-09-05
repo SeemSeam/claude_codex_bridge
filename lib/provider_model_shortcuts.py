@@ -6,6 +6,7 @@ _PROVIDER_MODEL_FLAGS = {
     'gemini': ('-m', '--model'),
     'opencode': ('-m', '--model'),
     'mimo': ('--model',),
+    'pi': ('--model',),
 }
 
 _PROVIDER_MODEL_STARTUP_FLAGS = {
@@ -14,6 +15,7 @@ _PROVIDER_MODEL_STARTUP_FLAGS = {
     'gemini': '-m',
     'opencode': '-m',
     'mimo': '--model',
+    'pi': '--model',
 }
 
 _PROVIDER_MODEL_RUNTIME_ENV = {
