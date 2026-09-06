@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.10-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.13-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -242,9 +242,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.6.10 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.6.13 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.6.10 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.10/ccb-mobile-v8.6.10.apk)
+- [Download CCB Mobile v8.6.13 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.13/ccb-mobile-v8.6.13.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -333,6 +333,36 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.6.13</b> - Reliable visible OMP asks and focused role selection</summary>
+
+- Run OMP asks in the visible managed pane and use OMP's native completion evidence, so tool-using turns remain active until the final assistant result.
+- Keep Config V1/V2 role selection focused on general roles and `agentroles.ccb_self`; workflow-specific `ccb_*` roles remain available to V3 rather than appearing in earlier schemas.
+- Refocus current public provider guidance on the primary supported CLI families. DeepSeek CLI, Z.ai, and DeepSeek Harness remain implemented and documented in historical release notes, but are no longer presented as current headline support.
+- No project, conversation, or configuration migration is required. Native Windows x64 and Herdr remain beta and isolated from the shared Linux/macOS runtime.
+
+</details>
+
+<details>
+<summary><b>v8.6.12</b> - Provider profile inheritance and Mobile conversations</summary>
+
+- Show Pi and OMP native conversations in CCB Mobile while preserving Provider-private session paths and transcript boundaries.
+- Inherit Pi profile assets into Agent-private homes through immutable shared snapshots, and publish concurrent first-start snapshots atomically (PR #328).
+- Preserve Git author and committer identity in managed Provider homes, and return Agent control immediately after an accepted ask submission (PRs #329 and #330).
+- Refresh the WeChat community QR code. Restart managed Pi Agents to refresh projected profile assets; no project, conversation, pairing, or configuration migration is required.
+
+</details>
+
+<details>
+<summary><b>v8.6.11</b> - Provider authentication and isolated Windows reliability</summary>
+
+- Restore bearer authentication for explicit Codex CLI `0.149.0` custom providers while keeping route-only local gateways unauthenticated.
+- Add per-Agent Codex model catalog projection and model override support, preserve reconnect and custom tmux configuration behavior, and make Pi clear start a fresh context (PRs #321, #322, #325, and #326).
+- Keep Herdr lifecycle synchronization and UTF-8 native startup inside Windows-owned implementations, without adding shared-to-Windows imports (PRs #320 and #323).
+- Restart managed Codex Agents and CCB projects after upgrading. No project, conversation, pairing, or configuration migration is required.
+
+</details>
+
+<details>
 <summary><b>v8.6.10</b> - Claude OAuth re-login isolation</summary>
 
 - Refresh an existing Agent-private Claude Keychain credential after an external OAuth re-login, so a stopped managed restart does not keep using a revoked token (Issue #319).

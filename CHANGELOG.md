@@ -1,5 +1,55 @@
 # Changelog
 
+## v8.6.13 (2026-09-06)
+
+- Ran OMP asks in the visible managed pane with native completion evidence,
+  and kept multi-tool turns active until their final assistant result instead
+  of treating an intermediate `tool_use` as terminal.
+- Limited Config V1/V2 role selection to general roles and
+  `agentroles.ccb_self`; other workflow-specific `ccb_*` roles remain reserved
+  for V3.
+- Refocused current public provider guidance on the primary supported CLI
+  families. DeepSeek CLI, Z.ai, and DeepSeek Harness remain implemented and
+  retain their historical release notes, but are no longer advertised as
+  current headline support.
+- No project, conversation, or configuration migration is required. Native
+  Windows x64 and Herdr remain beta and isolated from shared Linux/macOS
+  runtime dependencies.
+
+## v8.6.12 (2026-09-02)
+
+- Exposed Pi and OMP native conversations in CCB Mobile while preserving
+  Provider-private session paths, transcript boundaries, and token-aware
+  projection.
+- Added Pi profile-asset inheritance through immutable shared snapshots into
+  Agent-private homes (PR #328), and made concurrent first-start snapshot
+  publication atomic.
+- Preserved Git author and committer identity in managed Provider homes
+  (PR #330), and returned Agent control immediately after an accepted ask
+  submission (PR #329).
+- Refreshed the WeChat community QR code. Restart managed Pi Agents to refresh
+  projected profile assets; no project, conversation, pairing, or
+  configuration migration is required. Native Windows x64 remains beta.
+
+## v8.6.11 (2026-08-27)
+
+- Restored bearer authentication for explicit Codex CLI `0.149.0` custom
+  providers by declaring the Agent-local `OPENAI_API_KEY` source, while
+  preserving unauthenticated route-only gateways.
+- Added per-Agent Codex `model_catalog_json` projection and model overrides,
+  preserved reconnect startup/history behavior, and retained
+  `CCB_TMUX_CONFIG` across the keeper control-plane environment (PRs #321,
+  #322, and #326).
+- Changed Pi clear to `/new`, so a clear starts a fresh native context instead
+  of relying on the previous reset command (PR #325).
+- Reworked Herdr lifecycle synchronization as an optional generic terminal
+  capability implemented only by the Windows backend, with monotonic state
+  reporting and no new shared-to-Windows imports (PR #320).
+- Enforced UTF-8 mode at the native Windows launcher boundary instead of
+  changing shared subprocess call sites (PR #323). Windows x64 and Herdr
+  remain beta.
+- Restart managed Codex Agents and CCB projects after upgrading. No project,
+  conversation, pairing, or configuration migration is required.
 ## v8.6.10 (2026-08-18)
 
 - Fixed Issue #319: after an external Claude OAuth re-login, a stopped managed

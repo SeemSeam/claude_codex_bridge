@@ -6,7 +6,7 @@ on:
       tag:
         description: "Windows release tag to build and publish"
         required: true
-        default: "v8.6.10"
+        default: "v8.6.13"
   push:
     tags:
       - "v*.*.*"
