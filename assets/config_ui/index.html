@@ -2214,6 +2214,7 @@ model = "gpt-5.5"</pre>
           custom_model: true,
           static_thinking: true,
           models: [
+            { id: "gpt-6-astra", label: "GPT-6 Astra", reasoning_levels: ["low", "medium", "high", "xhigh", "max"], default_reasoning_level: "low" },
             { id: "gpt-5.6-sol", label: "GPT-5.6 SOL", reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
             { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
             { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", reasoning_levels: ["low", "medium", "high", "xhigh", "max"] },
@@ -2242,7 +2243,7 @@ model = "gpt-5.5"</pre>
         ] },
         { id: "opencode", model_shortcut: true, model_source: "provider_catalog_required", custom_model: true, static_thinking: false, models: [] },
         { id: "mimo", model_shortcut: true, model_source: "custom_only", custom_model: true, static_thinking: false, models: [] },
-        { id: "pi", model_shortcut: true, model_source: "pi_models_json", custom_model: false, static_thinking: false, models: [] },
+        { id: "pi", model_shortcut: true, model_source: "pi_models_json", custom_model: false, static_thinking: true, models: [] },
         ...["droid", "agy", "kimi", "qwen", "cursor", "copilot", "crush", "kiro", "zai", "grok"].map((id) => ({
           id,
           model_shortcut: false,

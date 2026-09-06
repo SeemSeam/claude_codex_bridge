@@ -55,6 +55,7 @@ _CAPABILITIES_CLI_MODELS_BUDGET_S = 0.1
 _CAPABILITIES_CLI_MODELS_RETRY_S = 0.5
 _PROFILE_NAME_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_.-]{0,63}$')
 _CONFIG_UI_RELATIVE_PATH = Path('assets/config_ui/index.html')
+_ASTRA_REASONING_LEVELS = ('low', 'medium', 'high', 'xhigh', 'max')
 
 
 @dataclass
@@ -575,7 +576,9 @@ def _codex_models(
             if not isinstance(item, dict) or item.get('visibility') != 'list':
                 continue
             model_id = str(item.get('slug') or '').strip()
-            if not model_id or not (model_id.startswith('gpt-5.6') or model_id == 'gpt-5.5'):
+            if not model_id or not (
+                model_id.startswith('gpt-5.6') or model_id in {'gpt-5.5', 'gpt-6-astra'}
+            ):
                 continue
             levels = []
             for level in item.get('supported_reasoning_levels') or []:
@@ -584,12 +587,17 @@ def _codex_models(
                 effort = str(level.get('effort') or '').strip()
                 if effort:
                     levels.append(effort)
+            default_level = str(item.get('default_reasoning_level') or '').strip() or None
+            if model_id == 'gpt-6-astra':
+                levels = [level for level in _ASTRA_REASONING_LEVELS if level in levels]
+                if default_level not in levels:
+                    default_level = None
             rows.append(
                 _model(
                     model_id,
                     str(item.get('display_name') or model_id),
                     reasoning_levels=levels,
-                    default_reasoning_level=str(item.get('default_reasoning_level') or '').strip() or None,
+                    default_reasoning_level=default_level,
                     context_window_max_tokens=(
                         int(item.get('context_window'))
                         if str(item.get('context_window') or '').isdigit()
@@ -600,6 +608,12 @@ def _codex_models(
         if rows:
             return rows, source
     return [
+        _model(
+            'gpt-6-astra',
+            'GPT-6 Astra',
+            reasoning_levels=list(_ASTRA_REASONING_LEVELS),
+            default_reasoning_level='low',
+        ),
         _model(
             'gpt-5.6-sol',
             'GPT-5.6 SOL',
@@ -688,8 +702,31 @@ def _pi_models(
             if qualified_id in seen:
                 continue
             seen.add(qualified_id)
-            rows.append(_model(qualified_id, qualified_id))
+            rows.append(
+                _model(
+                    qualified_id,
+                    qualified_id,
+                    reasoning_levels=_pi_model_reasoning_levels(item),
+                )
+            )
     return rows
+
+
+def _pi_model_reasoning_levels(model: dict[str, object]) -> list[str]:
+    if model.get('reasoning') is not True:
+        return []
+    mapping = model.get('thinkingLevelMap', {})
+    if not isinstance(mapping, dict):
+        return []
+    # Pi requires explicit mappings for extended levels; null disables a level.
+    return [
+        level
+        for level in provider_thinking_levels('pi')
+        if (
+            (level not in mapping and level not in {'xhigh', 'max'})
+            or isinstance(mapping.get(level), str)
+        )
+    ]
 
 
 def _codex_models_cache_paths(

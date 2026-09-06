@@ -10,6 +10,7 @@ _PROVIDER_THINKING_LEVELS = {
     'deepseek': ('off', 'high', 'max'),
     # DSH validates these on session.selectModel rather than at process start.
     'dsh': ('off', 'high', 'max'),
+    'pi': ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
 }
 
 _PROVIDER_THINKING_RUNTIME_ENV = {
@@ -47,6 +48,8 @@ def provider_thinking_startup_args(provider: str, *, thinking: str | None) -> tu
         return ('-c', f'model_reasoning_effort="{value}"')
     if normalized_provider == 'claude':
         return ('--effort', value)
+    if normalized_provider == 'pi':
+        return ('--thinking', value)
     return ()
 
 
@@ -75,6 +78,11 @@ def startup_args_contain_thinking_flag(
 ) -> bool:
     normalized_provider = str(provider or '').strip().lower()
     args = tuple(str(item) for item in startup_args)
+    if normalized_provider == 'pi':
+        return any(
+            arg == '--thinking' or arg.startswith('--thinking=')
+            for arg in args
+        )
     if normalized_provider == 'claude':
         return any(
             arg == '--effort' or arg.startswith('--effort=')

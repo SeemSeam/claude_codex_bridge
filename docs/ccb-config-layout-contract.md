@@ -544,13 +544,20 @@ Contract:
   offering model-specific levels; manual inherited-model use remains valid.
 - Codex accepts the model-specific level exposed by the installed Codex model
   catalog and compiles it to `-c model_reasoning_effort="<level>"`.
+  Astra's supported UI order is `low`, `medium`, `high`, `xhigh`, `max`;
+  the fallback catalog includes Astra when no usable cache is available.
+- Pi compiles `thinking` to `--thinking <level>` using the shared shortcut
+  compiler. Model-specific choices come from `reasoning` and
+  `thinkingLevelMap` in the source user's `.pi/agent/models.json`. Explicit
+  mappings are required for `xhigh` and `max`; `null` disables a level.
 - DeepSeek V4 Pro and V4 Flash accept `off`, `high`, or `max`. CCB compiles
   these to the Deep Code CLI's `DEEPCODE_THINKING_ENABLED` and
   `DEEPCODE_REASONING_EFFORT` environment overrides.
 - Other providers do not have a static CCB thinking mapping. Their `thinking`
   field must fail validation instead of being ignored.
 - Structured `thinking` must not be combined with an equivalent Codex
-  `startup_args` config override or Deep Code environment override.
+  `startup_args` config override, Pi `--thinking` startup override, or Deep Code
+  environment override.
 - Config rendering preserves `thinking` and removes generated provider launch
   arguments from user-facing TOML.
 
