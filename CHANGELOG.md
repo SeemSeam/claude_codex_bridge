@@ -1,5 +1,21 @@
 # Changelog
 
+## v8.6.14 (2026-09-06)
+
+- Published the current merged `main` line for the first time, including PRs
+  #320, #321, #322, #323, #325, #326, #328, #329, #330, #331, #332, #333,
+  #334, #335, #336, #337, and #339.
+- Added direct pane drag, swap, and resize editing, Pi local-model selection,
+  Codex Astra support, and Pi thinking-level controls in Config UI.
+- Added CCB Mobile multi-host aggregation and host display names.
+- Hardened Herdr lifecycle reporting, Codex reconnect and model projection,
+  managed Git identity, tmux environment inheritance, Pi clear/profile assets,
+  shared Magic Context storage, Windows UTF-8 handling, and Windows PR
+  isolation.
+- Includes the visible OMP ask/completion and Config V1/V2 role filtering fixes
+  from v8.6.13. Restart managed Agents and CCB projects after upgrading; no
+  project, conversation, pairing, or configuration migration is required.
+
 ## v8.6.13 (2026-09-06)
 
 - Ran OMP asks in the visible managed pane with native completion evidence,
