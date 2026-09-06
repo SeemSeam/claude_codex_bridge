@@ -1,5 +1,18 @@
 # Changelog
 
+## v8.6.15 (2026-09-06)
+
+- Fixed blank CCB Mobile conversations for OMP Agents by routing OMP through
+  the provider-native transcript authority and cache fingerprint path.
+- Made the shared Pi/OMP transcript reader resolve sessions through
+  `PathLayout.runtime_state_root`, supporting both V2 in-project state and V3
+  external runtime state.
+- Accepted a title record before the native session header, retained
+  `session_id` on projected messages, and merged consecutive assistant
+  segments into one conversation bubble while excluding hidden thinking.
+- Upgrade the CCB host and CCB Mobile APK, then restart the Mobile gateway. No
+  project, pairing, conversation, or configuration migration is required.
+
 ## v8.6.14 (2026-09-06)
 
 - Published the current merged `main` line for the first time, including PRs

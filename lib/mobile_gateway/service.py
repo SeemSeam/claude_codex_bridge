@@ -32,6 +32,7 @@ from platforms.windows.herdr.ccbd_surface_projection import herdr_surface_projec
 from ccbd.socket_client import CcbdClientError
 from cli.services.config_ui import config_ui_provider_capabilities
 from project.identity import normalize_work_dir
+from storage.paths import PathLayout
 from provider_control import (
     ProviderQuotaService,
     ProviderSettingsError,
@@ -3480,7 +3481,7 @@ def _agent_conversation_items(
     # use, including an intentionally empty native history. Other providers do
     # not all expose a native transcript, so retain the safe structured CCB
     # records. Terminal scrollback is deliberately excluded from this path.
-    if provider_key in {'', 'codex', 'claude', 'pi'} or native_items.items:
+    if provider_key in {'', 'codex', 'claude', 'pi', 'omp'} or native_items.items:
         return native_items
     return _agent_structured_fallback_conversation_items(
         view_payload,
@@ -3614,12 +3615,14 @@ def _agent_native_conversation_items(
         )
         if provider_key == 'claude' or claude_items:
             return _ConversationItemsResult(claude_items)
-    if provider_key in {'', 'pi'}:
+    if provider_key in {'', 'pi', 'omp'}:
+        native_provider = provider_key or 'pi'
         return _ConversationItemsResult(
-            _pi_native_conversation_items(
+            _pi_family_native_conversation_items(
                 project_root,
                 project_id=project_id,
                 agent=agent,
+                provider=native_provider,
                 mobile_files_dir=mobile_files_dir,
             )
         )
@@ -3647,13 +3650,15 @@ def _agent_native_conversation_cache_fingerprint(
         )
         if claude_fingerprint:
             return claude_fingerprint
-    if provider_key in {'', 'pi'}:
-        pi_fingerprint = _pi_native_conversation_cache_fingerprint(
+    if provider_key in {'', 'pi', 'omp'}:
+        native_provider = provider_key or 'pi'
+        pi_family_fingerprint = _pi_family_native_conversation_cache_fingerprint(
             project_root,
             agent=agent,
+            provider=native_provider,
         )
-        if pi_fingerprint:
-            return pi_fingerprint
+        if pi_family_fingerprint:
+            return pi_family_fingerprint
     return ()
 
 
@@ -3694,14 +3699,19 @@ def _conversation_page_has_provider_native_items(page: dict[str, object]) -> boo
     return False
 
 
-def _pi_native_conversation_items(
+def _pi_family_native_conversation_items(
     project_root: Path,
     *,
     project_id: str,
     agent: str,
+    provider: str,
     mobile_files_dir: Path | None = None,
 ) -> list[dict[str, object]]:
-    session_paths = _pi_native_session_paths(project_root, agent=agent)
+    session_paths = _pi_family_native_session_paths(
+        project_root,
+        agent=agent,
+        provider=provider,
+    )
     if not session_paths:
         return []
     file_roots = [
@@ -3759,18 +3769,19 @@ def _pi_native_conversation_items(
                 if not body:
                     continue
                 item_id = (
-                    f'pi-{session_id}-{line_number}-'
+                    f'{provider}-{session_id}-{line_number}-'
                     f'{_native_id_part(record_id, fallback=role)}-{role}'
                 )
                 if role == 'user':
                     item = {
                         'id': item_id,
                         'agent': agent,
+                        'session_id': session_id,
                         'kind': 'user_message',
                         'title': 'You',
                         'body': body,
                         'format': 'markdown',
-                        'source': 'provider_native/pi',
+                        'source': f'provider_native/{provider}',
                         'state': 'sent',
                         'attachments': [],
                     }
@@ -3778,11 +3789,12 @@ def _pi_native_conversation_items(
                     item = {
                         'id': item_id,
                         'agent': agent,
+                        'session_id': session_id,
                         'kind': 'agent_reply',
                         'title': 'Agent reply',
                         'body': body,
                         'format': 'markdown',
-                        'source': 'provider_native/pi',
+                        'source': f'provider_native/{provider}',
                         'attachments': _artifact_link_attachments(
                             body,
                             file_roots=file_roots,
@@ -3822,13 +3834,22 @@ def _pi_native_conversation_items(
     ]
     return [
         _without_native_sort_fields(item)
-        for item in _coalesce_pi_native_agent_replies(sorted_items)
+        for item in _coalesce_provider_native_agent_replies(
+            sorted_items,
+            source=f'provider_native/{provider}',
+        )
     ]
 
 
-def _pi_native_session_paths(project_root: Path, *, agent: str) -> list[Path]:
+def _pi_family_native_session_paths(
+    project_root: Path,
+    *,
+    agent: str,
+    provider: str,
+) -> list[Path]:
     session_dir = (
-        project_root / '.ccb' / 'agents' / agent / 'provider-state' / 'pi' / 'sessions'
+        PathLayout(project_root).runtime_state_root
+        / 'agents' / agent / 'provider-state' / provider / 'sessions'
     )
     if session_dir.is_symlink() or not session_dir.is_dir():
         return []
@@ -3840,10 +3861,17 @@ def _pi_native_session_paths(project_root: Path, *, agent: str) -> list[Path]:
                 continue
             try:
                 with path.open(encoding='utf-8-sig') as lines:
-                    header = _map(json.loads(lines.readline()))
+                    header = next(
+                        (
+                            record
+                            for line in lines
+                            if (record := _map(json.loads(line))).get('type') == 'session'
+                        ),
+                        {},
+                    )
             except Exception:
                 continue
-            if header.get('type') != 'session':
+            if not header:
                 continue
             recorded_work_dir = _optional_text(header.get('cwd'))
             if not recorded_work_dir or normalize_work_dir(recorded_work_dir) != project_work_dir:
@@ -3858,14 +3886,19 @@ def _pi_native_session_paths(project_root: Path, *, agent: str) -> list[Path]:
     return [path for _, _, path in sorted(candidates)]
 
 
-def _pi_native_conversation_cache_fingerprint(
+def _pi_family_native_conversation_cache_fingerprint(
     project_root: Path,
     *,
     agent: str,
+    provider: str,
 ) -> tuple[tuple[str, int, int], ...]:
     return tuple(
         entry
-        for path in _pi_native_session_paths(project_root, agent=agent)
+        for path in _pi_family_native_session_paths(
+            project_root,
+            agent=agent,
+            provider=provider,
+        )
         if (entry := _conversation_file_fingerprint_entry(path)) is not None
     )
 

@@ -367,6 +367,13 @@ class _FakePiCcbdClient(_FakeCcbdClient):
         return payload
 
 
+class _FakeOmpCcbdClient(_FakeCcbdClient):
+    def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
+        payload = super().project_view(schema_version=schema_version)
+        payload['view']['agents'][0]['provider'] = 'omp'
+        return payload
+
+
 class _FakeActivityCcbdClient(_FakeCcbdClient):
     def project_view(self, *, schema_version: int = 1) -> dict[str, object]:
         payload = super().project_view(schema_version=schema_version)
@@ -2717,6 +2724,78 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
         ('agent_reply', 'new pi answer'),
     ]
 
+
+
+def test_agent_conversation_reads_omp_native_transcript(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    _write_pi_family_transcript(
+        project_root,
+        agent='mobile',
+        provider='omp',
+        session_id='omp-session-native',
+        records=[
+            {
+                'type': 'message',
+                'id': 'omp-user-1',
+                'parentId': None,
+                'timestamp': '2026-09-06T12:00:01.000Z',
+                'message': {
+                    'role': 'user',
+                    'content': [{'type': 'text', 'text': 'omp native question'}],
+                },
+            },
+            {
+                'type': 'message',
+                'id': 'omp-assistant-1',
+                'parentId': 'omp-user-1',
+                'timestamp': '2026-09-06T12:00:02.000Z',
+                'message': {
+                    'role': 'assistant',
+                    'content': [
+                        {'type': 'thinking', 'thinking': 'hidden omp thinking'},
+                        {'type': 'text', 'text': 'omp native answer part one'},
+                    ],
+                },
+            },
+            {
+                'type': 'message',
+                'id': 'omp-assistant-2',
+                'parentId': 'omp-assistant-1',
+                'timestamp': '2026-09-06T12:00:03.000Z',
+                'message': {
+                    'role': 'assistant',
+                    'content': [{'type': 'text', 'text': 'part two'}],
+                },
+            },
+        ],
+    )
+    service = _service(
+        _FakeOmpCcbdClient(),
+        project_root=project_root,
+        mobile_dir=tmp_path / 'mobile',
+    )
+    pairing = service.create_pairing_payload(
+        gateway_url='http://127.0.0.1:8787',
+        scopes=('view',),
+    )
+    _, claim = service.dispatch_post(
+        '/v1/pairing/claim',
+        {'pairing_code': str(pairing['pairing_code'])},
+    )
+
+    _, payload = service.dispatch_get(
+        '/v1/projects/proj-demo/agents/mobile/conversation?namespace_epoch=4&limit=20',
+        {'Authorization': f'Bearer {claim["device_token"]}'},
+    )
+
+    items = payload['conversation']['items']
+    assert [item['source'] for item in items] == ['provider_native/omp'] * 2
+    assert {item['session_id'] for item in items} == {'omp-session-native'}
+    assert [(item['kind'], item['body']) for item in items] == [
+        ('user_message', 'omp native question'),
+        ('agent_reply', 'omp native answer part one\n\npart two'),
+    ]
+    assert 'hidden omp thinking' not in json.dumps(payload)
 
 def test_agent_conversation_does_not_fallback_for_pi_without_native_transcript(
     tmp_path: Path,
@@ -6538,8 +6617,29 @@ def _write_pi_transcript(
     cwd: Path | None = None,
     partial_tail: str | None = None,
 ) -> Path:
+    return _write_pi_family_transcript(
+        project_root,
+        agent=agent,
+        provider='pi',
+        session_id=session_id,
+        records=records,
+        cwd=cwd,
+        partial_tail=partial_tail,
+    )
+
+
+def _write_pi_family_transcript(
+    project_root: Path,
+    *,
+    agent: str,
+    provider: str,
+    session_id: str,
+    records: list[dict[str, object]],
+    cwd: Path | None = None,
+    partial_tail: str | None = None,
+) -> Path:
     session_dir = (
-        project_root / '.ccb' / 'agents' / agent / 'provider-state' / 'pi' / 'sessions'
+        project_root / '.ccb' / 'agents' / agent / 'provider-state' / provider / 'sessions'
     )
     transcript_path = session_dir / f'2026-06-25T12-00-00-000Z_{session_id}.jsonl'
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
@@ -6550,9 +6650,14 @@ def _write_pi_transcript(
         'timestamp': '2026-06-25T12:00:00.000Z',
         'cwd': str(cwd or project_root),
     }
+    prefix = (
+        [{'type': 'title', 'v': 1, 'title': 'OMP session title', 'source': 'auto'}]
+        if provider == 'omp'
+        else []
+    )
     content = ''.join(
         f'{json.dumps(record)}\n'
-        for record in (header, *records)
+        for record in (*prefix, header, *records)
     )
     if partial_tail is not None:
         content += partial_tail
