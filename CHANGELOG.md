@@ -1,5 +1,21 @@
 # Changelog
 
+## v8.6.13 (2026-09-06)
+
+- Ran OMP asks in the visible managed pane with native completion evidence,
+  and kept multi-tool turns active until their final assistant result instead
+  of treating an intermediate `tool_use` as terminal.
+- Limited Config V1/V2 role selection to general roles and
+  `agentroles.ccb_self`; other workflow-specific `ccb_*` roles remain reserved
+  for V3.
+- Refocused current public provider guidance on the primary supported CLI
+  families. DeepSeek CLI, Z.ai, and DeepSeek Harness remain implemented and
+  retain their historical release notes, but are no longer advertised as
+  current headline support.
+- No project, conversation, or configuration migration is required. Native
+  Windows x64 and Herdr remain beta and isolated from shared Linux/macOS
+  runtime dependencies.
+
 ## v8.6.12 (2026-09-02)
 
 - Exposed Pi and OMP native conversations in CCB Mobile while preserving

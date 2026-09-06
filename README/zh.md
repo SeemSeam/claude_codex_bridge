@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.12-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.6.13-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -212,9 +212,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.6.12 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.6.13 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.6.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.12/ccb-mobile-v8.6.12.apk)
+- [下载 CCB Mobile v8.6.13 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.13/ccb-mobile-v8.6.13.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -303,6 +303,16 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.6.13</b> - 可靠的可见 OMP ask 与聚焦的角色选择</summary>
+
+- OMP ask 现在会在可见受管 pane 中运行，并使用 OMP 原生 completion 证据；包含工具调用的 turn 会保持活跃，直到出现最终 assistant 结果。
+- Config V1/V2 角色选择仅显示通用角色和 `agentroles.ccb_self`；workflow 专用 `ccb_*` 角色保留给 V3，不再出现在早期 schema 中。
+- 当前公开 Provider 指引聚焦主要支持的 CLI 系列。DeepSeek CLI、Z.ai 和 DeepSeek Harness 的实现及历史 release notes 保留，但不再作为当前重点支持宣传。
+- 无需迁移项目、对话或配置。原生 Windows x64 与 Herdr 仍为 beta，并继续与 Linux/macOS 共享运行时隔离。
+
+</details>
+
+<details>
 <summary><b>v8.6.12</b> - Provider profile 继承与 Mobile 会话</summary>
 
 - 在 CCB Mobile 中显示 Pi 和 OMP 原生会话，同时保持 Provider 私有 session 路径与 transcript 边界。
