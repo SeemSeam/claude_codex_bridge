@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from provider_backends.claude.launcher_runtime.env import build_claude_env_prefix, claude_user_base_url, write_claude_settings_overlay
+from provider_backends.claude.launcher_runtime.service import (
+    _persistable_start_cmd,
+    claude_respawn_credential_env,
+    rehydrate_claude_persisted_start_cmd,
+)
 from provider_profiles.models import ResolvedProviderProfile
 
 
@@ -90,6 +96,58 @@ def test_build_claude_env_prefix_unsets_competing_ambient_aliases_for_explicit_c
     assert 'ANTHROPIC_BASE_URL=https://explicit.example.test' in result
     assert 'ambient-token' not in result
     assert 'ambient.example.test' not in result
+
+
+def test_persistable_start_cmd_strips_auth_but_keeps_proxy_base_url(tmp_path: Path) -> None:
+    settings_path = tmp_path / 'claude-settings.json'
+    start_cmd = (
+        'export ANTHROPIC_AUTH_TOKEN=proxy-token '
+        'ANTHROPIC_BASE_URL=https://proxy.example.test '
+        f'HOME={tmp_path / "home"}; claude --continue'
+    )
+
+    persisted = _persistable_start_cmd(start_cmd, settings_path=settings_path)
+
+    assert 'ANTHROPIC_AUTH_TOKEN=' not in persisted
+    assert 'ANTHROPIC_BASE_URL=https://proxy.example.test' in persisted
+    assert 'claude --continue' in persisted
+
+
+def test_rehydrate_claude_persisted_start_cmd_restores_proxy_auth_token() -> None:
+    persisted = (
+        'export ANTHROPIC_BASE_URL=https://proxy.example.test HOME=/tmp/home; '
+        'claude --continue'
+    )
+
+    restored = rehydrate_claude_persisted_start_cmd(
+        persisted,
+        credential_env={'ANTHROPIC_AUTH_TOKEN': 'proxy-token'},
+    )
+
+    assert restored.startswith('export ANTHROPIC_AUTH_TOKEN=proxy-token;')
+    assert 'ANTHROPIC_BASE_URL=https://proxy.example.test' in restored
+    assert restored.endswith('claude --continue')
+
+
+def test_claude_respawn_credential_env_reads_provider_profile(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    profile = ResolvedProviderProfile(
+        provider='claude',
+        agent_name='advisor',
+        env={
+            'ANTHROPIC_AUTH_TOKEN': 'proxy-token',
+            'ANTHROPIC_BASE_URL': 'https://proxy.example.test',
+        },
+    )
+    (runtime_dir / 'provider-profile.json').write_text(
+        json.dumps(profile.to_record()),
+        encoding='utf-8',
+    )
+
+    assert claude_respawn_credential_env(runtime_dir) == {
+        'ANTHROPIC_AUTH_TOKEN': 'proxy-token',
+    }
 
 
 def test_write_claude_settings_overlay_returns_none_without_agent_settings(tmp_path) -> None:
