@@ -9,6 +9,10 @@ from provider_runtime.session_payload import pane_id_from_session, pane_ref_from
 from terminal_runtime import get_backend_for_session
 
 from ..home_layout import claude_layout_from_session_data
+from ..launcher_runtime.service import (
+    claude_respawn_credential_env,
+    rehydrate_claude_persisted_start_cmd,
+)
 from .normalization import normalize_session_data, strip_claude_continue_start_cmd
 from .lifecycle import attach_pane_log, ensure_pane, update_claude_binding, write_back
 
@@ -68,7 +72,11 @@ class ClaudeProjectSession:
 
     @property
     def start_cmd(self) -> str:
-        return str(self.data.get("start_cmd") or "").strip()
+        raw = str(self.data.get("start_cmd") or self.data.get("claude_start_cmd") or "").strip()
+        return rehydrate_claude_persisted_start_cmd(
+            raw,
+            credential_env=claude_respawn_credential_env(self.runtime_dir),
+        )
 
     def prepare_crash_recovery(self, reason: str) -> tuple[bool, str] | None:
         if reason != 'provider_session_missing':

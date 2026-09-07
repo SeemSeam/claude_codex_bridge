@@ -12,6 +12,50 @@ from provider_backends.claude.session import ClaudeProjectSession
 from project.identity import normalize_work_dir
 
 
+def test_claude_session_start_cmd_rehydrates_proxy_auth_for_pane_recovery(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    (runtime_dir / 'provider-profile.json').write_text(
+        json.dumps(
+            {
+                'provider': 'claude',
+                'agent_name': 'advisor',
+                'mode': 'inherit',
+                'env': {
+                    'ANTHROPIC_AUTH_TOKEN': 'proxy-token',
+                    'ANTHROPIC_BASE_URL': 'https://proxy.example.test',
+                },
+                'inherit_api': True,
+                'inherit_auth': True,
+                'inherit_config': True,
+                'inherit_skills': True,
+                'inherit_commands': True,
+                'inherit_memory': True,
+            }
+        ),
+        encoding='utf-8',
+    )
+    session = ClaudeProjectSession(
+        session_file=tmp_path / '.claude-session',
+        data={
+            'runtime_dir': str(runtime_dir),
+            'work_dir': str(tmp_path),
+            # Persisted recovery command keeps the proxy URL but drops auth.
+            'start_cmd': (
+                'export ANTHROPIC_BASE_URL=https://proxy.example.test; '
+                'claude --continue'
+            ),
+        },
+    )
+
+    start_cmd = session.start_cmd
+
+    assert 'ANTHROPIC_AUTH_TOKEN=proxy-token' in start_cmd
+    assert 'ANTHROPIC_BASE_URL=https://proxy.example.test' in start_cmd
+    # Disk payload stays redacted; only the respawn view is rehydrated.
+    assert 'ANTHROPIC_AUTH_TOKEN=' not in session.data['start_cmd']
+
+
 def test_claude_missing_session_recovery_drops_only_managed_continue_binding(tmp_path: Path) -> None:
     session_file = tmp_path / '.claude-session'
     session = ClaudeProjectSession(
