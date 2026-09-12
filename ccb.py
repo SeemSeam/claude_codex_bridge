@@ -148,11 +148,11 @@ def _source_runtime_allowed(root: Path, cwd: Path, argv: list[str]) -> tuple[boo
         False,
         "Refusing to run the CCB source checkout outside an allowed test project.\n"
         "Use the installed release `ccb` for normal project/work-environment commands.\n"
-        "Use `/home/bfly/yunwei/ccb_source/ccb_test` from "
-        "`/home/bfly/yunwei/test_ccb2` for source-change validation.\n"
+        "Validate source changes from a directory under an allowed source root.\n"
         f"Current directory: {cwd}\n"
         f"Allowed source roots: {rendered}\n"
-        "Override only for explicit diagnostics with CCB_SOURCE_RUNTIME_OK=1.",
+        "Add roots with CCB_SOURCE_ALLOWED_ROOTS (path-separator delimited), or "
+        "override only for explicit diagnostics with CCB_SOURCE_RUNTIME_OK=1.",
     )
 
 
