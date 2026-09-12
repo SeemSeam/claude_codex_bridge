@@ -42,6 +42,65 @@ from provider_core.pathing import session_filename_for_agent
 from storage.paths import PathLayout
 
 
+class _FakeSecurityResult:
+    def __init__(self, returncode: int, stdout: str = '', stderr: str = '') -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _install_macos_security_stub(monkeypatch, *, on_credential=None):
+    """Stub the macOS ``security`` CLI with enough fidelity to exercise the
+    isolated-HOME keychain provisioning: ``create-keychain`` materializes an
+    empty keychain file, ``list-keychains`` / ``default-keychain`` persist a
+    marker ``com.apple.security.plist`` (the production code writes a real
+    binary plist; tests only assert on the keychain paths it contains), and
+    ``delete-keychain`` removes the file.  Generic-password calls are delegated
+    to ``on_credential(argv, kwargs)`` or answered as "item not found" (44).
+
+    Returns the captured argv list.
+    """
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):
+        call = [str(part) for part in argv]
+        calls.append(call)
+        cmd = call[1]
+        home = Path(kwargs['env']['HOME']) if kwargs.get('env') else None
+        if cmd == 'create-keychain':
+            keychain = Path(call[-1])
+            keychain.parent.mkdir(parents=True, exist_ok=True)
+            keychain.write_bytes(b'')
+            return _FakeSecurityResult(0)
+        if cmd in ('list-keychains', 'default-keychain') and '-s' in call:
+            assert home is not None, 'keychain preference writes must run against the isolated HOME'
+            plist = home / 'Library' / 'Preferences' / 'com.apple.security.plist'
+            plist.parent.mkdir(parents=True, exist_ok=True)
+            entries = call[call.index('-s') + 1:]
+            with plist.open('a', encoding='utf-8') as handle:
+                handle.write('\n'.join(entries) + '\n')
+            return _FakeSecurityResult(0)
+        if cmd == 'delete-keychain':
+            keychain = Path(call[-1])
+            if keychain.exists():
+                keychain.unlink()
+            return _FakeSecurityResult(0)
+        if cmd in {'find-generic-password', 'add-generic-password', 'delete-generic-password'}:
+            if on_credential is not None:
+                return on_credential(call, kwargs)
+            return _FakeSecurityResult(44)
+        return _FakeSecurityResult(0)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(
+        claude_home_runtime.shutil,
+        'which',
+        lambda name: '/usr/bin/security' if name == 'security' else None,
+    )
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    return calls
+
+
 def _spec(name: str, provider: str = "codex", *, provider_profile: ProviderProfileSpec | None = None, model: str | None = None) -> AgentSpec:
     return AgentSpec(
         name=name,
@@ -3060,10 +3119,13 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
             self.stderr = ''
 
     def fake_run(argv, **kwargs):
-        calls.append([str(part) for part in argv])
+        call = [str(part) for part in argv]
+        calls.append(call)
         assert kwargs['capture_output'] is True
         assert kwargs['text'] is True
-        command = str(argv[1])
+        command = call[1]
+        if command in {'create-keychain', 'list-keychains', 'default-keychain', 'delete-keychain'}:
+            return Result(0)
         service = str(argv[argv.index('-s') + 1])
         if command == 'find-generic-password' and service == 'Claude Code-credentials':
             return Result(
@@ -3083,7 +3145,8 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
 
     payload = json.loads(layout.credentials_path.read_text(encoding='utf-8'))
     assert payload['claudeAiOauth']['refreshToken'] == 'keychain-refresh-token'
-    assert calls[0] == [
+    first_find = next(call for call in calls if call[1] == 'find-generic-password')
+    assert first_find == [
         '/usr/bin/security',
         'find-generic-password',
         '-a',
@@ -3092,6 +3155,17 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
         'Claude Code-credentials',
         '-w',
     ]
+    # The isolated HOME is provisioned with an agent-private default keychain.
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    assert any(
+        call[1] == 'default-keychain'
+        and call[call.index('-s') + 1] == str(private_keychain)
+        for call in calls
+    )
+    assert any(
+        call[1] == 'create-keychain' and str(private_keychain) in call
+        for call in calls
+    )
     managed_service = claude_home_runtime._managed_macos_keychain_service(layout)
     assert managed_service != 'Claude Code-credentials'
     assert any(
@@ -3465,14 +3539,21 @@ def test_materialize_claude_home_config_does_not_project_macos_keychain_preferen
         '<plist><dict><key>DefaultKeychain</key><array/></dict></plist>\n',
         encoding='utf-8',
     )
+    _install_macos_security_stub(monkeypatch)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
-
-    materialize_claude_home_config(target_home, source_home=source_home)
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
 
     target_plist = target_home / 'Library' / 'Preferences' / 'com.apple.security.plist'
-    assert not target_plist.exists()
-    assert source_plist.is_file()
+    # The source preference file is never copied (copy-only boundary).
+    assert source_plist.read_text(encoding='utf-8') == (
+        '<plist><dict><key>DefaultKeychain</key><array/></dict></plist>\n'
+    )
+    # An agent-local plist is created that points the default keychain at the
+    # managed private keychain, not at the user's login keychain.
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    assert target_plist.exists()
+    assert target_plist.read_text(encoding='utf-8') != source_plist.read_text(encoding='utf-8')
+    assert str(private_keychain) in target_plist.read_text(encoding='utf-8')
 
 
 def test_materialize_claude_home_config_never_links_macos_keychains_when_preferences_absent(
@@ -3484,13 +3565,20 @@ def test_materialize_claude_home_config_never_links_macos_keychains_when_prefere
     source_keychains = source_home / 'Library' / 'Keychains'
     source_keychains.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    calls = _install_macos_security_stub(monkeypatch)
 
-    materialize_claude_home_config(target_home, source_home=source_home)
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
 
     target_keychains = target_home / 'Library' / 'Keychains'
-    assert not target_keychains.exists()
+    # The Keychains directory is never symlinked back to the user's real
+    # keychains directory (copy-only boundary: managed logout must not mutate
+    # the external login authority).
     assert not target_keychains.is_symlink()
+    # The managed private keychain lives inside the isolated Keychains dir
+    # as a regular file.
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    assert private_keychain.is_file()
+    assert any(call[1] == 'create-keychain' and str(private_keychain) in call for call in calls)
 
 
 def test_materialize_claude_home_config_detaches_legacy_macos_keychains_link(
@@ -3505,13 +3593,16 @@ def test_materialize_claude_home_config_detaches_legacy_macos_keychains_link(
     target_keychains.parent.mkdir(parents=True, exist_ok=True)
     os.symlink(source_keychains, target_keychains)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    _install_macos_security_stub(monkeypatch)
 
-    materialize_claude_home_config(target_home, source_home=source_home)
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
 
-    assert not target_keychains.exists()
+    # The legacy link pointing back at the user's real Keychains directory must
+    # be detached before the private keychain is provisioned.
     assert not target_keychains.is_symlink()
+    assert target_keychains.is_dir()
     assert source_keychains.is_dir()
+    assert claude_home_runtime._managed_private_keychain_path(layout).is_file()
 
 
 def test_materialize_claude_home_config_does_not_copy_keychain_preferences_on_non_darwin(
@@ -3545,7 +3636,7 @@ def test_materialize_claude_home_config_removes_keychain_preferences_when_auth_n
     source_plist.write_text('<plist><dict><key>DefaultKeychain</key><array/></dict></plist>\n', encoding='utf-8')
     target_plist.write_text('<plist><dict><key>OldKeychain</key><array/></dict></plist>\n', encoding='utf-8')
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    calls = _install_macos_security_stub(monkeypatch)
 
     materialize_claude_home_config(
         target_home,
@@ -3554,6 +3645,12 @@ def test_materialize_claude_home_config_removes_keychain_preferences_when_auth_n
     )
 
     assert not target_plist.exists()
+    # No private keychain is provisioned when auth inheritance is disabled.
+    assert not any(call[1] in {'create-keychain', 'default-keychain', 'list-keychains'} for call in calls)
+    # The source preference file is untouched.
+    assert source_plist.read_text(encoding='utf-8') == (
+        '<plist><dict><key>DefaultKeychain</key><array/></dict></plist>\n'
+    )
 
 
 def test_materialize_claude_home_config_removes_macos_keychains_when_auth_not_inherited(
@@ -3568,7 +3665,7 @@ def test_materialize_claude_home_config_removes_macos_keychains_when_auth_not_in
     target_keychains.parent.mkdir(parents=True, exist_ok=True)
     os.symlink(source_keychains, target_keychains)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    calls = _install_macos_security_stub(monkeypatch)
 
     materialize_claude_home_config(
         target_home,
@@ -3576,8 +3673,9 @@ def test_materialize_claude_home_config_removes_macos_keychains_when_auth_not_in
         source_home=source_home,
     )
 
-    assert not target_keychains.exists()
     assert not target_keychains.is_symlink()
+    assert not target_keychains.exists()
+    assert not any(call[1] in {'create-keychain', 'default-keychain', 'list-keychains'} for call in calls)
 
 
 def test_materialize_claude_home_config_falls_back_to_legacy_macos_keychain_service(
@@ -3587,7 +3685,6 @@ def test_materialize_claude_home_config_falls_back_to_legacy_macos_keychain_serv
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_home.mkdir(parents=True, exist_ok=True)
-    calls: list[list[str]] = []
 
     class Result:
         def __init__(self, returncode: int, stdout: str = '') -> None:
@@ -3595,20 +3692,17 @@ def test_materialize_claude_home_config_falls_back_to_legacy_macos_keychain_serv
             self.stdout = stdout
             self.stderr = ''
 
-    def fake_run(argv, **kwargs):
-        calls.append([str(part) for part in argv])
-        service = calls[-1][calls[-1].index('-s') + 1]
-        command = str(argv[1])
+    def on_credential(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        command = call[1]
         if command == 'find-generic-password' and service == 'Claude Code':
             return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'legacy-refresh-token'}}))
         if command == 'add-generic-password':
             return Result(0)
         return Result(44)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
-    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
-    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
+    calls = _install_macos_security_stub(monkeypatch, on_credential=on_credential)
 
     layout = materialize_claude_home_config(target_home, source_home=source_home)
 
@@ -3621,7 +3715,11 @@ def test_materialize_claude_home_config_falls_back_to_legacy_macos_keychain_serv
     ]
     assert queried_services[:3] == ['Claude Code-credentials', 'Claude Code-custom-oauth', 'Claude Code']
     assert queried_services[3] == claude_home_runtime._managed_macos_keychain_service(layout)
-    assert all('-a' in call for call in calls)
+    assert all(
+        '-a' in call
+        for call in calls
+        if call[1].endswith('generic-password')
+    )
 
 
 def test_macos_keychain_services_keep_current_credentials_first_when_custom_oauth_enabled(monkeypatch) -> None:
@@ -3653,7 +3751,6 @@ def test_materialize_claude_home_config_reads_explicit_macos_keychain_override(
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_home.mkdir(parents=True, exist_ok=True)
-    calls: list[list[str]] = []
 
     class Result:
         def __init__(self, returncode: int, stdout: str = '') -> None:
@@ -3661,33 +3758,225 @@ def test_materialize_claude_home_config_reads_explicit_macos_keychain_override(
             self.stdout = stdout
             self.stderr = ''
 
-    def fake_run(argv, **_kwargs):
-        calls.append([str(part) for part in argv])
-        service = calls[-1][calls[-1].index('-s') + 1]
-        command = str(argv[1])
+    def on_credential(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        command = call[1]
         if command == 'find-generic-password' and service == 'Claude Code-credentials-account-a':
             return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'override-refresh-token'}}))
         if command == 'add-generic-password':
             return Result(0)
         return Result(44)
 
-    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
-    monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
-    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
     monkeypatch.setenv('CCB_KEYCHAIN_SERVICE_OVERRIDE', 'Claude Code-credentials-account-a')
+    calls = _install_macos_security_stub(monkeypatch, on_credential=on_credential)
 
     layout = materialize_claude_home_config(target_home, source_home=source_home)
 
     payload = json.loads(layout.credentials_path.read_text(encoding='utf-8'))
     assert payload['claudeAiOauth']['refreshToken'] == 'override-refresh-token'
-    assert calls[0][calls[0].index('-s') + 1] == 'Claude Code-credentials-account-a'
+    first_find = next(call for call in calls if call[1] == 'find-generic-password')
+    assert first_find[first_find.index('-s') + 1] == 'Claude Code-credentials-account-a'
     assert any(
         call[1] == 'add-generic-password'
         and call[call.index('-s') + 1]
         == claude_home_runtime._managed_macos_keychain_service(layout)
         for call in calls
     )
+
+
+def test_materialize_claude_home_config_provisions_agent_private_default_keychain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    login_keychain = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    login_keychain.parent.mkdir(parents=True, exist_ok=True)
+    login_keychain.write_bytes(b'')
+
+    calls = _install_macos_security_stub(monkeypatch)
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    create_call = next(call for call in calls if call[1] == 'create-keychain')
+    assert str(private_keychain) in create_call
+    list_call = next(call for call in calls if call[1] == 'list-keychains' and '-s' in call)
+    search_entries = list_call[list_call.index('-s') + 1:]
+    # Private keychain is first (default write target), real login keychain is
+    # still listed for read-only credential discovery, System keychain last.
+    assert search_entries[0] == str(private_keychain)
+    assert str(login_keychain) in search_entries
+    assert search_entries[-1] == claude_home_runtime._MACOS_SYSTEM_KEYCHAIN
+    default_call = next(call for call in calls if call[1] == 'default-keychain' and '-s' in call)
+    assert default_call[default_call.index('-s') + 1] == str(private_keychain)
+    # Every preference mutation must run scoped to the isolated HOME so the
+    # user's real global keychain settings can never be touched.
+    provisioning_calls = [
+        call for call in calls
+        if call[1] in {'create-keychain', 'list-keychains', 'default-keychain'}
+    ]
+    assert len(provisioning_calls) == 3
+    # The managed private keychain is a regular file inside the isolated home,
+    # never a symlink back to the user's Keychains directory.
+    assert private_keychain.is_file()
+    assert not target_home.joinpath('Library', 'Keychains').is_symlink()
+
+
+def test_materialize_claude_home_config_seeds_managed_item_only_into_private_keychain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    login_keychain = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    login_keychain.parent.mkdir(parents=True, exist_ok=True)
+    login_keychain.write_bytes(b'')
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    layout_before_materialize = None
+    captured: dict[str, object] = {}
+
+    def on_credential(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        command = call[1]
+        # External credential discovery (no explicit keychain path argument).
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'external-token'}}))
+        # Managed suffix item lookup/write must carry the private keychain path.
+        if service != 'Claude Code-credentials':
+            captured.setdefault('managed_calls', []).append(call)
+            if command == 'find-generic-password':
+                return Result(44)
+            if command == 'add-generic-password':
+                return Result(0)
+        return Result(44)
+
+    monkeypatch.setenv('USER', 'mac-user')
+    calls = _install_macos_security_stub(monkeypatch, on_credential=on_credential)
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    managed_service = claude_home_runtime._managed_macos_keychain_service(layout)
+
+    add_call = next(
+        call for call in calls
+        if call[1] == 'add-generic-password' and call[call.index('-s') + 1] == managed_service
+    )
+    assert add_call[-1] == str(private_keychain)
+    managed_find = next(
+        call for call in calls
+        if call[1] == 'find-generic-password' and call[call.index('-s') + 1] == managed_service
+    )
+    assert managed_find[-1] == str(private_keychain)
+    # External login discovery is not pinned to the private keychain.
+    external_finds = [
+        call for call in calls
+        if call[1] == 'find-generic-password' and call[call.index('-s') + 1] == 'Claude Code-credentials'
+    ]
+    assert external_finds and all(call[-1] == '-w' for call in external_finds)
+
+
+def test_materialize_claude_home_config_deletes_private_keychain_after_disabling_inheritance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    login_keychain = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    login_keychain.parent.mkdir(parents=True, exist_ok=True)
+    login_keychain.write_bytes(b'')
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def on_credential_first(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        command = call[1]
+        if command == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'external-token'}}))
+        if command == 'add-generic-password':
+            return Result(0)
+        return Result(44)
+
+    monkeypatch.setenv('USER', 'mac-user')
+    calls = _install_macos_security_stub(monkeypatch, on_credential=on_credential_first)
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    assert private_keychain.is_file()
+
+    calls.clear()
+    materialize_claude_home_config(
+        target_home,
+        source_home=source_home,
+        profile=ProviderProfileSpec(inherit_auth=False, inherit_api=False),
+    )
+
+    delete_keychain_calls = [call for call in calls if call[1] == 'delete-keychain']
+    assert any(str(private_keychain) in call for call in delete_keychain_calls)
+    assert not private_keychain.exists()
+    target_plist = target_home / 'Library' / 'Preferences' / 'com.apple.security.plist'
+    assert not target_plist.exists()
+    # The real login keychain file is never removed.
+    assert login_keychain.is_file()
+
+
+def test_materialize_claude_home_config_keychain_provisioning_failure_is_non_fatal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    login_keychain = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    login_keychain.parent.mkdir(parents=True, exist_ok=True)
+    login_keychain.write_bytes(b'')
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '', stderr: str = 'boom') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def on_credential(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        if call[1] == 'find-generic-password' and service == 'Claude Code-credentials':
+            return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'external-token'}}))
+        if call[1] == 'add-generic-password':
+            return Result(0)
+        return Result(44)
+
+    def fake_run(argv, **kwargs):
+        call = [str(part) for part in argv]
+        # Provisioning hard-fails; generic-password flows still behave normally.
+        if call[1] in {'create-keychain', 'list-keychains', 'default-keychain'}:
+            return Result(1)
+        if call[1] in {'find-generic-password', 'add-generic-password'}:
+            return on_credential(call, kwargs)
+        return Result(44)
+
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(
+        claude_home_runtime.shutil,
+        'which',
+        lambda name: '/usr/bin/security' if name == 'security' else None,
+    )
+    monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
+    monkeypatch.setenv('USER', 'mac-user')
+
+    # Must not raise: credentials still project via .credentials.json.
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    payload = json.loads(layout.credentials_path.read_text(encoding='utf-8'))
+    assert payload['claudeAiOauth']['refreshToken'] == 'external-token'
 
 
 def test_materialize_claude_home_config_preserves_runtime_hooks_and_permissions(tmp_path: Path) -> None:

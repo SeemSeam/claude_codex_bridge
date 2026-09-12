@@ -76,6 +76,12 @@ _CLAUDE_JSON_MCP_PROJECT_KEYS = (
     'mcpContextUris',
 )
 _MACOS_KEYCHAIN_CLAUDE_SERVICES = ('Claude Code-credentials', 'Claude Code-custom-oauth', 'Claude Code')
+# Private agent-owned keychain file name; created on-demand inside each
+# managed HOME so Security.framework always has a resolvable default keychain
+# even when HOME points at an isolated directory.  See
+# docs/macos-managed-claude-keychain-default-missing-bug.md.
+_MACOS_PRIVATE_KEYCHAIN_NAME = 'ccb-agent.keychain-db'
+_MACOS_SYSTEM_KEYCHAIN = '/Library/Keychains/System.keychain'
 _CLAUDE_SKILLS_PROJECTION_LABEL = 'claude-inherited-skills'
 _CLAUDE_COMMANDS_PROJECTION_LABEL = 'claude-inherited-commands'
 _CLAUDE_PLUGIN_SEED_ENV = 'CLAUDE_CODE_PLUGIN_SEED_DIR'
@@ -700,7 +706,8 @@ def _materialize_auth(source_home: Path, target_layout: ClaudeHomeLayout, *, pro
 
 
 def _materialize_macos_keychain_preferences(source_home: Path, target_layout: ClaudeHomeLayout, *, profile) -> None:
-    del source_home, profile
+    if platform.system() != 'Darwin':
+        return
     target = target_layout.home_root / 'Library' / 'Preferences' / 'com.apple.security.plist'
     target_keychains = target_layout.home_root / 'Library' / 'Keychains'
     # Older CCB releases linked this path back to the user's real Keychains
@@ -712,6 +719,23 @@ def _materialize_macos_keychain_preferences(source_home: Path, target_layout: Cl
     # user's global keychain database, so remove legacy copies as well.
     _remove_file(target)
 
+    if not _inherits_external_auth(profile):
+        # Without credential inheritance there is nothing to project and no
+        # reason to provision a default keychain; drop any private keychain a
+        # previous run left behind.
+        _remove_managed_private_keychain(target_layout)
+        return
+
+    # Detaching the legacy link/plist removed every resolvable default keychain
+    # from the isolated HOME.  On current macOS releases Security.framework
+    # then raises the "default keychain could not be found / restore default"
+    # GUI prompt the first time the managed provider process touches the
+    # keychain.  Provision an agent-private keychain as the default instead.
+    # The user's real login keychain is still listed for read-only credential
+    # discovery, while every write (add-generic-password) lands in the private
+    # keychain, so logout/cleanup can never mutate the external login authority.
+    _ensure_managed_private_keychain(source_home, target_layout)
+
 
 def _remove_keychains_link(path: Path) -> None:
     try:
@@ -719,6 +743,131 @@ def _remove_keychains_link(path: Path) -> None:
             path.unlink()
     except Exception:
         pass
+
+
+def _managed_private_keychain_path(target_layout: ClaudeHomeLayout) -> Path:
+    return target_layout.home_root / 'Library' / 'Keychains' / _MACOS_PRIVATE_KEYCHAIN_NAME
+
+
+def _real_login_keychain_path(source_home: Path) -> Path | None:
+    candidate = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    try:
+        if candidate.exists():
+            return candidate
+    except OSError:
+        return None
+    return None
+
+
+def _ensure_managed_private_keychain(
+    source_home: Path,
+    target_layout: ClaudeHomeLayout,
+) -> None:
+    """Provision an agent-private default keychain inside the isolated HOME.
+
+    Security.framework resolves the keychain search list and default keychain
+    via ``$HOME/Library/Preferences/com.apple.security.plist``.  Creating that
+    plist requires the ``Library/Preferences`` directory to pre-exist; the
+    ``security`` CLI silently drops ``list-keychains -s`` /
+    ``default-keychain -s`` otherwise.  All mutations run with HOME pointed at
+    the managed home, so they only ever touch the isolated plist and never the
+    user's real global keychain settings.
+    """
+    private_keychain = _managed_private_keychain_path(target_layout)
+    if shutil.which('security') is None:
+        return
+    try:
+        private_keychain.parent.mkdir(parents=True, exist_ok=True)
+        preferences_dir = target_layout.home_root / 'Library' / 'Preferences'
+        preferences_dir.mkdir(parents=True, exist_ok=True)
+        if not private_keychain.exists():
+            # An empty password keeps the agent keychain unlockable without a
+            # GUI prompt; it stores only copy-only managed credentials.
+            _run_security(
+                ['create-keychain', '-p', '', str(private_keychain)],
+                env_home=target_layout.home_root,
+            )
+
+        search_list = [str(private_keychain)]
+        login_keychain = _real_login_keychain_path(source_home)
+        if login_keychain is not None:
+            # Read-only credential discovery: the managed process can still
+            # resolve the official Claude login item from the login keychain,
+            # but it is never the default write target.
+            search_list.append(str(login_keychain))
+        search_list.append(_MACOS_SYSTEM_KEYCHAIN)
+        _run_security(['list-keychains', '-s', *search_list], env_home=target_layout.home_root)
+        _run_security(
+            ['default-keychain', '-s', str(private_keychain)],
+            env_home=target_layout.home_root,
+        )
+    except RuntimeError:
+        # Keychain provisioning is best-effort: failure must not block provider
+        # startup; credentials remain projected via .credentials.json.
+        return
+
+
+def _remove_managed_private_keychain(target_layout: ClaudeHomeLayout) -> None:
+    private_keychain = _managed_private_keychain_path(target_layout)
+    target = target_layout.home_root / 'Library' / 'Preferences' / 'com.apple.security.plist'
+    try:
+        if private_keychain.exists():
+            # delete-keychain removes the search-list reference and the file
+            # itself; run against the managed HOME so global state is untouched.
+            _run_security(
+                ['delete-keychain', str(private_keychain)],
+                env_home=target_layout.home_root,
+                check=False,
+            )
+        _remove_file(target)
+        _remove_file(private_keychain)
+        _remove_keychains_link(private_keychain.parent)
+    except RuntimeError:
+        pass
+
+
+def _run_security(
+    arguments: list[str],
+    *,
+    env_home: Path | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    security = shutil.which('security')
+    if security is None:
+        if check:
+            raise RuntimeError('macOS security CLI not found on PATH')
+        return _FailedSecurityProcess(FileNotFoundError('security'))
+    env = None
+    if env_home is not None:
+        env = dict(os.environ)
+        env['HOME'] = str(env_home)
+    try:
+        result = subprocess.run(
+            [security, *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=env,
+        )
+    except Exception as exc:
+        if check:
+            raise RuntimeError(f'security {" ".join(arguments[:1])} failed: {exc}') from exc
+        return _FailedSecurityProcess(exc)
+    if check and result.returncode != 0:
+        raise RuntimeError(
+            f'security {arguments[0]} exited {result.returncode}: '
+            f'{(result.stderr or result.stdout or "").strip()}'
+        )
+    return result
+
+
+class _FailedSecurityProcess:
+    returncode = 1
+    stdout = ''
+
+    def __init__(self, error: Exception) -> None:
+        self.stderr = str(error)
 
 
 def _projected_claude_json_payload(
@@ -1112,16 +1261,24 @@ def _sync_managed_macos_keychain_auth(
 ) -> None:
     if platform.system() != 'Darwin':
         return
-    security = shutil.which('security') or '/usr/bin/security'
+    security = shutil.which('security')
+    if security is None:
+        raise RuntimeError('cannot isolate Claude login: macOS security CLI unavailable')
     account = _macos_keychain_account()
     if not account:
         raise RuntimeError('cannot isolate Claude login: macOS Keychain account is unavailable')
     service = _managed_macos_keychain_service(target_layout)
     if service in _macos_keychain_services():
         raise RuntimeError('refusing to overwrite the external Claude Keychain login')
+    # The managed suffix item must live in the agent-private keychain rather
+    # than the user's login keychain, even though this runs in the CCB parent
+    # process (whose HOME still points at the real user home).  Passing the
+    # keychain file as an explicit positional argument binds both lookup and
+    # write to the private database.
+    private_keychain = _managed_private_keychain_path(target_layout)
     try:
         existing = subprocess.run(
-            [security, 'find-generic-password', '-a', account, '-s', service, '-w'],
+            [security, 'find-generic-password', '-a', account, '-s', service, '-w', str(private_keychain)],
             check=False,
             capture_output=True,
             text=True,
@@ -1150,6 +1307,7 @@ def _sync_managed_macos_keychain_auth(
                 service,
                 '-w',
                 credential_text,
+                str(private_keychain),
             ],
             check=False,
             capture_output=True,
@@ -1165,16 +1323,21 @@ def _sync_managed_macos_keychain_auth(
 def _remove_managed_macos_keychain_auth(target_layout: ClaudeHomeLayout) -> None:
     if platform.system() != 'Darwin':
         return
-    security = shutil.which('security') or '/usr/bin/security'
+    security = shutil.which('security')
+    if security is None:
+        return
     account = _macos_keychain_account()
     if not account:
         return
     service = _managed_macos_keychain_service(target_layout)
     if service in _macos_keychain_services():
+        # Never delete entries whose service name belongs to the external
+        # authority; that would be a copy-only boundary violation.
         return
+    private_keychain = _managed_private_keychain_path(target_layout)
     try:
         subprocess.run(
-            [security, 'delete-generic-password', '-a', account, '-s', service],
+            [security, 'delete-generic-password', '-a', account, '-s', service, str(private_keychain)],
             check=False,
             capture_output=True,
             text=True,
