@@ -180,12 +180,13 @@ When `ccb` starts a managed Claude agent:
 - it must ensure `CLAUDE_PROJECTS_ROOT == <claude_home>/.claude/projects`
 - it must explicitly set
   `CLAUDE_SESSION_ENV_ROOT == <claude_home>/.claude/session-env`
-- it must use the user-installed Claude executable, disable Claude self-update
-  and both provider login/logout commands in the managed pane, and must not
-  create a project-scoped CCB binary cache
-- it must export `DISABLE_LOGIN_COMMAND=1` and `DISABLE_LOGOUT_COMMAND=1` so a
-  managed Claude command cannot replace or remove ambient macOS Keychain login
-  state
+- it must use the user-installed Claude executable, disable Claude self-update,
+  and must not create a project-scoped CCB binary cache
+- with inherited auth it must export `DISABLE_LOGIN_COMMAND=1` and
+  `DISABLE_LOGOUT_COMMAND=1` so a managed Claude command cannot replace or
+  remove ambient macOS Keychain login state; with `inherit_auth=false` it must
+  explicitly unset both flags and all supported ambient OAuth/token descriptor
+  inputs before applying Agent-explicit environment values
 - it may detach only recognized CCB-owned legacy binary-cache symlinks from the
   managed home; it must preserve foreign symlinks and defer cache-payload
   deletion to explicit stopped-project cleanup
@@ -266,6 +267,14 @@ When `ccb` starts a managed Claude agent:
   `Library/Keychains` path to the user's Keychains; startup must remove a
   recognized legacy managed link and legacy copied preference without
   traversing the user's Keychain
+- on macOS with `inherit_auth=false`, startup must create an owner-only
+  Keychain database under the Agent's managed `Library/Keychains`; the managed
+  default and search list must contain only that database, CCB must not project
+  the user's OAuth item, and Claude login/logout commands remain enabled so the
+  user can create and manage an independent Agent login
+- the first switch from inherited to independent auth may remove only account
+  metadata recorded as CCB-projected; subsequent starts must preserve account
+  metadata written by the independent managed Claude process
 - managed login-auth projection may also synchronize older or alternate Claude
   Code credential cache artifacts such as `.config/claude-code/auth.json` when
   they exist in the source home

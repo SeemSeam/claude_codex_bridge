@@ -421,8 +421,8 @@ Managed provider startup mutation rules:
   must be detached without traversing their source
 - managed Codex startup must write `check_for_update_on_startup = false` into
   the generated agent-local `CODEX_HOME/config.toml`; managed Claude startup
-  must export `DISABLE_AUTOUPDATER=1`, `DISABLE_LOGIN_COMMAND=1`, and
-  `DISABLE_LOGOUT_COMMAND=1`; managed Gemini startup must write both
+  must export `DISABLE_AUTOUPDATER=1`, and inherited auth must also export
+  `DISABLE_LOGIN_COMMAND=1` and `DISABLE_LOGOUT_COMMAND=1`; managed Gemini startup must write both
   `general.enableAutoUpdate = false` and
   `general.enableAutoUpdateNotification = false` into the generated
   agent-local `.gemini/settings.json`. Managed Grok receives
@@ -509,8 +509,13 @@ Managed provider startup mutation rules:
 - managed AGY must use private agent-local `.gemini` and `.antigravity`
   directories. It may copy allowlisted authentication/config files from the
   user's Windows provider home, but it must not symlink or junction either
-  managed directory back to that source. Before every launch, CCB must safely
-  refresh AGY's provider-recognized
+  managed directory back to that source. On macOS with `inherit_auth=false`,
+  CCB must initialize an Agent-private Keychain and let AGY create an
+  independent login there; it must not copy the user's opaque
+  `gemini` / `antigravity` credential. A mode transition must fail closed while
+  old managed auth files remain rather than reclassifying them as independent.
+  Other modes must safely refresh AGY's
+  provider-recognized
   `.gemini/antigravity-cli/cache/antigravity-keyring-unavailable` marker inside
   that private home so AGY selects file token storage without first waiting on
   the OS keyring. This marker must not be injected globally, placed in the

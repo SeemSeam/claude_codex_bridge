@@ -471,6 +471,13 @@ and then log in that agent's managed Codex home directly. With no explicit
 agent API authority, `inherit_auth = false` means "do not inherit global
 Codex credentials"; it must preserve an existing agent-local `auth.json`.
 
+The same setting enables independent Agent login for Claude and AGY on macOS.
+CCB prepares a private Keychain under the managed Provider home; log in once in
+that managed session, and later starts reuse that Agent-owned credential. When
+changing an existing AGY profile from inherited to independent auth, move or
+remove any old managed auth files first; CCB blocks the transition rather than
+silently treating a prior projection as the independent login.
+
 ### 4.3 Provider Profile MCP Overlay
 
 Provider profiles may declare agent-local MCP server overrides:

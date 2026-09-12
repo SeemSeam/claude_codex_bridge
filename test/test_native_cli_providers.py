@@ -175,6 +175,7 @@ def test_agy_forces_file_token_storage_inside_private_home(
 
     monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
     monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Linux")
     monkeypatch.setenv("AGY_START_CMD", "agy")
 
     cmd = agy_launcher.build_start_cmd(
@@ -206,6 +207,190 @@ def test_agy_forces_file_token_storage_inside_private_home(
         f"USERPROFILE={shlex.quote(str(external_home))}"
     )
     assert "antigravity-keyring-unavailable" not in cmd
+
+
+def test_agy_macos_uses_private_keychain_for_agent_private_login(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_home.mkdir()
+    keychain = managed_home / "Library" / "Keychains" / "ccb-provider.keychain-db"
+    prepared: list[Path] = []
+
+    def prepare(home: Path) -> Path:
+        prepared.append(home)
+        keychain.parent.mkdir(parents=True, exist_ok=True)
+        keychain.write_bytes(b"private-keychain")
+        return keychain
+
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agy_launcher, "prepare_private_keychain", prepare)
+    monkeypatch.setattr(
+        agy_launcher,
+        "read_keyring_password_state",
+        lambda *_args, **_kwargs: pytest.fail("external Keychain must not be read"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        agy_launcher,
+        "load_resolved_provider_profile",
+        lambda _runtime: SimpleNamespace(inherit_auth=False, inherit_config=False),
+    )
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+
+    command = ParsedStartCommand(
+        project=None,
+        agent_names=("agy_agent",),
+        restore=False,
+        auto_permission=False,
+    )
+    cmd = agy_launcher.build_start_cmd(
+        command,
+        _spec("agy_agent", "agy"),
+        tmp_path / "runtime",
+        "launch-agy",
+    )
+
+    assert prepared == [managed_home]
+    assert not (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).exists()
+    assert f"HOME={shlex.quote(str(managed_home))}" in cmd
+
+
+def test_agy_macos_inherited_auth_keeps_file_storage_and_does_not_create_keychain(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_home.mkdir()
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(
+        agy_launcher,
+        "prepare_private_keychain",
+        lambda _home: pytest.fail("inherited auth must not create a private Keychain"),
+    )
+    monkeypatch.setattr(
+        agy_launcher,
+        "load_resolved_provider_profile",
+        lambda _runtime: SimpleNamespace(inherit_auth=True, inherit_config=True),
+    )
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+
+    agy_launcher.build_start_cmd(
+        ParsedStartCommand(
+            project=None,
+            agent_names=("agy_agent",),
+            restore=False,
+            auto_permission=False,
+        ),
+        _spec("agy_agent", "agy"),
+        tmp_path / "runtime",
+        "launch-agy",
+    )
+
+    assert (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).is_file()
+
+
+def test_agy_macos_private_keychain_failure_falls_back_to_private_file_storage(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_home.mkdir()
+    monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
+    monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
+    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(
+        agy_launcher,
+        "prepare_private_keychain",
+        lambda _home: (_ for _ in ()).throw(PermissionError("Keychain unavailable")),
+    )
+    monkeypatch.setattr(
+        agy_launcher,
+        "load_resolved_provider_profile",
+        lambda _runtime: SimpleNamespace(inherit_auth=False, inherit_config=False),
+    )
+    monkeypatch.setenv("AGY_START_CMD", "agy")
+
+    agy_launcher.build_start_cmd(
+        ParsedStartCommand(
+            project=None,
+            agent_names=("agy_agent",),
+            restore=False,
+            auto_permission=False,
+        ),
+        _spec("agy_agent", "agy"),
+        tmp_path / "runtime",
+        "launch-agy",
+    )
+
+    assert (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).is_file()
+
+
+def test_agy_auth_mode_switch_blocks_old_projection_then_preserves_private_login(
+    tmp_path: Path,
+) -> None:
+    source_home = tmp_path / "source-home"
+    managed_home = tmp_path / "managed-home"
+    source_auth = source_home / agy_launcher._AGY_AUTH_FILES[0]
+    managed_auth = managed_home / agy_launcher._AGY_AUTH_FILES[0]
+    source_auth.parent.mkdir(parents=True)
+    source_auth.write_text("source-auth\n", encoding="utf-8")
+    inherited = SimpleNamespace(inherit_auth=True, inherit_config=False)
+    independent = SimpleNamespace(inherit_auth=False, inherit_config=False)
+
+    agy_launcher._materialize_private_credentials(
+        source_home,
+        managed_home,
+        profile=inherited,
+    )
+    assert managed_auth.read_text(encoding="utf-8") == "source-auth\n"
+
+    with pytest.raises(RuntimeError, match="remove or move those managed files"):
+        agy_launcher._materialize_private_credentials(
+            source_home,
+            managed_home,
+            profile=independent,
+        )
+    assert managed_auth.read_text(encoding="utf-8") == "source-auth\n"
+
+    managed_auth.unlink()
+    agy_launcher._materialize_private_credentials(
+        source_home,
+        managed_home,
+        profile=independent,
+    )
+    managed_auth.write_text("agent-private-auth\n", encoding="utf-8")
+    agy_launcher._materialize_private_credentials(
+        source_home,
+        managed_home,
+        profile=independent,
+    )
+    assert managed_auth.read_text(encoding="utf-8") == "agent-private-auth\n"
+
+
+def test_agy_keyring_marker_removal_detaches_symlinked_cache_parent(tmp_path: Path) -> None:
+    managed_home = tmp_path / "managed-home"
+    external_cache = tmp_path / "external-cache"
+    external_marker = external_cache / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL.name
+    external_cache.mkdir()
+    external_marker.write_text("external\n", encoding="utf-8")
+    cache = managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL.parent
+    cache.parent.mkdir(parents=True)
+    cache.symlink_to(external_cache, target_is_directory=True)
+
+    agy_launcher._remove_file_token_storage_bypass(managed_home)
+
+    assert external_marker.read_text(encoding="utf-8") == "external\n"
+    assert cache.is_dir()
+    assert not cache.is_symlink()
 
 
 def test_agy_fails_closed_when_legacy_credential_link_cannot_be_detached(

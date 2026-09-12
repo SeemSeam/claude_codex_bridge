@@ -15,6 +15,8 @@ from provider_core.caller_env import (
 from provider_core.contracts import ProviderRuntimeLauncher
 from provider_core.runtime_shared import apply_provider_command_template
 
+from .env_runtime.exports import CLAUDE_AUTH_COMMAND_CONTROL_ENV_KEYS
+
 
 _ROOT_SANDBOX_ENV = {'IS_SANDBOX': '1'}
 _ROOT_SKIP_PERMISSIONS_FLAG = '--dangerously-skip-permissions'
@@ -91,20 +93,24 @@ def build_start_cmd(
         settings_path = _ensure_skip_prompt_settings(runtime_dir, settings_path)
         _ensure_skip_prompt_home_settings(home_overrides)
         _ensure_bypass_permission_acceptance(home_overrides, project_root=restore_target.run_cwd)
-    env_prefix = join_env_prefix(
-        build_env_prefix_fn(profile=profile, extra_env=spec.env),
-        export_env_clause(
+    managed_env = {'DISABLE_AUTOUPDATER': '1'}
+    auth_command_prefix = ''
+    if profile is None or bool(getattr(profile, 'inherit_auth', True)):
+        # Inherited auth is read-only from inside the managed process.
+        managed_env.update(
             {
-                'DISABLE_AUTOUPDATER': '1',
-                # A managed Claude process inherits a private credential copy.
-                # Disable /login and /logout so neither command can reach an
-                # ambient OS credential backend and mutate the user's external
-                # login. Authentication changes are made outside CCB and
-                # inherited again on the next managed start.
                 'DISABLE_LOGIN_COMMAND': '1',
                 'DISABLE_LOGOUT_COMMAND': '1',
             }
-        ),
+        )
+    else:
+        auth_command_prefix = '; '.join(
+            f'unset {key}' for key in sorted(CLAUDE_AUTH_COMMAND_CONTROL_ENV_KEYS)
+        )
+    env_prefix = join_env_prefix(
+        build_env_prefix_fn(profile=profile, extra_env=spec.env),
+        auth_command_prefix,
+        export_env_clause(managed_env),
         export_env_clause(provider_user_session_env()),
         export_env_clause(home_overrides),
         export_env_clause(_ROOT_SANDBOX_ENV if root_user else {}),

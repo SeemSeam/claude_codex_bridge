@@ -157,19 +157,22 @@ The shared keyring reader exposes read operations only:
 
 It does not expose set or delete operations.
 
-Claude is the sole current exception that needs a writable OS credential
-representation on macOS. CCB may:
-
-- read the user's ordinary Claude services as source authority;
-- write or delete only an agent-derived service name of the form
-  `Claude Code-credentials-<agent-home-hash>` or its custom-OAuth equivalent;
-- refuse the operation if the derived name equals any external source service.
+On macOS, Claude and AGY support independent Agent-owned login when
+`inherit_auth=false`. CCB creates an owner-only Keychain database inside the
+managed `HOME` and generates `com.apple.security.plist` with both the default
+and search list containing only that database. CCB does not copy external
+rotating or opaque OAuth credentials into it; the user logs in once inside the
+managed Provider session, and the Provider owns subsequent refreshes.
 
 Managed Claude must set `CLAUDE_CONFIG_DIR` and
-`CLAUDE_SECURESTORAGE_CONFIG_DIR` to its private `.claude` directory and disable
-both interactive login and logout commands. It must never copy
-`com.apple.security.plist`, link `Library/Keychains`, or add/delete the user's
-ordinary Claude Keychain services.
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` to its private `.claude` directory. Inherited
+auth keeps interactive login and logout disabled. With `inherit_auth=false`,
+startup clears ambient Claude OAuth/API token and token-descriptor inputs plus
+inherited login/logout-disable flags; those commands remain enabled and can
+reach only the Agent-private Keychain. Agent-explicit environment values are
+applied after the ambient cleanup.
+CCB must never copy the user's `com.apple.security.plist` or link
+`Library/Keychains` to the user's Keychains.
 
 Gemini, Cursor, and Droid may read known external keyring entries only to
 materialize provider-supported files inside their private managed homes. Their
@@ -177,24 +180,29 @@ managed processes are then forced to file storage and never select the source
 keyring. If conversion is unavailable or invalid, CCB leaves that managed
 provider unauthenticated instead of attaching the global credential backend.
 
-AGY `1.1.13` exposes no public token-storage switch. Before every managed AGY
-launch, CCB therefore refreshes AGY's own recent-keyring-failure marker at
-`<managed-home>/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable`.
-AGY then selects its file token store immediately instead of attempting the OS
-keyring first. The marker is an owner-only regular file under the private
-managed home; CCB must detach any legacy link at that path and must never read,
-create, or refresh the corresponding path in the source user home.
+On macOS with `inherit_auth=false`, managed AGY uses the same independent-login
+private Keychain route and CCB removes AGY's private recent-keyring-failure
+marker. CCB records the selected auth mode inside the private managed home. A
+transition to independent auth fails closed while old managed auth files remain,
+so a previous inherited projection cannot become the new Agent authority. Once
+independent mode is established, later starts preserve Provider-written auth
+files. In inherited mode, or where the private Keychain route is unavailable,
+CCB refreshes the marker at
+`<managed-home>/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable`
+so AGY selects its file token store immediately. The marker is an owner-only
+regular file under the private managed home and must never be read from or
+written into the source user home.
 
 ## 6. Built-In Provider Requirements
 
 | Provider | Managed account authority | Required isolation behavior |
 | --- | --- | --- |
-| Claude | private `.claude` files plus an agent-namespaced macOS service | private `HOME`/Claude roots; disable login/logout; external services read-only |
+| Claude | private `.claude` files; Agent-private macOS Keychain when `inherit_auth=false` | private `HOME`/Claude roots; inherited auth disables login/logout; independent auth can reach only the private Keychain |
 | Codex | private `CODEX_HOME` auth/config/sidecars | private session and SQLite roots; WSL `USERPROFILE` pinned |
 | Gemini | private `.gemini` OAuth/account/encrypted files | `GEMINI_FORCE_FILE_STORAGE=true` and `GEMINI_FORCE_ENCRYPTED_FILE_STORAGE=true`; external keyring read-only migration |
 | OpenCode | private XDG data/config/state and structured storage roots | auth/account files are one-way copies; storage/log writers stay private |
 | Droid | private `<managed-home>/.factory` v2 auth files | `FACTORY_DISABLE_KEYRING=true`; known keyring v2 material is converted to a private key file |
-| AGY | private `.gemini` and `.antigravity` trees | no source symlink or Windows junction; allowlisted file copies only; refresh the private AGY keyring-bypass marker before launch |
+| AGY | private `.gemini` and `.antigravity` trees; Agent-private macOS Keychain when `inherit_auth=false` | no source symlink or Windows junction; never copy opaque Keychain OAuth; otherwise use the private file keyring-bypass marker |
 | Qwen | private `QWEN_HOME` OAuth/account files | both Qwen file-storage switches enabled |
 | Cursor | private platform-specific `cursor/auth.json` | `AGENT_CLI_CREDENTIAL_STORE=file`; macOS token services are read-only import sources |
 | Copilot | private `COPILOT_HOME` auth-bearing config and secret trees | `COPILOT_DISABLE_KEYTAR=1`; private cache root |
@@ -228,8 +236,8 @@ Provider isolation tests must cover the applicable boundaries:
   source fixture is unchanged;
 - prove destination symlinks, hard links, or junctions are detached without
   changing their source;
-- prove OS credential import uses read-only source operations and any Claude
-  write/delete targets only an agent-derived service;
+- prove independent macOS login resolves only the Agent-private default/search
+  list and leaves the user's Keychain configuration unchanged;
 - prove visible and headless launches select managed roots and file-storage
   switches;
 - prove WSL launches pin managed Windows-facing roots;
