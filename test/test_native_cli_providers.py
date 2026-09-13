@@ -175,7 +175,7 @@ def test_agy_forces_file_token_storage_inside_private_home(
 
     monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
     monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
-    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(agy_launcher, "is_macos", lambda: False)
     monkeypatch.setenv("AGY_START_CMD", "agy")
 
     cmd = agy_launcher.build_start_cmd(
@@ -227,7 +227,7 @@ def test_agy_macos_uses_private_keychain_for_agent_private_login(
 
     monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
     monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
-    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agy_launcher, "is_macos", lambda: True)
     monkeypatch.setattr(agy_launcher, "prepare_private_keychain", prepare)
     monkeypatch.setattr(
         agy_launcher,
@@ -269,7 +269,7 @@ def test_agy_macos_inherited_auth_keeps_file_storage_and_does_not_create_keychai
     source_home.mkdir()
     monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
     monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
-    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agy_launcher, "is_macos", lambda: True)
     monkeypatch.setattr(
         agy_launcher,
         "prepare_private_keychain",
@@ -306,7 +306,7 @@ def test_agy_macos_private_keychain_failure_falls_back_to_private_file_storage(
     source_home.mkdir()
     monkeypatch.setattr(agy_launcher, "_resolve_managed_home", lambda runtime_dir: managed_home)
     monkeypatch.setattr(agy_launcher, "_resolve_credential_source_home", lambda: source_home)
-    monkeypatch.setattr(agy_launcher.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agy_launcher, "is_macos", lambda: True)
     monkeypatch.setattr(
         agy_launcher,
         "prepare_private_keychain",

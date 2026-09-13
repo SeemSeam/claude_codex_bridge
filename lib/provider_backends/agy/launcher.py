@@ -3,7 +3,6 @@ from __future__ import annotations
 import functools
 import hashlib
 import os
-import platform
 import shlex
 import sqlite3
 import subprocess
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from provider_core.source_home import current_provider_source_home
 from provider_core.macos_keychain import prepare_private_keychain
+from provider_core.platform_info import is_macos
 from provider_core.one_way_inheritance import (
     copy_regular_file,
     ensure_private_descendant_directory,
@@ -297,7 +297,7 @@ def _remove_file_token_storage_bypass(managed_home: Path) -> None:
 
 
 def _prepare_macos_agent_private_keychain(managed_home: Path, *, profile) -> bool:
-    if platform.system() != 'Darwin' or profile is None or bool(profile.inherit_auth):
+    if not is_macos() or profile is None or bool(profile.inherit_auth):
         return False
     try:
         return prepare_private_keychain(managed_home) is not None

@@ -35,7 +35,7 @@ def test_prepare_private_keychain_uses_only_managed_home_state(
             return _Result(0, f'    "{macos_keychain.private_keychain_path(home)}"\n')
         return _Result(0)
 
-    monkeypatch.setattr(macos_keychain.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
     monkeypatch.setattr(macos_keychain.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(macos_keychain.subprocess, 'run', fake_run)
 
@@ -88,7 +88,7 @@ def test_prepare_private_keychain_detaches_preferences_before_security_mutation(
             return _Result(0, f'    "{keychain}"\n')
         return _Result(0)
 
-    monkeypatch.setattr(macos_keychain.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
     monkeypatch.setattr(macos_keychain.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(macos_keychain.subprocess, 'run', fake_run)
 
@@ -105,7 +105,7 @@ def test_prepare_private_keychain_rejects_symlinked_database(
     keychain = macos_keychain.private_keychain_path(home)
     keychain.parent.mkdir(parents=True)
     keychain.symlink_to(external)
-    monkeypatch.setattr(macos_keychain.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
 
     with pytest.raises(RuntimeError, match='must be a private regular file'):
         macos_keychain.prepare_private_keychain(home)
@@ -123,7 +123,7 @@ def test_prepare_private_keychain_rejects_hardlinked_database(
     keychain = macos_keychain.private_keychain_path(home)
     keychain.parent.mkdir(parents=True)
     os.link(external, keychain)
-    monkeypatch.setattr(macos_keychain.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
 
     with pytest.raises(RuntimeError, match='must be a private regular file'):
         macos_keychain.prepare_private_keychain(home)
@@ -140,7 +140,7 @@ def test_prepare_private_keychain_rejects_database_owned_by_another_user(
     keychain = macos_keychain.private_keychain_path(home)
     keychain.parent.mkdir(parents=True)
     keychain.write_bytes(b'private-keychain')
-    monkeypatch.setattr(macos_keychain.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
     monkeypatch.setattr(macos_keychain.os, 'getuid', lambda: keychain.stat().st_uid + 1)
 
     with pytest.raises(RuntimeError, match='must be a private regular file'):

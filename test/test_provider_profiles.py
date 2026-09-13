@@ -2717,6 +2717,7 @@ def test_materialize_claude_home_config_projects_official_login_auth_into_manage
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_credentials = source_home / '.claude' / '.credentials.json'
@@ -3015,6 +3016,7 @@ def test_materialize_claude_home_config_preserves_private_login_metadata_when_au
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     target_trust = target_home / '.claude' / '.claude.json'
@@ -3051,6 +3053,7 @@ def test_materialize_claude_home_config_filters_source_settings_auth_for_private
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     source_settings = source_home / '.claude' / 'settings.json'
     source_settings.parent.mkdir(parents=True)
@@ -3086,6 +3089,7 @@ def test_materialize_claude_home_config_drops_projected_metadata_once_then_prese
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_trust = source_home / '.claude.json'
@@ -3126,6 +3130,7 @@ def test_materialize_claude_home_config_preserves_projected_metadata_on_source_r
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_trust = source_home / '.claude.json'
@@ -3180,6 +3185,7 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3250,6 +3256,7 @@ def test_materialize_claude_home_config_refreshes_existing_macos_keychain_after_
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3319,6 +3326,7 @@ def test_materialize_claude_home_config_preserves_private_macos_keychain_refresh
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3392,6 +3400,7 @@ def test_materialize_claude_home_config_does_not_follow_owned_credentials_symlin
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3445,6 +3454,7 @@ def test_materialize_claude_home_config_observes_macos_keychain_logout(
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3504,6 +3514,7 @@ def test_materialize_claude_home_config_keychain_error_preserves_projection(
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3548,6 +3559,7 @@ def test_materialize_claude_home_config_private_keychain_inspection_error_fails_
         return Result(0)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3572,6 +3584,7 @@ def test_materialize_claude_home_config_does_not_project_macos_keychain_preferen
     )
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
 
     materialize_claude_home_config(target_home, source_home=source_home)
 
@@ -3590,6 +3603,7 @@ def test_materialize_claude_home_config_never_links_macos_keychains_when_prefere
     source_keychains.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
 
     materialize_claude_home_config(target_home, source_home=source_home)
 
@@ -3611,6 +3625,7 @@ def test_materialize_claude_home_config_detaches_legacy_macos_keychains_link(
     os.symlink(source_keychains, target_keychains)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
 
     materialize_claude_home_config(target_home, source_home=source_home)
 
@@ -3630,6 +3645,7 @@ def test_materialize_claude_home_config_does_not_copy_keychain_preferences_on_no
     source_plist.write_text('<plist/>\n', encoding='utf-8')
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
 
     materialize_claude_home_config(target_home, source_home=source_home)
 
@@ -3652,6 +3668,7 @@ def test_materialize_claude_home_config_prepares_private_keychain_when_auth_not_
     prepared: list[Path] = []
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(
         claude_home_runtime,
         'prepare_private_keychain',
@@ -3694,6 +3711,7 @@ def test_materialize_claude_home_config_replaces_legacy_keychain_link_for_privat
         return keychain
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime, 'prepare_private_keychain', prepare)
 
     materialize_claude_home_config(
@@ -3734,6 +3752,7 @@ def test_materialize_claude_home_config_falls_back_to_legacy_macos_keychain_serv
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -3800,6 +3819,7 @@ def test_materialize_claude_home_config_reads_explicit_macos_keychain_override(
         return Result(44)
 
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: True)
     monkeypatch.setattr(claude_home_runtime.shutil, 'which', lambda name: '/usr/bin/security')
     monkeypatch.setattr(claude_home_runtime.subprocess, 'run', fake_run)
     monkeypatch.setenv('USER', 'mac-user')
@@ -4930,6 +4950,7 @@ def test_materialize_claude_home_config_removes_only_source_owned_auth_after_log
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_settings = source_home / '.claude' / 'settings.json'
@@ -5018,6 +5039,7 @@ def test_materialize_claude_home_config_preserves_unmarked_auth_with_malformed_m
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_home.mkdir(parents=True)
@@ -5049,6 +5071,7 @@ def test_materialize_claude_home_config_source_read_error_preserves_projection(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_credentials = source_home / '.claude' / '.credentials.json'
@@ -5080,6 +5103,7 @@ def test_materialize_claude_home_config_preserves_unmarked_private_auth_when_aut
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     target_settings = target_home / '.claude' / 'settings.json'
@@ -5125,6 +5149,7 @@ def test_materialize_claude_home_config_preserves_managed_official_login_when_so
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'
     source_settings = source_home / '.claude' / 'settings.json'

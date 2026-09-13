@@ -31,6 +31,7 @@ from provider_core.macos_keychain import (
     prepare_private_keychain,
     remove_keychain_preferences,
 )
+from provider_core.platform_info import is_macos
 from provider_core.projected_assets import (
     remove_projected_path,
     route_projected_tree,
@@ -735,7 +736,7 @@ def _materialize_macos_keychain_preferences(source_home: Path, target_layout: Cl
     # directory.  That made a managed provider logout capable of mutating the
     # external login authority. Detach it before preparing private state.
     _remove_keychains_link(target_keychains)
-    if platform.system() == 'Darwin' and not _inherits_auth(profile):
+    if is_macos() and not _inherits_auth(profile):
         prepare_private_keychain(target_layout.home_root)
     else:
         # An inherited preference can point Security.framework back to the

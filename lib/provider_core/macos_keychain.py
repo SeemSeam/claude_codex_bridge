@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import platform
 import plistlib
 import shutil
 import stat
@@ -9,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from provider_core.one_way_inheritance import ensure_private_descendant_directory
+from provider_core.platform_info import is_macos
 from storage.atomic import atomic_write_text
 
 _KEYCHAIN_REL = Path('Library') / 'Keychains' / 'ccb-provider.keychain-db'
@@ -25,7 +25,7 @@ def keychain_preferences_path(home: Path) -> Path:
 
 
 def prepare_private_keychain(home: Path) -> Path | None:
-    if platform.system() != 'Darwin':
+    if not is_macos():
         return None
     home = Path(home).expanduser().resolve()
     keychain_dir = ensure_private_descendant_directory(home, _KEYCHAIN_REL.parent)
