@@ -28,6 +28,15 @@
     （前提：必须先 `mkdir -p Library/Preferences`，否则 `security ... -s` 在隔离 HOME 下会静默丢弃。）
   - 搜索列表顺序：`<private keychain>`（默认写落点）→ 真实 `login.keychain-db`（只读凭证发现）
     → `/Library/Keychains/System.keychain`；默认钥匙串显式设为 private keychain。
+  - **解锁并禁用自动锁定（2026-09-13 补充）**：非 login keychain 在空闲超时 / 睡眠后会被锁定；
+    一旦锁定，Security.framework 会弹另一种 GUI——
+    `“security” 想使用 “ccb-agent” 钥匙串，请输入钥匙串密码`。
+    因此每次物化（无论 keychain 是新建还是已存在）都调用
+    `_configure_managed_private_keychain_unlocked()`：
+    `security unlock-keychain -p '' <private>`（空密码、非交互；可自愈旧版创建的已锁 keychain）
+    + `security set-keychain-settings -t 2147483647 -u <private>`（超时≈永不 + 睡眠不锁，`show-keychain-info` 显示 `no-timeout`）。
+    另外 `_sync_managed_macos_keychain_auth()` 访问凭证前通过 `_unlock_managed_private_keychain()` 再做一次 best-effort 解锁。
+    实测：对已锁定的旧 keychain 重新物化后变为 `no-timeout`，`add/find/delete-generic-password` 静默 rc=0、无 GUI。
 - `_sync_managed_macos_keychain_auth()` / `_remove_managed_macos_keychain_auth()`：
   managed-suffix 条目的 `find/add/delete-generic-password` 现在显式带 private keychain 文件路径，
   即使 CCB 父进程 HOME 仍指向真实用户 home，managed 条目也绝不落入 login keychain。

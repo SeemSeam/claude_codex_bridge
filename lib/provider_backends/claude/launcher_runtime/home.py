@@ -788,6 +788,13 @@ def _ensure_managed_private_keychain(
                 env_home=target_layout.home_root,
             )
 
+        # A non-login keychain auto-locks after its idle timeout / sleep; once
+        # locked, Security.framework pops a "security wants to use the
+        # ccb-agent keychain" password dialog.  Unlock with the empty password
+        # (covers keychains created before this fix) and disable locking so the
+        # keychain stays usable without a GUI.
+        _configure_managed_private_keychain_unlocked(target_layout)
+
         search_list = [str(private_keychain)]
         login_keychain = _real_login_keychain_path(source_home)
         if login_keychain is not None:
@@ -804,6 +811,41 @@ def _ensure_managed_private_keychain(
     except RuntimeError:
         # Keychain provisioning is best-effort: failure must not block provider
         # startup; credentials remain projected via .credentials.json.
+        return
+
+
+def _configure_managed_private_keychain_unlocked(target_layout: ClaudeHomeLayout) -> None:
+    """Unlock the empty-password agent keychain and disable auto-locking.
+
+    A non-login keychain otherwise locks after its idle timeout or on sleep,
+    which makes ``security`` show a GUI password prompt.  Best-effort: any
+    failure is swallowed by callers that treat provisioning as non-fatal.
+    """
+    private_keychain = _managed_private_keychain_path(target_layout)
+    _run_security(
+        ['unlock-keychain', '-p', '', str(private_keychain)],
+        env_home=target_layout.home_root,
+    )
+    # -t <seconds>: lock timeout; INT_MAX ~ effectively never.
+    # -u: also do not lock on sleep.
+    _run_security(
+        ['set-keychain-settings', '-t', '2147483647', '-u', str(private_keychain)],
+        env_home=target_layout.home_root,
+    )
+
+
+def _unlock_managed_private_keychain(target_layout: ClaudeHomeLayout) -> None:
+    if platform.system() != 'Darwin' or shutil.which('security') is None:
+        return
+    private_keychain = _managed_private_keychain_path(target_layout)
+    if not private_keychain.exists():
+        return
+    try:
+        _run_security(
+            ['unlock-keychain', '-p', '', str(private_keychain)],
+            check=False,
+        )
+    except RuntimeError:
         return
 
 
@@ -1276,6 +1318,9 @@ def _sync_managed_macos_keychain_auth(
     # keychain file as an explicit positional argument binds both lookup and
     # write to the private database.
     private_keychain = _managed_private_keychain_path(target_layout)
+    # Self-heal a locked agent-private keychain (e.g. created by an older build
+    # before lock was disabled) so the credential access below never prompts.
+    _unlock_managed_private_keychain(target_layout)
     try:
         existing = subprocess.run(
             [security, 'find-generic-password', '-a', account, '-s', service, '-w', str(private_keychain)],

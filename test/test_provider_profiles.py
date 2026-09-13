@@ -3124,7 +3124,14 @@ def test_materialize_claude_home_config_projects_macos_keychain_login_auth(
         assert kwargs['capture_output'] is True
         assert kwargs['text'] is True
         command = call[1]
-        if command in {'create-keychain', 'list-keychains', 'default-keychain', 'delete-keychain'}:
+        if command in {
+            'create-keychain',
+            'list-keychains',
+            'default-keychain',
+            'delete-keychain',
+            'unlock-keychain',
+            'set-keychain-settings',
+        }:
             return Result(0)
         service = str(argv[argv.index('-s') + 1])
         if command == 'find-generic-password' and service == 'Claude Code-credentials':
@@ -3811,17 +3818,63 @@ def test_materialize_claude_home_config_provisions_agent_private_default_keychai
     assert search_entries[-1] == claude_home_runtime._MACOS_SYSTEM_KEYCHAIN
     default_call = next(call for call in calls if call[1] == 'default-keychain' and '-s' in call)
     assert default_call[default_call.index('-s') + 1] == str(private_keychain)
+    # The empty-password private keychain is unlocked and auto-locking disabled
+    # so a later lock cannot trigger a "security wants to use the keychain" GUI.
+    unlock_call = next(call for call in calls if call[1] == 'unlock-keychain')
+    assert '-p' in unlock_call and unlock_call[unlock_call.index('-p') + 1] == ''
+    assert str(private_keychain) in unlock_call
+    settings_call = next(call for call in calls if call[1] == 'set-keychain-settings')
+    assert '-u' in settings_call and str(private_keychain) in settings_call
     # Every preference mutation must run scoped to the isolated HOME so the
     # user's real global keychain settings can never be touched.
     provisioning_calls = [
         call for call in calls
-        if call[1] in {'create-keychain', 'list-keychains', 'default-keychain'}
+        if call[1] in {
+            'create-keychain',
+            'unlock-keychain',
+            'set-keychain-settings',
+            'list-keychains',
+            'default-keychain',
+        }
     ]
-    assert len(provisioning_calls) == 3
+    assert len(provisioning_calls) == 5
     # The managed private keychain is a regular file inside the isolated home,
     # never a symlink back to the user's Keychains directory.
     assert private_keychain.is_file()
     assert not target_home.joinpath('Library', 'Keychains').is_symlink()
+
+
+def test_materialize_claude_home_config_unlocks_existing_private_keychain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    # A private keychain created by an older build can already exist but be
+    # locked after idle/sleep; rematerialization must still unlock it and
+    # disable auto-lock without recreating it.
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    private_keychain = (
+        target_home
+        / 'Library'
+        / 'Keychains'
+        / claude_home_runtime._MACOS_PRIVATE_KEYCHAIN_NAME
+    )
+    private_keychain.parent.mkdir(parents=True, exist_ok=True)
+    private_keychain.write_bytes(b'pre-existing')
+
+    calls = _install_macos_security_stub(monkeypatch)
+
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+
+    assert claude_home_runtime._managed_private_keychain_path(layout) == private_keychain
+    # Existing keychain is not recreated...
+    assert not any(call[1] == 'create-keychain' for call in calls)
+    # ...but it is still unlocked and configured not to auto-lock.
+    unlock_call = next(call for call in calls if call[1] == 'unlock-keychain')
+    assert str(private_keychain) in unlock_call
+    settings_call = next(call for call in calls if call[1] == 'set-keychain-settings')
+    assert '-u' in settings_call and str(private_keychain) in settings_call
+    assert private_keychain.read_bytes() == b'pre-existing'
 
 
 def test_materialize_claude_home_config_seeds_managed_item_only_into_private_keychain(
