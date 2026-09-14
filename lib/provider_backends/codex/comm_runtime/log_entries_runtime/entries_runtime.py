@@ -39,10 +39,17 @@ def base_entry(entry: dict) -> tuple[dict[str, Any], dict[str, Any]]:
             "task_id": payload.get("task_id"),
             "reason": payload.get("reason"),
             "last_agent_message": payload.get("last_agent_message"),
+            "error": normalized_error(payload.get("error")),
             "entry": entry,
         },
         payload,
     )
+
+
+def normalized_error(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return value
 
 
 def normalized_payload(payload: object) -> dict[str, Any]:

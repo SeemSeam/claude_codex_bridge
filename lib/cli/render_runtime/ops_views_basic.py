@@ -622,11 +622,17 @@ def render_clear(summary) -> tuple[str, ...]:
         status = str(item.get('status') or '')
         pane_id = str(item.get('pane_id') or '')
         reason = str(item.get('reason') or '')
+        confirmed = str(item.get('confirmed') or '')
         detail = f'agent={agent} status={status}'
         if pane_id:
             detail += f' pane_id={pane_id}'
         if reason:
             detail += f' reason={reason}'
+        if confirmed:
+            # Surface the limited confirmation explicitly: input_delivered
+            # means the clear keys reached a live pane, not a provider-native
+            # confirmed context reset.
+            detail += f' confirmed={confirmed}'
         lines.append(f'clear_agent: {detail}')
     return tuple(lines)
 

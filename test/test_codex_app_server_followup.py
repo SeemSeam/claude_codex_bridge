@@ -9,6 +9,8 @@ import socket
 import subprocess
 import struct
 import sys
+import tempfile
+import time
 from threading import Event, Thread
 from types import SimpleNamespace
 
@@ -464,7 +466,7 @@ def test_managed_app_server_supervisor_starts_and_stops_exact_child(tmp_path: Pa
     supervisor = ManagedCodexAppServer(tmp_path)
 
     assert supervisor.start() is True
-    pid = int((tmp_path / 'app-server.pid').read_text(encoding='utf-8').strip())
+    pid = json.loads((tmp_path / 'app-server.pid').read_text(encoding='utf-8'))['pid']
     assert pid > 0
     assert socket_path.is_socket()
     supervisor.stop()
@@ -519,13 +521,20 @@ def test_managed_app_server_refuses_foreign_socket_path_without_unlinking_it(tmp
 
 
 def test_managed_app_server_uses_owned_short_socket_for_long_runtime_path(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv('XDG_RUNTIME_DIR', '/tmp')
+    # Use a short, writable fallback root instead of hardcoding /tmp: the
+    # host's /tmp may be unwritable (inode pressure), and the contract under
+    # test is "long preferred path falls back to a short runtime root".
+    # pytest's tmp_path can itself be long, so derive a short root directly
+    # under the process tempdir.
+    short_root = Path(tempfile.gettempdir()) / f'ccb-t{os.getpid()}'
+    short_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv('XDG_RUNTIME_DIR', str(short_root))
     runtime_dir = tmp_path / ('long-runtime-' * 5) / ('nested-' * 5) / 'codex'
     runtime_dir.mkdir(parents=True)
     artifacts = codex_runtime_artifact_layout(runtime_dir)
     assert artifacts.app_server_socket_placement.preferred_path == runtime_dir / 'app-server.sock'
     assert artifacts.app_server_socket_placement.fallback_reason == 'path_too_long'
-    assert artifacts.app_server_socket.parent == Path('/tmp/ccb-runtime')
+    assert artifacts.app_server_socket.parent == short_root / 'ccb-runtime'
     assert unix_socket_path_is_safe(artifacts.app_server_socket)
 
     child = (
@@ -543,3 +552,400 @@ def test_managed_app_server_uses_owned_short_socket_for_long_runtime_path(tmp_pa
     assert artifacts.app_server_socket.is_socket()
     supervisor.stop()
     assert not artifacts.app_server_socket.exists()
+
+
+def _socket_child_command(socket_path: Path, lifetime_s: float) -> list[str]:
+    child = (
+        'import socket,sys,time; '
+        f's=socket.socket(socket.AF_UNIX); s.bind({str(socket_path)!r}); s.listen(8); '
+        f'time.sleep({lifetime_s})'
+    )
+    return [sys.executable, '-c', child]
+
+
+
+
+def test_shutdown_cleanup_preserves_live_successor_artifact_set(tmp_path: Path) -> None:
+    """#345 review P1-1: the whole successor-owned set (socket, PID record,
+    remote marker) must survive a shutdown cleanup while its owner lives."""
+    from provider_backends.codex.runtime_artifacts import cleanup_codex_app_server_shutdown_artifacts
+
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(artifacts.app_server_socket))
+    listener.listen(1)
+    try:
+        artifacts.app_server_pid.write_text(
+            json.dumps({'pid': os.getpid(), 'generation': 'successor'}) + '\n',
+            encoding='utf-8',
+        )
+        artifacts.app_server_remote_marker.write_text(
+            str(artifacts.app_server_socket) + '\n', encoding='utf-8'
+        )
+
+        removed = cleanup_codex_app_server_shutdown_artifacts(runtime_dir)
+
+        assert removed == ()
+        assert artifacts.app_server_pid.exists()
+        assert artifacts.app_server_remote_marker.exists()
+        assert artifacts.app_server_socket.is_socket()
+    finally:
+        listener.close()
+        for path in (artifacts.app_server_socket, artifacts.app_server_pid, artifacts.app_server_remote_marker):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
+def test_shutdown_cleanup_removes_dead_owner_artifacts(tmp_path: Path) -> None:
+    from provider_backends.codex.runtime_artifacts import cleanup_codex_app_server_shutdown_artifacts
+
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(str(artifacts.app_server_socket))
+    stale.close()
+    artifacts.app_server_pid.write_text(
+        json.dumps({'pid': 999999, 'generation': 'dead-owner'}) + '\n',
+        encoding='utf-8',
+    )
+    artifacts.app_server_remote_marker.write_text('x\n', encoding='utf-8')
+
+    removed = cleanup_codex_app_server_shutdown_artifacts(runtime_dir)
+
+    assert set(removed) == {
+        artifacts.app_server_pid,
+        artifacts.app_server_remote_marker,
+        artifacts.app_server_socket,
+    }
+
+
+def test_failed_start_restore_never_overwrites_live_successor_record(tmp_path: Path) -> None:
+    """#345 review P1-2: a failed start must not restore an older PID
+    snapshot over a live foreign generation's claim."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    old_snapshot = json.dumps({'pid': 999999, 'generation': 'old'}) + '\n'
+    live_record = json.dumps({'pid': os.getpid(), 'generation': 'new'}) + '\n'
+    artifacts.app_server_pid.write_text(live_record, encoding='utf-8')
+
+    ManagedCodexAppServer._restore_pid_record(artifacts.app_server_pid, old_snapshot)
+
+    assert artifacts.app_server_pid.read_text(encoding='utf-8') == live_record
+
+
+def test_failed_start_restore_overwrites_dead_foreign_record(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    old_snapshot = json.dumps({'pid': 999999, 'generation': 'old'}) + '\n'
+    dead_record = json.dumps({'pid': 999998, 'generation': 'dead'}) + '\n'
+    artifacts.app_server_pid.write_text(dead_record, encoding='utf-8')
+
+    ManagedCodexAppServer._restore_pid_record(artifacts.app_server_pid, old_snapshot)
+
+    assert artifacts.app_server_pid.read_text(encoding='utf-8') == old_snapshot
+
+
+def test_concurrent_first_starts_yield_exactly_one_claim(tmp_path: Path, monkeypatch) -> None:
+    """#345 review P1-3: overlapping first starts must serialize so exactly
+    one generation claims the endpoint; the other fails without destroying
+    the winner's artifacts."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    socket_path = artifacts.app_server_socket
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_COMMAND_JSON', json.dumps(_socket_child_command(socket_path, 30.0)))
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(socket_path))
+
+    supervisors = [ManagedCodexAppServer(runtime_dir) for _ in range(2)]
+    outcomes: dict[int, bool] = {}
+
+    def _start(index: int) -> None:
+        outcomes[index] = supervisors[index].start()
+
+    threads = [Thread(target=_start, args=(index,)) for index in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    started = [index for index, ok in outcomes.items() if ok]
+    assert len(started) == 1, f"expected exactly one winner, got {outcomes}"
+    winner = supervisors[started[0]]
+
+    # The winner's endpoint is live and its registry claim is intact.
+    ok, err = _pane_connect(socket_path)
+    assert ok, f"winner endpoint unusable: {err}"
+    record = json.loads(artifacts.app_server_pid.read_text(encoding='utf-8'))
+    assert record['generation'] == winner._generation
+
+    for supervisor in supervisors:
+        supervisor.stop()
+
+
+def _pane_connect(socket_path: Path) -> tuple[bool, str]:
+    try:
+        client = socket.socket(socket.AF_UNIX)
+        client.settimeout(1.0)
+        client.connect(str(socket_path))
+        client.close()
+        return True, ''
+    except OSError as exc:
+        return False, str(exc)
+
+
+def test_managed_app_server_overlap_keeps_foreign_endpoint_and_restores_after_exit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """#345: during a restart overlap the old endpoint must survive, and the
+    new generation must take over cleanly once the old one exits."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    socket_path = artifacts.app_server_socket
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_COMMAND_JSON', json.dumps(_socket_child_command(socket_path, 30.0)))
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(socket_path))
+
+    supervisor_a = ManagedCodexAppServer(runtime_dir)
+    assert supervisor_a.start() is True
+    ok, err = _pane_connect(socket_path)
+    assert ok, f"pane A could not attach to generation A: {err}"
+
+    supervisor_b = ManagedCodexAppServer(runtime_dir)
+    started: list[bool] = []
+
+    def _start_b() -> None:
+        started.append(supervisor_b.start())
+
+    thread = Thread(target=_start_b)
+    thread.start()
+    try:
+        time.sleep(0.2)
+        ok_mid, err_mid = _pane_connect(socket_path)
+        assert ok_mid, f"foreign endpoint destroyed during overlap: {err_mid}"
+        supervisor_a.stop()
+    finally:
+        thread.join(timeout=15)
+        supervisor_a.stop()
+    assert started == [True]
+    ok_b, err_b = _pane_connect(socket_path)
+    assert ok_b, f"new generation endpoint unusable after takeover: {err_b}"
+    supervisor_b.stop()
+
+
+def _managed_pane_fixture(tmp_path: Path):
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    fake_codex = bin_dir / 'codex'
+    fake_codex.write_text(
+        '#!/bin/sh\n'
+        'printf \'%s\\n\' "$*" >> "$CCB_FAKE_CODEX_LOG"\n'
+        'exit 0\n',
+        encoding='utf-8',
+    )
+    fake_codex.chmod(0o755)
+    log_path = tmp_path / 'codex-invocations.log'
+    env = {
+        **os.environ,
+        'PATH': f'{bin_dir}:{os.environ.get("PATH", "")}',
+        'CCB_FAKE_CODEX_LOG': str(log_path),
+    }
+    return artifacts, env, log_path
+
+
+def test_managed_pane_command_ignores_stale_socket_node(tmp_path: Path) -> None:
+    """#345 review: the generated pane command must not attach to a leftover
+    (dead) socket node from a previous generation; the wait reference keeps
+    the stale node from satisfying the socket wait."""
+    from provider_backends.codex.launcher_runtime.command_runtime.managed_app_server import (
+        _managed_shell_command,
+    )
+
+    artifacts, env, log_path = _managed_pane_fixture(tmp_path)
+    socket_path = artifacts.app_server_socket
+    pane_cmd = _managed_shell_command(
+        remote_args=['codex', '--remote', f'unix://{socket_path}'],
+        local_args=['codex'],
+        socket_path=socket_path,
+        remote_marker=artifacts.app_server_remote_marker,
+        resume_id='session-1',
+        continuation_mode='resume',
+    )
+
+    # Stale node on the exact path the pane command will read: bound then
+    # closed, no listener.
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(str(socket_path))
+    stale.close()
+
+    started = time.monotonic()
+    result = subprocess.run(
+        ['sh', '-c', pane_cmd],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    elapsed = time.monotonic() - started
+
+    invocations = log_path.read_text(encoding='utf-8') if log_path.exists() else ''
+    # The stale node must not satisfy the wait: no remote exec and no marker.
+    assert '--remote' not in invocations, invocations
+    assert not artifacts.app_server_remote_marker.exists()
+    assert elapsed >= 4.0, f"pane attached to the stale node after only {elapsed:.2f}s"
+    # The local fallback kept the resume continuation.
+    assert 'resume session-1' in invocations, invocations
+
+
+def test_managed_pane_command_attaches_when_socket_appears_after_start(tmp_path: Path) -> None:
+    """#345 review control: a socket bound by the owning generation after the
+    pane started satisfies the wait and takes the remote branch."""
+    from provider_backends.codex.launcher_runtime.command_runtime.managed_app_server import (
+        _managed_shell_command,
+    )
+
+    artifacts, env, log_path = _managed_pane_fixture(tmp_path)
+    socket_path = artifacts.app_server_socket
+    pane_cmd = _managed_shell_command(
+        remote_args=['codex', '--remote', f'unix://{socket_path}'],
+        local_args=['codex'],
+        socket_path=socket_path,
+        remote_marker=artifacts.app_server_remote_marker,
+        resume_id='',
+        continuation_mode='resume',
+    )
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    def _bind_later() -> None:
+        time.sleep(0.4)
+        server.bind(str(socket_path))
+        server.listen(4)
+
+    binder = Thread(target=_bind_later)
+    binder.start()
+    try:
+        result = subprocess.run(
+            ['sh', '-c', pane_cmd],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        binder.join(timeout=5)
+    finally:
+        server.close()
+
+    invocations = log_path.read_text(encoding='utf-8') if log_path.exists() else ''
+    assert f'unix://{socket_path}' in invocations, invocations
+    assert artifacts.app_server_remote_marker.exists()
+
+
+def test_managed_app_server_preserves_foreign_endpoint_when_child_cannot_bind(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """#345: a start that cannot claim the endpoint must report False without
+    destroying the live foreign generation's socket or PID registry."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    socket_path = artifacts.app_server_socket
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_COMMAND_JSON', json.dumps(_socket_child_command(socket_path, 30.0)))
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(socket_path))
+
+    supervisor_a = ManagedCodexAppServer(runtime_dir)
+    assert supervisor_a.start() is True
+    pid_record_before = (runtime_dir / 'app-server.pid').read_text(encoding='utf-8')
+
+    supervisor_b = ManagedCodexAppServer(runtime_dir)
+    # The foreign owner never exits within the bounded wait.
+    assert supervisor_b.start() is False
+
+    # The live endpoint and its registry are untouched.
+    ok, err = _pane_connect(socket_path)
+    assert ok, f"live endpoint destroyed by failed start: {err}"
+    assert (runtime_dir / 'app-server.pid').read_text(encoding='utf-8') == pid_record_before
+
+    # Stopping the failed supervisor must not remove the live endpoint.
+    supervisor_b.stop()
+    ok2, err2 = _pane_connect(socket_path)
+    assert ok2, f"failed supervisor stop removed the live endpoint: {err2}"
+    supervisor_a.stop()
+
+
+def test_managed_app_server_stop_does_not_remove_newer_generation_socket(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """#345: the old generation's stop must never unlink a newer
+    generation's endpoint."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    socket_path = artifacts.app_server_socket
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_COMMAND_JSON', json.dumps(_socket_child_command(socket_path, 30.0)))
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(socket_path))
+
+    supervisor_a = ManagedCodexAppServer(runtime_dir)
+    assert supervisor_a.start() is True
+    supervisor_a.stop()
+
+    # New generation starts after the old one exited.
+    supervisor_b = ManagedCodexAppServer(runtime_dir)
+    assert supervisor_b.start() is True
+
+    # A late, repeated stop of the old supervisor must not touch the new
+    # generation's socket.
+    supervisor_a.stop()
+    ok, err = _pane_connect(socket_path)
+    assert ok, f"old stop removed the new generation's socket: {err}"
+    assert artifacts.app_server_socket.is_socket()
+    supervisor_b.stop()
+
+
+def test_managed_app_server_early_exit_reports_failure(tmp_path: Path, monkeypatch) -> None:
+    """#345: a child that dies before binding must report start() == False
+    without claiming the PID registry."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    monkeypatch.setenv(
+        'CCB_CODEX_APP_SERVER_COMMAND_JSON',
+        json.dumps([sys.executable, '-c', 'raise SystemExit(9)']),
+    )
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(artifacts.app_server_socket))
+
+    supervisor = ManagedCodexAppServer(runtime_dir)
+    assert supervisor.start() is False
+    assert not (runtime_dir / 'app-server.pid').exists()
+    assert not artifacts.app_server_socket.exists()
+
+
+def test_managed_app_server_delayed_readiness_still_succeeds(tmp_path: Path, monkeypatch) -> None:
+    """#345: a slow-to-bind child still reaches readiness within the window."""
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    artifacts = codex_runtime_artifact_layout(runtime_dir)
+    socket_path = artifacts.app_server_socket
+    child = (
+        'import socket,sys,time; '
+        'time.sleep(0.5); '
+        f's=socket.socket(socket.AF_UNIX); s.bind({str(socket_path)!r}); s.listen(8); '
+        'time.sleep(30)'
+    )
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_COMMAND_JSON', json.dumps([sys.executable, '-c', child]))
+    monkeypatch.setenv('CCB_CODEX_APP_SERVER_SOCKET', str(socket_path))
+
+    supervisor = ManagedCodexAppServer(runtime_dir)
+    assert supervisor.start() is True
+    ok, err = _pane_connect(socket_path)
+    assert ok, err
+    supervisor.stop()

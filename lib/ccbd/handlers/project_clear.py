@@ -109,7 +109,26 @@ def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
     try:
         if not backend.pane_exists(pane_id):
             return {'agent': agent_name, 'status': 'skipped', 'reason': 'pane_missing', 'pane_id': pane_id}
+        # A pane that exists but is dead cannot receive input, let alone
+        # reset its provider context. Reporting success here would lie
+        # about a context that was never reset (#346).
+        if not backend.is_pane_alive(pane_id):
+            return {
+                'agent': agent_name,
+                'status': 'failed',
+                'reason': 'pane_dead',
+                'pane_id': pane_id,
+            }
         _send_clear_sequence(backend, pane_id=pane_id, command=command, provider=provider)
+        # Input delivery is not a confirmed context reset. If the pane died
+        # while the sequence was being delivered, the clear did not happen.
+        if not backend.is_pane_alive(pane_id):
+            return {
+                'agent': agent_name,
+                'status': 'failed',
+                'reason': 'pane_dead_after_input',
+                'pane_id': pane_id,
+            }
     except subprocess.CalledProcessError as exc:
         return {
             'agent': agent_name,
@@ -124,7 +143,15 @@ def _clear_agent_context(app, *, backend, agent_name: str) -> dict[str, object]:
             'reason': str(exc)[:200],
             'pane_id': pane_id,
         }
-    return {'agent': agent_name, 'status': 'cleared', 'pane_id': pane_id, 'command': command}
+    return {
+        'agent': agent_name,
+        'status': 'cleared',
+        'pane_id': pane_id,
+        'command': command,
+        # Input was delivered to a live pane; provider-native confirmation of
+        # the reset itself is not observable over tmux keys.
+        'confirmed': 'input_delivered',
+    }
 
 
 def _clear_busy_gate(app, *, agent_name: str) -> dict[str, object] | None:

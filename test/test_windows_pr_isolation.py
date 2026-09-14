@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CHECKER_PATH = REPO_ROOT / "platforms" / "windows" / "tools" / "check_pr_isolation.py"
@@ -237,3 +239,78 @@ def test_windows_pr_isolation_workflow_uses_trusted_base_policy() -> None:
     assert 'checker="${GITHUB_WORKSPACE}/policy/platforms/windows/tools/check_pr_isolation.py"' in text
     assert '--repo-root "${GITHUB_WORKSPACE}/pr"' in text
     assert "python platforms/windows/tools/check_pr_isolation.py" not in text
+
+
+def test_shared_codex_modules_import_without_fcntl(monkeypatch) -> None:
+    """The shared Codex runtime_artifacts / app_server modules must stay
+    importable when fcntl is unavailable (Windows runtime); their
+    cross-platform locking is delegated to provider_core.runtime_lock."""
+    import importlib
+
+    for name in [
+        "provider_backends.codex.runtime_artifacts",
+        "provider_backends.codex.bridge_runtime.app_server",
+    ]:
+        sys.modules.pop(name, None)
+
+    real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+
+    def _no_fcntl_import(name, *args, **kwargs):
+        if name == "fcntl":
+            raise ModuleNotFoundError(name="fcntl", path=None)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", _no_fcntl_import)
+    try:
+        import provider_backends.codex.bridge_runtime.app_server as app_server_module  # noqa: F401
+        import provider_backends.codex.runtime_artifacts as runtime_artifacts_module  # noqa: F401
+
+        assert hasattr(runtime_artifacts_module, "GenerationLock")
+        assert hasattr(app_server_module, "ManagedCodexAppServer")
+    finally:
+        monkeypatch.setattr("builtins.__import__", real_import)
+        importlib.reload(sys.modules["provider_backends.codex.runtime_artifacts"])
+        importlib.reload(sys.modules["provider_backends.codex.bridge_runtime.app_server"])
+
+
+def test_generation_lock_mutex_semantics_via_msvcrt_simulation(monkeypatch, tmp_path: Path) -> None:
+    """GenerationLock must keep exclusive cross-process semantics on the
+    msvcrt-backed path; simulate msvcrt via fcntl so the Windows branch is
+    exercised on POSIX test hosts."""
+    import fcntl as real_fcntl
+    import types
+
+    import provider_core.runtime_lock as runtime_lock_module
+    from provider_backends.codex import runtime_artifacts as runtime_artifacts_module
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.LK_NBLCK = 2
+    fake_msvcrt.LK_UNLCK = 8
+
+    def _locking(fd, mode, nbytes):
+        if mode == fake_msvcrt.LK_NBLCK:
+            real_fcntl.flock(fd, real_fcntl.LOCK_EX | real_fcntl.LOCK_NB)
+        elif mode == fake_msvcrt.LK_UNLCK:
+            real_fcntl.flock(fd, real_fcntl.LOCK_UN)
+        else:
+            raise OSError("unsupported msvcrt lock mode")
+
+    fake_msvcrt.locking = _locking
+
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+    monkeypatch.setattr(runtime_lock_module, "is_windows", lambda: True)
+
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+
+    first = runtime_artifacts_module.GenerationLock(runtime_dir, timeout_s=0.2)
+    assert first.acquire() is True
+    try:
+        second = runtime_artifacts_module.GenerationLock(runtime_dir, timeout_s=0.2)
+        assert second.acquire() is False, "contender must not acquire while held"
+    finally:
+        first.release()
+
+    third = runtime_artifacts_module.GenerationLock(runtime_dir, timeout_s=0.2)
+    assert third.acquire() is True, "lock must be reacquirable after release"
+    third.release()

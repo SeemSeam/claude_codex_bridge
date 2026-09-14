@@ -160,6 +160,7 @@ def _managed_shell_command(
     quoted_socket = shlex.quote(str(socket_path))
     quoted_marker = shlex.quote(str(remote_marker))
     quoted_resume = shlex.quote(resume_id)
+    quoted_ref = shlex.quote(str(remote_marker) + '.wait-ref')
     remote = ' '.join(shlex.quote(str(part)) for part in remote_args)
     local = ' '.join(shlex.quote(str(part)) for part in local_args)
     mode = continuation_mode if continuation_mode in {'resume', 'fork'} else 'resume'
@@ -167,24 +168,38 @@ def _managed_shell_command(
         (
             f'export CCB_CODEX_MANAGED_REMOTE=1 CCB_CODEX_RESUME_ID={quoted_resume}',
             f'rm -f {quoted_marker}',
+            # The wait reference is stamped before the first existence check
+            # so a leftover socket node from a previous generation (created
+            # before this pane started) cannot satisfy the wait: a stale node
+            # is never newer than the reference. A socket bound by the
+            # current generation after this pane started is newer and is
+            # accepted; when `find -newer` is unavailable the plain `-S`
+            # existence check still applies, and the final `exec ... --remote`
+            # remains the real connection arbiter (#345).
+            f': > {quoted_ref}',
             '_ccb_codex_wait=0',
             (
-                f'while [ ! -S {quoted_socket} ] && [ "$_ccb_codex_wait" -lt 100 ]; '
-                'do sleep 0.05; _ccb_codex_wait=$((_ccb_codex_wait + 1)); done'
+                f'while [ "$_ccb_codex_wait" -lt 100 ]; do '
+                f'if [ -S {quoted_socket} ] && {{ '
+                f'[ -n "$(find {quoted_socket} -newer {quoted_ref} 2>/dev/null)" ] || [ ! -x "$(command -v find)" ]; '
+                '}; then break; fi; '
+                'sleep 0.05; _ccb_codex_wait=$((_ccb_codex_wait + 1)); done'
             ),
             (
-                f'if [ -S {quoted_socket} ]; then '
+                f'if [ -S {quoted_socket} ] && {{ '
+                f'[ -n "$(find {quoted_socket} -newer {quoted_ref} 2>/dev/null)" ] || [ ! -x "$(command -v find)" ]; '
+                '}; then '
                 f"printf '%s\\n' {quoted_socket} > {quoted_marker}; "
                 f'if [ -n "$CCB_CODEX_RESUME_ID" ]; then exec {remote} {mode} "$CCB_CODEX_RESUME_ID"; '
                 f'else exec {remote}; fi; fi'
             ),
+            f'rm -f {quoted_ref}',
             (
                 f'if [ -n "$CCB_CODEX_RESUME_ID" ]; then exec {local} {mode} "$CCB_CODEX_RESUME_ID"; '
                 f'else exec {local}; fi'
             ),
         )
     )
-
 
 __all__ = [
     'build_managed_app_server_command',

@@ -34,6 +34,14 @@ def append_task_complete_item(
     entry: dict[str, object],
     now: str,
 ) -> None:
+    error = entry.get("error")
+    if isinstance(error, dict) and error:
+        # A terminal provider error (e.g. a safety stop) must not surface as a
+        # successful completion, and earlier progress must not be promoted to
+        # a final handback. Route through the abort path so the turn ends
+        # unsuccessful with the provider error preserved as diagnostics.
+        append_task_complete_error_item(submission, poll, entry=entry, error=error, now=now)
+        return
     terminal_text = str(entry.get("last_agent_message") or "").strip()
     if terminal_text:
         poll.last_agent_message = clean_codex_reply_text(terminal_text, poll.request_anchor).strip()
@@ -49,6 +57,54 @@ def append_task_complete_item(
     )
     poll.next_seq += 1
     poll.reached_terminal = True
+
+
+def append_task_complete_error_item(
+    submission: ProviderSubmission,
+    poll: CodexPollState,
+    *,
+    entry: dict[str, object],
+    error: dict[str, object],
+    now: str,
+) -> None:
+    error_message = str(error.get("message") or "").strip()
+    error_category = str(error.get("codex_error_info") or "").strip()
+    poll.items.append(
+        build_item(
+            submission,
+            kind=CompletionItemKind.TURN_ABORTED,
+            timestamp=now,
+            seq=poll.next_seq,
+            payload=task_complete_error_payload(
+                poll,
+                error_message=error_message,
+                error_category=error_category,
+            ),
+        )
+    )
+    poll.next_seq += 1
+    poll.reached_terminal = True
+
+
+def task_complete_error_payload(
+    poll: CodexPollState,
+    *,
+    error_message: str,
+    error_category: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "reason": "task_complete_error",
+        "status": "failed",
+        "last_agent_message": selected_reply(poll),
+    }
+    if error_message:
+        payload["text"] = error_message
+        payload["error_message"] = error_message
+    if error_category:
+        payload["provider_error_category"] = error_category
+        payload["error_type"] = error_category
+    add_binding_payload(payload, poll)
+    return payload
 
 
 def append_turn_aborted_item(

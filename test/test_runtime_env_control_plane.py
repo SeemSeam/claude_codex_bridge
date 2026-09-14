@@ -124,6 +124,13 @@ def test_control_plane_env_keeps_managed_provider_no_terminal_timeouts(monkeypat
     assert env['CCB_CODEX_NO_TERMINAL_TIMEOUT_S'] == '1800'
     assert env['CCB_GEMINI_NO_TERMINAL_TIMEOUT_S'] == '1800'
 
+def test_control_plane_env_keeps_kimi_native_turn_timeout(monkeypatch) -> None:
+    monkeypatch.setenv('CCB_KIMI_NATIVE_TURN_TIMEOUT_S', '900')
+
+    env = control_plane_env()
+
+    assert env['CCB_KIMI_NATIVE_TURN_TIMEOUT_S'] == '900'
+
 
 def test_control_plane_env_keeps_mobile_host_state_override(monkeypatch) -> None:
     monkeypatch.setenv('CCB_MOBILE_HOST_STATE_HOME', '/tmp/ccb-mobile-state')

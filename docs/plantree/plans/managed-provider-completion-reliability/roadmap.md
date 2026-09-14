@@ -4,6 +4,13 @@ Date: 2026-06-12
 
 ## Status Summary
 
+2026-09-14 current maintenance slice: [Issues #345–#348 repair](topics/issues-345-348-repair.md).
+Implementation and testing completed locally by agent3 (evidence:
+[repair evidence record](../../baseline/evidence/issues-345-348-repair-20260914.md));
+all four repairs reproduced failing before and passing after. agent1 reviews
+evidence and replies to issues after applicable tests pass. The older status
+below is a historical checkpoint, not the current worktree/remote state.
+
 - Current status: Codex native subagent reply fencing is implemented on `main`
   in the working tree; not committed or pushed.
 - Last verified: focused Codex/Python regressions (`41 passed`), complete Codex
@@ -63,6 +70,9 @@ Date: 2026-06-12
   - Python and Rust accelerator paths share the same behavior.
 
 ## In Progress
+
+- Implement and qualify [Issues #345–#348](topics/issues-345-348-repair.md),
+  then review results before posting issue replies.
 
 - Final review and landing of the Codex native subagent reply-fence slice.
 

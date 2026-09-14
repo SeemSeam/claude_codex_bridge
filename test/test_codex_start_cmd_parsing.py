@@ -119,3 +119,44 @@ def test_build_resume_start_cmd_managed_remote_path_untouched_by_fork_fix() -> N
     assert 'CCB_CODEX_MANAGED_REMOTE=1' in rewritten
     assert 'fork' not in rewritten
     assert 'resume new-id' not in rewritten
+
+
+@pytest.mark.parametrize(
+    ('args', 'expected'),
+    [
+        # Long flags, separated and attached values.
+        (['codex', '--sandbox', 'read-only', 'resume', 's'], True),
+        (['codex', '--sandbox=read-only', 'resume', 's'], True),
+        (['codex', '--ask-for-approval', 'never', 'resume', 's'], True),
+        (['codex', '--ask-for-approval=never', 'resume', 's'], True),
+        # Short aliases from the codex CLI surface.
+        (['codex', '-s', 'read-only', 'resume', 's'], True),
+        (['codex', '-a', 'never', 'resume', 's'], True),
+        (['codex', '-s=read-only', 'resume', 's'], True),
+        # Standalone permission switches.
+        (['codex', '--dangerously-bypass-hook-trust', 'resume', 's'], True),
+        (['codex', '--dangerously-bypass-approvals-and-sandbox', 'resume', 's'], True),
+        (['codex', '--approve-for-me', 'resume', 's'], True),
+        # Config overrides that change permission behavior.
+        (['codex', '-c', 'sandbox_mode=read-only', 'resume', 's'], True),
+        (['codex', '-c', 'approval_policy=never', 'resume', 's'], True),
+        (['codex', '-c', 'sandbox_mode=read-only', '--profile', 'x', 'resume', 's'], True),
+        # Non-permission configuration must not block.
+        (['codex', '-c', 'model=gpt-5', 'resume', 's'], False),
+        # Option values are not subcommands.
+        (['codex', '--model', 'resume', 's'], False),
+        (['codex', '-m', 'resume', 's'], False),
+        # resume must be the terminal continuation.
+        (['codex', 'resume', 's', '--sandbox', 'read-only'], False),
+        # Malformed and plain launches.
+        (['codex', 'resume'], False),
+        (['codex', '--profile', 'x', 'resume', 's'], False),
+        (['codex', '--search', 'resume', 's'], False),
+    ],
+)
+def test_remote_resume_blocked_by_permission_overrides_spellings(args, expected) -> None:
+    from provider_backends.codex.launcher_runtime.command_runtime.service import (
+        _remote_resume_blocked_by_permission_overrides,
+    )
+
+    assert _remote_resume_blocked_by_permission_overrides(args) is expected

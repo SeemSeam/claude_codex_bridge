@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from completion.models import CompletionItemKind, CompletionSourceKind
+from completion.models import (
+    CompletionItemKind,
+    CompletionSourceKind,
+    CompletionStatus,
+)
 from provider_backends.codex.execution_runtime.polling import poll_submission
 from provider_backends.codex.execution_runtime.polling_runtime import process_entry
 from provider_backends.codex.execution_runtime.state_machine_runtime import (
@@ -207,3 +211,145 @@ def test_codex_completion_ignores_subagent_content_and_foreign_terminal() -> Non
     assert all("child final" not in str(item.payload) for item in poll.items)
     assert poll.items[-1].kind is CompletionItemKind.TURN_BOUNDARY
     assert poll.items[-1].payload["last_agent_message"] == "parent synthesized answer"
+
+
+def _poll_with_progress() -> CodexPollState:
+    return CodexPollState(
+        request_anchor="job_1",
+        next_seq=5,
+        anchor_seen=True,
+        bound_turn_id="turn-1",
+        bound_task_id="task-1",
+        reply_buffer="I will start the work now.",
+        last_agent_message="",
+        last_final_answer="",
+        last_assistant_message="I will start the work now.",
+        last_assistant_signature="",
+        session_path="/tmp/session.jsonl",
+    )
+
+
+def test_task_complete_error_emits_failed_abort_with_provider_category() -> None:
+    poll = _poll_with_progress()
+
+    handle_terminal_entry(
+        _submission(),
+        poll,
+        {
+            "payload_type": "task_complete",
+            "turn_id": "turn-1",
+            "last_agent_message": None,
+            "error": {
+                "message": "This request was blocked by our safety systems. Reason: Potentially unintended activity.",
+                "codex_error_info": "misalignment_policy_violation",
+            },
+        },
+        now="2026-09-12T00:01:00Z",
+    )
+
+    assert poll.reached_terminal is True
+    terminal = poll.items[-1]
+    assert terminal.kind is CompletionItemKind.TURN_ABORTED
+    assert terminal.payload["reason"] == "task_complete_error"
+    assert terminal.payload["status"] == "failed"
+    assert (
+        terminal.payload["provider_error_category"]
+        == "misalignment_policy_violation"
+    )
+    assert terminal.payload["error_type"] == "misalignment_policy_violation"
+    assert "blocked by our safety systems" in terminal.payload["error_message"]
+    # Earlier progress stays as failure context only; it is not a success reply.
+    assert terminal.payload["last_agent_message"] == "I will start the work now."
+
+
+def test_task_complete_generic_error_without_category_still_fails() -> None:
+    poll = _poll_with_progress()
+
+    handle_terminal_entry(
+        _submission(),
+        poll,
+        {
+            "payload_type": "task_complete",
+            "turn_id": "turn-1",
+            "last_agent_message": None,
+            "error": {"message": "provider stream failed"},
+        },
+        now="2026-09-12T00:01:00Z",
+    )
+
+    terminal = poll.items[-1]
+    assert terminal.kind is CompletionItemKind.TURN_ABORTED
+    assert terminal.payload["reason"] == "task_complete_error"
+    assert terminal.payload["status"] == "failed"
+    assert terminal.payload["error_message"] == "provider stream failed"
+    assert "provider_error_category" not in terminal.payload
+
+
+def test_task_complete_without_error_still_emits_success_boundary() -> None:
+    poll = _poll_with_progress()
+
+    handle_terminal_entry(
+        _submission(),
+        poll,
+        {
+            "payload_type": "task_complete",
+            "turn_id": "turn-1",
+            "last_agent_message": "final implemented result",
+        },
+        now="2026-09-12T00:01:00Z",
+    )
+
+    terminal = poll.items[-1]
+    assert terminal.kind is CompletionItemKind.TURN_BOUNDARY
+    assert terminal.payload["reason"] == "task_complete"
+    assert terminal.payload["last_agent_message"] == "final implemented result"
+
+
+def test_task_complete_error_from_normalized_entry_reaches_detector() -> None:
+    """Integrated path: raw rollout event -> normalized entry -> state machine
+    -> TURN_ABORTED item -> ProtocolTurnDetector decision."""
+    from completion.detectors.protocol_turn import ProtocolTurnDetector
+    from completion.models import CompletionRequestContext
+    from provider_backends.codex.comm_runtime.log_entries import extract_entry
+
+    raw_event = {
+        "type": "event_msg",
+        "payload": {
+            "type": "task_complete",
+            "turn_id": "turn-1",
+            "last_agent_message": None,
+            "error": {
+                "message": "This request was blocked by our safety systems.",
+                "codex_error_info": "misalignment_policy_violation",
+            },
+        },
+    }
+    normalized = extract_entry(raw_event)
+    assert normalized is not None
+
+    poll = _poll_with_progress()
+    handle_terminal_entry(_submission(), poll, normalized, now="2026-09-12T00:01:00Z")
+
+    detector = ProtocolTurnDetector()
+    detector.bind(
+        CompletionRequestContext(
+            req_id="job_1",
+            agent_name="agent1",
+            provider="codex",
+            timeout_s=300.0,
+        ),
+        baseline=None,
+    )
+    # Feed the same sequence the dispatcher would: progress, then the terminal item.
+    for item in poll.items:
+        detector.ingest(item)
+
+    decision = detector.decision()
+    assert decision.terminal is True
+    assert decision.status is CompletionStatus.FAILED
+    assert decision.reason == "task_complete_error"
+    assert (
+        decision.diagnostics["provider_error_category"]
+        == "misalignment_policy_violation"
+    )
+    assert "blocked by our safety systems" in str(decision.diagnostics.get("error_message"))

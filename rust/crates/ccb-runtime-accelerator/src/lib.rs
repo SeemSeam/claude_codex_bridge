@@ -349,12 +349,15 @@ struct NormalizedCodexEntry {
     task_id: String,
     reason: String,
     last_agent_message: String,
+    error_message: String,
+    error_category: String,
 }
 
 fn normalize_codex_entry(raw: &Value) -> Option<NormalizedCodexEntry> {
     let entry_type = value_string(raw.get("type"));
     let payload_value = raw.get("payload").cloned().unwrap_or_else(|| json!({}));
     let payload_type = value_string(payload_value.get("type"));
+    let error_value = payload_value.get("error").filter(|value| value.is_object());
     let base = NormalizedCodexEntry {
         role: String::new(),
         text: String::new(),
@@ -366,7 +369,16 @@ fn normalize_codex_entry(raw: &Value) -> Option<NormalizedCodexEntry> {
         task_id: value_string(payload_value.get("task_id")),
         reason: value_string(payload_value.get("reason")),
         last_agent_message: value_string(payload_value.get("last_agent_message")),
+        error_message: error_value
+            .and_then(|value| value.get("message"))
+            .map(|value| value_string(Some(value)))
+            .unwrap_or_default(),
+        error_category: error_value
+            .and_then(|value| value.get("codex_error_info"))
+            .map(|value| value_string(Some(value)))
+            .unwrap_or_default(),
     };
+
 
     if entry_type == "response_item" && payload_type == "agent_message" {
         return None;
@@ -506,6 +518,32 @@ fn process_codex_entry(
     };
     match terminal_type {
         "task_complete" => {
+            if !entry.error_message.trim().is_empty()
+                || !entry.error_category.trim().is_empty()
+            {
+                // A terminal provider error (e.g. a safety stop) must not
+                // surface as a successful completion, and earlier progress
+                // must not be promoted to a final handback.
+                let mut payload = json!({
+                    "reason": "task_complete_error",
+                    "status": "failed",
+                    "last_agent_message": selected_reply(state),
+                    "turn_id": turn_id_or_anchor(state, &job.request_anchor),
+                });
+                let error_message = entry.error_message.trim();
+                if !error_message.is_empty() {
+                    payload["text"] = json!(error_message);
+                    payload["error_message"] = json!(error_message);
+                }
+                let error_category = entry.error_category.trim();
+                if !error_category.is_empty() {
+                    payload["provider_error_category"] = json!(error_category);
+                    payload["error_type"] = json!(error_category);
+                }
+                add_optional_payload_fields(&mut payload, state);
+                push_item(job, state, items, "turn_aborted", payload);
+                return true;
+            }
             let terminal_text = entry.last_agent_message.trim();
             if !terminal_text.is_empty() {
                 state.last_agent_message = clean_reply_text(terminal_text, &job.request_anchor);
@@ -1068,6 +1106,91 @@ mod tests {
             .items
             .iter()
             .any(|item| item.payload.to_string().contains("child final")));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn codex_observe_task_complete_error_fails_turn_without_success_boundary() {
+        let path = std::env::var_os("CCB_TEST_TMPDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join(format!(
+                "ccb-runtime-accelerator-{}-task-complete-error.jsonl",
+                std::process::id()
+            ));
+        std::fs::write(
+            &path,
+            [
+                json!({
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "CCB_REQ_ID: req-1\ndo the work", "turn_id": "turn-1"}
+                })
+                .to_string(),
+                json!({
+                    "type": "response_item",
+                    "timestamp": "2026-09-12T00:00:00Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "I will start the work now."}],
+                        "turn_id": "turn-1"
+                    }
+                })
+                .to_string(),
+                json!({
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "last_agent_message": null,
+                        "turn_id": "turn-1",
+                        "error": {
+                            "message": "This request was blocked by our safety systems. Reason: Potentially unintended activity.",
+                            "codex_error_info": "misalignment_policy_violation"
+                        }
+                    }
+                })
+                .to_string(),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+
+        let response = codex_observe(&json!({
+            "jobs": [{
+                "job_id": "job-1",
+                "session_path": path,
+                "request_anchor": "req-1",
+                "state": {"offset": 0, "next_seq": 1}
+            }]
+        }))
+        .unwrap();
+
+        let observation = &response.observations[0];
+        assert!(observation.reached_terminal);
+        assert!(!observation.items.iter().any(|item| item.kind == "turn_boundary"));
+        let terminal = observation
+            .items
+            .iter()
+            .find(|item| item.kind == "turn_aborted")
+            .expect("task_complete.error must emit a turn_aborted item");
+        assert_eq!(terminal.payload["reason"], "task_complete_error");
+        assert_eq!(terminal.payload["status"], "failed");
+        assert_eq!(
+            terminal.payload["provider_error_category"],
+            "misalignment_policy_violation"
+        );
+        assert_eq!(
+            terminal.payload["error_type"],
+            "misalignment_policy_violation"
+        );
+        assert!(terminal.payload["error_message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("blocked by our safety systems"));
+        // Earlier progress stays as failure context, never as a success reply.
+        assert_eq!(terminal.payload["last_agent_message"], "I will start the work now.");
 
         let _ = std::fs::remove_file(path);
     }

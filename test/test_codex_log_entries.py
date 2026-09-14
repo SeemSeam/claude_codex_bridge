@@ -42,6 +42,7 @@ def test_extract_user_message_from_response_item_input_text() -> None:
         'task_id': None,
         'reason': None,
         'last_agent_message': None,
+        'error': None,
         'entry': entry,
         'role': 'user',
         'text': 'first\nsecond',
@@ -85,10 +86,49 @@ def test_extract_codex_task_started_preserves_parent_turn_binding() -> None:
         'task_id': None,
         'reason': 'task_started',
         'last_agent_message': None,
+        'error': None,
         'entry': entry,
         'role': 'system',
         'text': '',
     }
+
+
+def test_extract_entry_preserves_task_complete_terminal_error() -> None:
+    blocked = {
+        'type': 'event_msg',
+        'payload': {
+            'type': 'task_complete',
+            'last_agent_message': None,
+            'error': {
+                'message': 'This request was blocked by our safety systems.',
+                'codex_error_info': 'misalignment_policy_violation',
+            },
+        },
+    }
+
+    normalized = extract_entry(blocked)
+
+    assert normalized['role'] == 'system'
+    assert normalized['error'] == {
+        'message': 'This request was blocked by our safety systems.',
+        'codex_error_info': 'misalignment_policy_violation',
+    }
+
+
+def test_extract_entry_task_complete_without_error_keeps_none() -> None:
+    completed = {
+        'type': 'event_msg',
+        'payload': {
+            'type': 'task_complete',
+            'last_agent_message': 'final answer',
+            'reason': 'completed',
+        },
+    }
+
+    normalized = extract_entry(completed)
+
+    assert normalized['error'] is None
+    assert normalized['text'] == 'final answer'
 
 
 def test_extract_codex_native_subagent_messages_are_not_reply_candidates() -> None:

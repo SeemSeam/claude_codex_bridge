@@ -92,12 +92,17 @@ def test_render_retry_includes_attempt_lineage() -> None:
     )
 
 
-def test_render_clear_includes_agent_results() -> None:
+def test_render_clear_includes_agent_results_and_confirmation_scope() -> None:
     assert render_clear(
         {
             'status': 'ok',
             'results': [
-                {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%1'},
+                {
+                    'agent': 'agent1',
+                    'status': 'cleared',
+                    'pane_id': '%1',
+                    'confirmed': 'input_delivered',
+                },
                 {'agent': 'agent2', 'status': 'skipped', 'reason': 'runtime_missing'},
                 {'agent': 'agent3', 'status': 'failed', 'pane_id': '%3', 'reason': 'send failed'},
             ],
@@ -107,9 +112,26 @@ def test_render_clear_includes_agent_results() -> None:
         'cleared_count: 1',
         'skipped_count: 1',
         'failed_count: 1',
-        'clear_agent: agent=agent1 status=cleared pane_id=%1',
+        'clear_agent: agent=agent1 status=cleared pane_id=%1 confirmed=input_delivered',
         'clear_agent: agent=agent2 status=skipped reason=runtime_missing',
         'clear_agent: agent=agent3 status=failed pane_id=%3 reason=send failed',
+    )
+
+
+def test_render_clear_without_confirmed_field_keeps_existing_shape() -> None:
+    assert render_clear(
+        {
+            'status': 'ok',
+            'results': [
+                {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%1'},
+            ],
+        }
+    ) == (
+        'clear_status: ok',
+        'cleared_count: 1',
+        'skipped_count: 0',
+        'failed_count: 0',
+        'clear_agent: agent=agent1 status=cleared pane_id=%1',
     )
 
 

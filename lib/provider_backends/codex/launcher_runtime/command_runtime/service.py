@@ -85,6 +85,11 @@ def build_start_cmd(
         # a native fork continuation.  Keep authority-changing forks on the
         # native local CLI until the remote surface proves fork semantics.
         and str(launch_context.get('ccb_continuation_launch_mode') or '').strip() != 'fork'
+        # The Codex CLI rejects permission overrides combined with a remote
+        # resume ("Permission overrides are not supported when resuming a
+        # remote task"). Keep the requested permission policy effective by
+        # resuming on the native local CLI instead (#346).
+        and not _remote_resume_blocked_by_permission_overrides(codex_args)
         and supports_managed_app_server_fn is not None
         and build_managed_app_server_command_fn is not None
         and supports_managed_app_server_fn(tuple(provider_start_parts))
@@ -115,6 +120,79 @@ def build_codex_shell_prefix(*, profile, provider_api_env_keys_fn: Callable[[str
     else:
         cleared = _explicit_api_owned_names(profile)
     return [f'unset {key}' for key in sorted(cleared)]
+
+
+# Long flags and short aliases of the Codex CLI permission overrides, in all
+# supported spellings. Each maps to the value arity it consumes.
+_CODEX_PERMISSION_OVERRIDE_FLAGS: dict[str, int] = {
+    '--ask-for-approval': 1,  # also --ask-for-approval=never
+    '-a': 1,
+    '--sandbox': 1,  # also --sandbox=read-only
+    '-s': 1,
+    '--dangerously-bypass-hook-trust': 0,
+    '--dangerously-bypass-approvals-and-sandbox': 0,
+    '--approve-for-me': 0,
+}
+
+# Config override keys that change permission behavior via `-c key=value`.
+_CODEX_PERMISSION_OVERRIDE_CONFIG_KEYS = {
+    'sandbox_mode',
+    'approval_policy',
+}
+
+
+def _codex_permission_overrides_present(tokens: list[str]) -> bool:
+    """True when any permission override appears in [tokens].
+
+    Handles space-separated values (`--sandbox read-only`), attached values
+    (`--sandbox=read-only`), short aliases (`-s`, `-a`), the standalone
+    permission switches, and `-c sandbox_mode=... / approval_policy=...`
+    config overrides in both `-c key=value` and `-c=key=value` spellings.
+    Option values are never mistaken for subcommands.
+    """
+    expecting_config_value = False
+    for token in tokens:
+        if expecting_config_value:
+            expecting_config_value = False
+            if _is_permission_config_key(token):
+                return True
+            continue
+        name, _, attached_value = token.partition('=')
+        if name == '-c' or name == '--config':
+            if attached_value:
+                if _is_permission_config_key(attached_value):
+                    return True
+            else:
+                expecting_config_value = True
+            continue
+        if _CODEX_PERMISSION_OVERRIDE_FLAGS.get(name) is not None:
+            return True
+    return False
+
+
+def _is_permission_config_key(value: str) -> bool:
+    key = str(value or '').partition('=')[0].strip().lower()
+    return key in _CODEX_PERMISSION_OVERRIDE_CONFIG_KEYS
+    return False
+
+
+def _remote_resume_blocked_by_permission_overrides(codex_args: list[str]) -> bool:
+    """True when a resume is requested together with permission overrides.
+
+    The Codex CLI refuses `resume <id>` under `--remote` whenever permission
+    override flags are present ("Permission overrides are not supported when
+    resuming a remote task"). CCB must not silently strip the requested
+    policy to force the remote path; instead the resume runs on the native
+    local CLI where the policy stays effective (#346).
+    """
+    for index, token in enumerate(codex_args):
+        if token != 'resume':
+            continue
+        # Terminal `resume <id>` (single argument continuation), as produced
+        # by _codex_args; ignore unrelated occurrences.
+        if index + 2 == len(codex_args):
+            return _codex_permission_overrides_present(codex_args[:index])
+    return False
 
 
 def _path_or_none(value: object) -> Path | None:

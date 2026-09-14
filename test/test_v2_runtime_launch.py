@@ -3158,6 +3158,121 @@ def test_codex_launcher_build_start_cmd_uses_agent_scoped_resume_session(monkeyp
     assert 'agent2-session-id' not in cmd
 
 
+def test_codex_launcher_resume_with_permission_overrides_stays_local_cli(monkeypatch, tmp_path: Path) -> None:
+    """#346: `resume <id>` combined with permission overrides must not use the
+    managed remote path, which the Codex CLI rejects. The requested permission
+    policy stays effective on the native local CLI."""
+    from provider_backends.codex.launcher_runtime.command_runtime import (
+        build_start_cmd as build_start_cmd_impl,
+    )
+    from provider_backends.codex.launcher_runtime.command_runtime.managed_app_server import (
+        build_managed_app_server_command,
+    )
+
+    project_root = tmp_path / 'repo-codex-resume-remote-policy'
+    runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'codex'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    ccb_dir = project_root / '.ccb'
+    ccb_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec('agent1')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=True, auto_permission=True)
+
+    monkeypatch.delenv('CODEX_HOME', raising=False)
+    _write_project_memory(project_root, 'shared memory\n')
+    prepared = _prepare_codex_home_for_test(spec, runtime_dir)
+    marker = json.loads((runtime_dir / 'codex-memory-projection.json').read_text(encoding='utf-8'))
+    (ccb_dir / '.codex-agent1-session').write_text(
+        json.dumps(
+            {
+                'codex_session_id': 'agent1-session-id',
+                'codex_memory_projection_sha256': marker['sha256'],
+                'codex_start_cmd': 'codex resume agent1-session-id',
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    cmd = build_start_cmd_impl(
+        command,
+        spec,
+        runtime_dir,
+        'sess-resume-policy',
+        prepared_state=prepared,
+        load_resolved_provider_profile_fn=lambda runtime_dir: None,
+        prepare_codex_home_overrides_fn=lambda runtime_dir, profile, **kwargs: {},
+        provider_start_parts_fn=lambda provider: ['codex'],
+        load_resume_session_id_fn=lambda spec, runtime_dir, profile, current_fingerprint, current_memory_fingerprint: 'agent1-session-id',
+        build_codex_shell_prefix_fn=lambda profile: [],
+        supports_session_fork_fn=lambda parts: False,
+        supports_managed_app_server_fn=lambda parts: True,
+        build_managed_app_server_command_fn=build_managed_app_server_command,
+    )
+
+    assert extract_resume_session_id(cmd) == 'agent1-session-id'
+    # Permission policy survives on the local resume.
+    assert '--ask-for-approval never' in cmd
+    assert '--sandbox danger-full-access' in cmd
+    assert '--dangerously-bypass-hook-trust' in cmd
+    # The managed remote path is deliberately not used for this resume.
+    assert '--remote' not in cmd
+    assert prepared.get('codex_app_server_enabled') is False
+
+def test_codex_launcher_resume_without_overrides_can_use_remote(monkeypatch, tmp_path: Path) -> None:
+    """#346 control: a resume without permission overrides keeps the managed
+    remote surface (unchanged pre-existing behavior)."""
+    from provider_backends.codex.launcher_runtime.command_runtime import (
+        build_start_cmd as build_start_cmd_impl,
+    )
+    from provider_backends.codex.launcher_runtime.command_runtime.managed_app_server import (
+        build_managed_app_server_command,
+    )
+
+    runtime_dir = tmp_path / 'runtime-codex-resume-remote-plain'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec('agent1')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=True, auto_permission=False)
+
+    cmd = build_start_cmd_impl(
+        command,
+        spec,
+        runtime_dir,
+        'sess-resume-plain',
+        prepared_state={'project_root': tmp_path, 'workspace_path': tmp_path},
+        load_resolved_provider_profile_fn=lambda runtime_dir: None,
+        prepare_codex_home_overrides_fn=lambda runtime_dir, profile, **kwargs: {},
+        provider_start_parts_fn=lambda provider: ['codex'],
+        load_resume_session_id_fn=lambda spec, runtime_dir, profile, current_fingerprint, current_memory_fingerprint: 'agent1-session-id',
+        build_codex_shell_prefix_fn=lambda profile: [],
+        supports_session_fork_fn=lambda parts: False,
+        supports_managed_app_server_fn=lambda parts: True,
+        build_managed_app_server_command_fn=build_managed_app_server_command,
+    )
+
+    # Without permission overrides, the managed remote resume stays in place.
+    assert '--remote' in cmd
+    assert extract_resume_session_id(cmd) == 'agent1-session-id'
+
+
+def test_codex_launcher_fresh_start_with_overrides_can_use_remote(monkeypatch, tmp_path: Path) -> None:
+    """#346 control: a fresh start (no resume) keeps the managed remote path
+    even with permission overrides; the CLI restriction only covers resume."""
+    runtime_dir = tmp_path / 'runtime-codex-fresh-remote'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.delenv('CODEX_HOME', raising=False)
+
+    spec = _spec('agent1')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=True)
+
+    cmd = _codex_start_cmd(command, spec, runtime_dir, 'sess-fresh-remote')
+
+    assert '--ask-for-approval never' in cmd
+    assert '--sandbox danger-full-access' in cmd
+    # No resume id: the remote branch is allowed (when supported).
+    assert extract_resume_session_id(cmd) is None
+
+
 def test_codex_launcher_provider_command_template_wraps_original_resume_command(
     monkeypatch,
     tmp_path: Path,

@@ -31,13 +31,17 @@ class _Registry:
 
 
 class _FakeBackend:
-    def __init__(self, *, socket_path: str | None = None, existing_panes: set[str] | None = None) -> None:
+    def __init__(self, *, socket_path: str | None = None, existing_panes: set[str] | None = None, dead_panes: set[str] | None = None) -> None:
         self.socket_path = socket_path
         self.existing_panes = existing_panes or {'%1', '%2'}
+        self.dead_panes = dead_panes or set()
         self.calls: list[tuple[str, ...]] = []
 
     def pane_exists(self, pane_id: str) -> bool:
         return pane_id in self.existing_panes
+
+    def is_pane_alive(self, pane_id: str) -> bool:
+        return pane_id in self.existing_panes and pane_id not in self.dead_panes
 
     def _ensure_not_in_copy_mode(self, pane_id: str) -> None:
         self.calls.append(('copy-mode-quit', pane_id))
@@ -45,6 +49,9 @@ class _FakeBackend:
     def _tmux_run(self, args, *, check=False, capture=False):
         del check, capture
         self.calls.append(tuple(args))
+        # A pane that dies mid-sequence is reflected on the next liveness probe.
+        if args[:2] == ['send-keys', '-t'] and len(args) > 2 and args[2] in self.dead_panes:
+            self.existing_panes.discard(args[2])
 
 
 def _app(
@@ -80,8 +87,8 @@ def test_project_clear_context_handler_sends_provider_clear_to_all_agent_panes(m
     assert payload['status'] == 'ok'
     assert payload['agent_names'] == ['agent1', 'agent2']
     assert payload['results'] == [
-        {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%1', 'command': '/clear'},
-        {'agent': 'agent2', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear'},
+        {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%1', 'command': '/clear', 'confirmed': 'input_delivered'},
+        {'agent': 'agent2', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear', 'confirmed': 'input_delivered'},
     ]
     assert backend.calls == [
         ('copy-mode-quit', '%1'),
@@ -108,7 +115,7 @@ def test_project_clear_context_handler_uses_new_for_pi(monkeypatch) -> None:
     payload = handler({'agent_names': ['pi1']})
 
     assert payload['results'] == [
-        {'agent': 'pi1', 'status': 'cleared', 'pane_id': '%1', 'command': '/new'},
+        {'agent': 'pi1', 'status': 'cleared', 'pane_id': '%1', 'command': '/new', 'confirmed': 'input_delivered'},
     ]
     assert backend.calls == [
         ('copy-mode-quit', '%1'),
@@ -134,7 +141,7 @@ def test_project_clear_context_handler_targets_requested_agents_once(monkeypatch
 
     assert payload['agent_names'] == ['agent2']
     assert payload['results'] == [
-        {'agent': 'agent2', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear'},
+        {'agent': 'agent2', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear', 'confirmed': 'input_delivered'},
     ]
     assert [call for call in backend.calls if call[:1] == ('send-keys',)] == [
         ('send-keys', '-t', '%2', 'C-u'),
@@ -167,8 +174,8 @@ def test_project_clear_context_handler_delays_opencode_submit(monkeypatch) -> No
     payload = handler({})
 
     assert payload['results'] == [
-        {'agent': 'opener', 'status': 'cleared', 'pane_id': '%1', 'command': '/clear'},
-        {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear'},
+        {'agent': 'opener', 'status': 'cleared', 'pane_id': '%1', 'command': '/clear', 'confirmed': 'input_delivered'},
+        {'agent': 'agent1', 'status': 'cleared', 'pane_id': '%2', 'command': '/clear', 'confirmed': 'input_delivered'},
     ]
     assert backend.calls == [
         ('copy-mode-quit', '%1'),
@@ -241,6 +248,83 @@ def test_project_clear_context_handler_blocks_active_or_queued_agent(monkeypatch
         }
     ]
     assert backend.calls == []
+
+
+def test_project_clear_reports_failure_for_dead_pane(monkeypatch) -> None:
+    """#346: a pane that exists but is dead cannot receive input or reset its
+    provider context; clear must not report success for it."""
+    backend = _FakeBackend(existing_panes={'%1'}, dead_panes={'%1'})
+    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    handler = build_project_clear_context_handler(
+        _app(
+            agents={'agent1': SimpleNamespace(provider='codex')},
+            runtimes={'agent1': SimpleNamespace(active_pane_id='%1')},
+        )
+    )
+
+    payload = handler({'agent_names': ['agent1']})
+
+    assert payload['status'] == 'failed'
+    assert payload['results'] == [
+        {
+            'agent': 'agent1',
+            'status': 'failed',
+            'reason': 'pane_dead',
+            'pane_id': '%1',
+        }
+    ]
+    assert backend.calls == []
+
+
+def test_project_clear_reports_failure_when_pane_dies_during_sequence(monkeypatch) -> None:
+    """#346: input delivery is not a confirmed reset. If the pane dies while
+    the clear sequence is being sent, the clear did not happen."""
+    # The pane exists and looks alive before the sequence; it dies after the
+    # first send.
+    backend = _FakeBackend(existing_panes={'%1'}, dead_panes={'%1'})
+    backend.is_pane_alive = lambda pane_id: pane_id == '%1' and not backend.calls or (pane_id == '%1' and ('send-keys', '-t', '%1', 'C-u') not in backend.calls)
+    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    handler = build_project_clear_context_handler(
+        _app(
+            agents={'agent1': SimpleNamespace(provider='codex')},
+            runtimes={'agent1': SimpleNamespace(active_pane_id='%1')},
+        )
+    )
+
+    payload = handler({'agent_names': ['agent1']})
+
+    assert payload['status'] == 'failed'
+    assert payload['results'][0]['status'] == 'failed'
+    assert payload['results'][0]['reason'] == 'pane_dead_after_input'
+    assert payload['results'][0]['agent'] == 'agent1'
+
+
+def test_project_clear_reports_transport_failure(monkeypatch) -> None:
+    """#346: a failing send must surface as failed, never as cleared."""
+    class _FailingBackend(_FakeBackend):
+        def _tmux_run(self, args, *, check=False, capture=False):
+            raise RuntimeError('tmux transport unavailable')
+
+    backend = _FailingBackend()
+    monkeypatch.setattr(project_clear, 'TmuxBackend', lambda *, socket_path: backend)
+    handler = build_project_clear_context_handler(
+        _app(
+            agents={'agent1': SimpleNamespace(provider='codex')},
+            runtimes={'agent1': SimpleNamespace(active_pane_id='%1')},
+        )
+    )
+
+    payload = handler({'agent_names': ['agent1']})
+
+    assert payload['status'] == 'failed'
+    assert payload['results'] == [
+        {
+            'agent': 'agent1',
+            'status': 'failed',
+            'reason': 'tmux transport unavailable',
+            'pane_id': '%1',
+        }
+    ]
 
 
 def test_project_clear_dsh_rotates_native_session_without_pane_input(monkeypatch, tmp_path: Path) -> None:

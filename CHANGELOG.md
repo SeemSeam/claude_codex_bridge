@@ -1,5 +1,17 @@
 # Changelog
 
+## v8.6.17 (2026-09-14)
+
+- Fixed Codex `task_complete.error` handling so safety and provider failures
+  remain failed terminal results with their error category preserved (#347).
+- Prevented incompatible remote Codex resume permission flags and made
+  `ccb clear` report dead panes and input delivery honestly (#346).
+- Fenced Codex app-server generations, readiness checks, and shutdown cleanup
+  against socket/PID races during restart (#345).
+- Preserved `CCB_KIMI_NATIVE_TURN_TIMEOUT_S` through the daemon environment
+  while keeping the default 300-second policy unchanged (#348).
+- Preserved one-way Provider inheritance and Windows/Herdr isolation.
+
 ## v8.6.16 (2026-09-09)
 
 - Made Mobile host aggregation depend on reachable hosts, preserving offline

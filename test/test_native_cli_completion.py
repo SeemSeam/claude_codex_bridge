@@ -736,6 +736,77 @@ def test_kimi_turn_timeout_without_reply_marks_no_captured_receipt(monkeypatch, 
     assert result.decision.diagnostics["receipt_class"] == "no_captured_reply"
 
 
+def test_kimi_turn_timeout_env_extends_budget_before_expiration(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CCB_KIMI_NATIVE_TURN_TIMEOUT_S", "900")
+    wire = kimi_sessions_root(work_dir, home=home) / "session-1" / "wire.jsonl"
+    _write_jsonl(
+        wire,
+        [
+            {
+                "timestamp": "2026-06-13T00:00:01Z",
+                "message": {
+                    "type": "TurnBegin",
+                    "payload": {"user_input": [{"type": "text", "text": "CCB_REQ_ID: job_native123"}]},
+                },
+            },
+        ],
+    )
+
+    # 301 seconds: past the 300-second default but inside the configured budget.
+    within = KimiProviderAdapter().poll(
+        _submission(provider="kimi", source_kind=CompletionSourceKind.SESSION_EVENT_LOG, work_dir=work_dir),
+        now="2026-06-13T00:05:02Z",
+    )
+    assert within is not None
+    assert within.decision is None
+
+    # 901 seconds: beyond the configured budget.
+    beyond = KimiProviderAdapter().poll(
+        _submission(provider="kimi", source_kind=CompletionSourceKind.SESSION_EVENT_LOG, work_dir=work_dir),
+        now="2026-06-13T00:15:02Z",
+    )
+    assert beyond is not None
+    assert beyond.decision is not None
+    assert beyond.decision.status is CompletionStatus.FAILED
+    assert beyond.decision.reason == "kimi_native_turn_timeout"
+    assert beyond.decision.diagnostics["max_wait_secs"] == 900.0
+
+
+def test_kimi_turn_timeout_env_invalid_value_falls_back_to_default(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CCB_KIMI_NATIVE_TURN_TIMEOUT_S", "not-a-number")
+    wire = kimi_sessions_root(work_dir, home=home) / "session-1" / "wire.jsonl"
+    _write_jsonl(
+        wire,
+        [
+            {
+                "timestamp": "2026-06-13T00:00:01Z",
+                "message": {
+                    "type": "TurnBegin",
+                    "payload": {"user_input": [{"type": "text", "text": "CCB_REQ_ID: job_native123"}]},
+                },
+            },
+        ],
+    )
+
+    result = KimiProviderAdapter().poll(
+        _submission(provider="kimi", source_kind=CompletionSourceKind.SESSION_EVENT_LOG, work_dir=work_dir),
+        now="2026-06-13T00:05:01Z",
+    )
+
+    assert result is not None
+    assert result.decision is not None
+    assert result.decision.status is CompletionStatus.FAILED
+    assert result.decision.reason == "kimi_native_turn_timeout"
+    assert result.decision.diagnostics["max_wait_secs"] == 300.0
+
 def test_kimi_observes_source_style_turn_events(monkeypatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     work_dir = tmp_path / "project"

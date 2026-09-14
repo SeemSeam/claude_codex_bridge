@@ -28,7 +28,9 @@ def handle_cleanup(context, command, out, services) -> int:
 def handle_clear(context, command, out, services) -> int:
     summary = services.clear_agent_context(context, command)
     services.write_lines(out, services.render_clear(summary))
-    return 0
+    # A failed clear (dead pane, transport error) must not exit as success;
+    # the printed summary already distinguishes cleared/failed per agent.
+    return 0 if str(summary.get('status') or '') == 'ok' else 1
 
 
 def handle_compact(context, command, out, services) -> int:
