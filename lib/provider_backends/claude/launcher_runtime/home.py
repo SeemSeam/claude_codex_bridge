@@ -731,10 +731,11 @@ def _materialize_macos_keychain_preferences(source_home: Path, target_layout: Cl
     # then raises the "default keychain could not be found / restore default"
     # GUI prompt the first time the managed provider process touches the
     # keychain.  Provision an agent-private keychain as the default instead.
-    # The user's real login keychain is still listed for read-only credential
-    # discovery, while every write (add-generic-password) lands in the private
-    # keychain, so logout/cleanup can never mutate the external login authority.
-    _ensure_managed_private_keychain(source_home, target_layout)
+    # The user's real login keychain is deliberately excluded from the managed
+    # search list, so managed refresh/logout can never mutate the external
+    # Provider's credentials; the external login is read once (in the CCB
+    # parent, real HOME) and projected copy-only via .credentials.json.
+    _ensure_managed_private_keychain(target_layout)
 
 
 def _remove_keychains_link(path: Path) -> None:
@@ -749,18 +750,7 @@ def _managed_private_keychain_path(target_layout: ClaudeHomeLayout) -> Path:
     return target_layout.home_root / 'Library' / 'Keychains' / _MACOS_PRIVATE_KEYCHAIN_NAME
 
 
-def _real_login_keychain_path(source_home: Path) -> Path | None:
-    candidate = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
-    try:
-        if candidate.exists():
-            return candidate
-    except OSError:
-        return None
-    return None
-
-
 def _ensure_managed_private_keychain(
-    source_home: Path,
     target_layout: ClaudeHomeLayout,
 ) -> None:
     """Provision an agent-private default keychain inside the isolated HOME.
@@ -772,6 +762,12 @@ def _ensure_managed_private_keychain(
     ``default-keychain -s`` otherwise.  All mutations run with HOME pointed at
     the managed home, so they only ever touch the isolated plist and never the
     user's real global keychain settings.
+
+    One-way inheritance boundary: the managed search list contains only the
+    agent-private keychain and the system keychain — never the user's real
+    login keychain.  Search-list membership is not read-only, so including the
+    login keychain would allow a managed add/refresh/logout to mutate the
+    external Provider's credentials.
     """
     private_keychain = _managed_private_keychain_path(target_layout)
     if shutil.which('security') is None:
@@ -795,14 +791,16 @@ def _ensure_managed_private_keychain(
         # keychain stays usable without a GUI.
         _configure_managed_private_keychain_unlocked(target_layout)
 
-        search_list = [str(private_keychain)]
-        login_keychain = _real_login_keychain_path(source_home)
-        if login_keychain is not None:
-            # Read-only credential discovery: the managed process can still
-            # resolve the official Claude login item from the login keychain,
-            # but it is never the default write target.
-            search_list.append(str(login_keychain))
-        search_list.append(_MACOS_SYSTEM_KEYCHAIN)
+        # The managed search domain contains ONLY the agent-private keychain
+        # plus the system keychain.  The user's real login keychain is never
+        # listed: membership in the search list is not read-only — Security
+        # framework can update a matching item in any listed keychain (add -U,
+        # default-write fallback, refresh, logout), which would let a managed
+        # process mutate the external Provider's credentials and violate
+        # one-way inheritance.  External credentials are read exactly once in
+        # the CCB parent (real HOME, normal login search list) and projected
+        # copy-only via .credentials.json.
+        search_list = [str(private_keychain), _MACOS_SYSTEM_KEYCHAIN]
         _run_security(['list-keychains', '-s', *search_list], env_home=target_layout.home_root)
         _run_security(
             ['default-keychain', '-s', str(private_keychain)],

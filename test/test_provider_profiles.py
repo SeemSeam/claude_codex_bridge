@@ -3811,11 +3811,20 @@ def test_materialize_claude_home_config_provisions_agent_private_default_keychai
     assert str(private_keychain) in create_call
     list_call = next(call for call in calls if call[1] == 'list-keychains' and '-s' in call)
     search_entries = list_call[list_call.index('-s') + 1:]
-    # Private keychain is first (default write target), real login keychain is
-    # still listed for read-only credential discovery, System keychain last.
-    assert search_entries[0] == str(private_keychain)
-    assert str(login_keychain) in search_entries
-    assert search_entries[-1] == claude_home_runtime._MACOS_SYSTEM_KEYCHAIN
+    # Boundary regression: the managed search domain contains ONLY the
+    # agent-private keychain and the System keychain.  The user's real login
+    # keychain must never be listed — search-list membership is not read-only,
+    # and listing it would let a managed add -U / refresh / logout mutate the
+    # external Provider's credentials (one-way inheritance).
+    assert search_entries == [
+        str(private_keychain),
+        claude_home_runtime._MACOS_SYSTEM_KEYCHAIN,
+    ]
+    assert str(login_keychain) not in search_entries
+    # As a belt-and-suspenders guarantee, no provisioning call may ever name
+    # the external login keychain path in any position.
+    for call in calls:
+        assert str(login_keychain) not in call
     default_call = next(call for call in calls if call[1] == 'default-keychain' and '-s' in call)
     assert default_call[default_call.index('-s') + 1] == str(private_keychain)
     # The empty-password private keychain is unlocked and auto-locking disabled
@@ -3982,6 +3991,93 @@ def test_materialize_claude_home_config_deletes_private_keychain_after_disabling
     assert not target_plist.exists()
     # The real login keychain file is never removed.
     assert login_keychain.is_file()
+
+
+def test_managed_keychain_lifecycle_never_mutates_external_provider_credentials(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    # Boundary regression for one-way Provider inheritance: across the whole
+    # managed lifecycle (initial seed + refresh + disable-inheritance/logout)
+    # no security invocation may write to or delete an external Provider
+    # service, name the user's real login keychain, or mutate its items.  The
+    # only permitted contact with the external authority is a copy-only read
+    # (find-generic-password, no keychain path) performed from the CCB parent.
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    login_keychain = source_home / 'Library' / 'Keychains' / 'login.keychain-db'
+    login_keychain.parent.mkdir(parents=True, exist_ok=True)
+    login_keychain.write_bytes(b'external-items-intact')
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = '') -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ''
+
+    def on_credential(call, _kwargs):
+        service = call[call.index('-s') + 1]
+        command = call[1]
+        if command == 'find-generic-password' and service in {
+            'Claude Code-credentials',
+            'Claude Code-custom-oauth',
+            'Claude Code',
+        }:
+            return Result(0, json.dumps({'claudeAiOauth': {'refreshToken': 'external-token'}}))
+        if command in {'find-generic-password'}:
+            return Result(44)
+        if command in {'add-generic-password', 'delete-generic-password'}:
+            return Result(0)
+        return Result(44)
+
+    monkeypatch.setenv('USER', 'mac-user')
+    calls = _install_macos_security_stub(monkeypatch, on_credential=on_credential)
+
+    # 1) initial materialization (inherit on) → seeds managed item
+    layout = materialize_claude_home_config(target_home, source_home=source_home)
+    private_keychain = claude_home_runtime._managed_private_keychain_path(layout)
+    external_services = set(claude_home_runtime._macos_keychain_services())
+    managed_service = claude_home_runtime._managed_macos_keychain_service(layout)
+    assert managed_service not in external_services
+
+    # 2) re-materialize (refresh path, inherit still on)
+    materialize_claude_home_config(target_home, source_home=source_home)
+
+    # 3) disable inheritance (managed logout/cleanup path)
+    materialize_claude_home_config(
+        target_home,
+        source_home=source_home,
+        profile=ProviderProfileSpec(inherit_auth=False, inherit_api=False),
+    )
+
+    write_commands = {'add-generic-password', 'delete-generic-password'}
+    for call in calls:
+        command = call[1]
+        # The external login keychain path must never appear in any argv slot.
+        assert str(login_keychain) not in call
+        if '-s' not in call:
+            continue
+        service = call[call.index('-s') + 1]
+        if command in write_commands:
+            # Writes/deletes only ever target the managed-suffix service …
+            assert service == managed_service
+            # … and are physically bound to the agent-private keychain file.
+            assert call[-1] == str(private_keychain)
+            assert service not in external_services
+        elif command == 'find-generic-password' and service in external_services:
+            # The sole external contact is a copy-only read with no keychain
+            # path argument (resolved against the parent's real search list).
+            assert call[-1] == '-w'
+
+    # No security command may unlock, change settings on, or delete the
+    # external login keychain; those verbs are only legal on the private DB.
+    for call in calls:
+        if call[1] in {'unlock-keychain', 'set-keychain-settings', 'delete-keychain'}:
+            assert str(login_keychain) not in call
+            assert any(str(private_keychain) == part for part in call)
+
+    # The external authority's data is byte-for-byte untouched.
+    assert login_keychain.read_bytes() == b'external-items-intact'
 
 
 def test_materialize_claude_home_config_keychain_provisioning_failure_is_non_fatal(

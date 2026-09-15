@@ -12,7 +12,15 @@
 ## 0. 修复摘要（2026-09-12）
 
 采用下文「方案 A1」：在隔离 HOME 内为每个 agent 物化一个 agent-private keychain 并设为默认，
-用户真实 login keychain 仅以**只读**方式保留在搜索列表中用于凭证发现。
+用户真实 login keychain **完全不进入** managed 搜索列表；外部凭证只在 CCB 父进程（真实 HOME、
+正常 login 搜索列表）读取一次，再以 copy-only 方式经 `.credentials.json` 投影。
+
+> **2026-09-15 按上游 review 修订（单向继承硬边界）**：初版曾把真实 login keychain 放进 managed
+> 搜索列表「仅用于只读凭证发现」。但**搜索列表成员关系并不是只读机制**——Security.framework 对
+> 任意在列 keychain 中匹配到的条目都可能更新（`add -U`、默认写回退、refresh、logout）。因此
+> 该设计仍可能让 managed 进程反向修改/失效外部 Provider 的凭证或配置。修订后 managed 搜索域
+> **只含** `<private keychain>` + `/Library/Keychains/System.keychain`，绝不列出真实 login keychain。
+> 这也意味着外部凭证读取不依赖 managed 搜索列表（本就在父进程完成），功能无损。
 
 实现要点（均在 `lib/provider_backends/claude/launcher_runtime/home.py`）：
 
@@ -26,8 +34,9 @@
     因此 `list-keychains -s` / `default-keychain -s` 只会写隔离 HOME 内的
     `Library/Preferences/com.apple.security.plist`，**实测不改变真实用户的全局钥匙串设置**。
     （前提：必须先 `mkdir -p Library/Preferences`，否则 `security ... -s` 在隔离 HOME 下会静默丢弃。）
-  - 搜索列表顺序：`<private keychain>`（默认写落点）→ 真实 `login.keychain-db`（只读凭证发现）
-    → `/Library/Keychains/System.keychain`；默认钥匙串显式设为 private keychain。
+  - 搜索列表：**仅** `<private keychain>`（默认写落点）→ `/Library/Keychains/System.keychain`；
+    默认钥匙串显式设为 private keychain。真实 `login.keychain-db` 绝不出现在 managed 搜索列表
+    （搜索列表成员关系不是只读；外部凭证读取在 CCB 父进程完成，无需在此列出）。
   - **解锁并禁用自动锁定（2026-09-13 补充）**：非 login keychain 在空闲超时 / 睡眠后会被锁定；
     一旦锁定，Security.framework 会弹另一种 GUI——
     `“security” 想使用 “ccb-agent” 钥匙串，请输入钥匙串密码`。
@@ -50,8 +59,13 @@
 3. `Library/Keychains` 在 `ccb doctor storage` 仍归类为 SECRET（`storage_classification/provider_home.py`）。
 
 测试：`test/test_provider_profiles.py` 新增/更新用例覆盖
-private keychain 创建与默认/搜索列表设置、managed 条目只写入 private keychain、
-禁用继承后删除 private keychain 与 plist、provisioning 失败不阻断、legacy 链接仍被 detach 等。
+private keychain 创建与默认/搜索列表设置（断言搜索列表**恰为** `[private, System]`、真实 login
+keychain 不出现在任何 provisioning argv 中）、managed 条目只写入 private keychain、
+禁用继承后删除 private keychain 与 plist、provisioning 失败不阻断、legacy 链接仍被 detach；
+并新增全生命周期边界回归 `test_managed_keychain_lifecycle_never_mutates_external_provider_credentials`：
+覆盖初次 seed + refresh + 禁用继承/logout，断言所有 add/delete 只针对 managed-suffix service 且
+显式绑定 private keychain 文件、对外部 service 唯一接触是无 keychain 路径的 copy-only find、
+unlock/settings/delete 永不及于真实 login keychain、外部 keychain 文件字节不变。
 本机端到端验证：真实物化后 `HOME=<managed> security default-keychain` 可解析、
 `add/find-generic-password` 静默成功无 GUI、真实用户全局 keychain 设置全程不变。
 
