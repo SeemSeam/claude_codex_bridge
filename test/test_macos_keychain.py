@@ -43,7 +43,8 @@ def test_prepare_private_keychain_uses_only_managed_home_state(
 
     assert keychain == macos_keychain.private_keychain_path(home)
     assert keychain.read_bytes() == b'private-keychain'
-    assert keychain.stat().st_mode & 0o777 == 0o600
+    if os.name != 'nt':
+        assert keychain.stat().st_mode & 0o777 == 0o600
     assert all(call_home == str(home.resolve()) for _call, call_home in calls)
     assert [call[1] for call, _home in calls] == [
         'create-keychain',
@@ -141,7 +142,12 @@ def test_prepare_private_keychain_rejects_database_owned_by_another_user(
     keychain.parent.mkdir(parents=True)
     keychain.write_bytes(b'private-keychain')
     monkeypatch.setattr(macos_keychain, 'is_macos', lambda: True)
-    monkeypatch.setattr(macos_keychain.os, 'getuid', lambda: keychain.stat().st_uid + 1)
+    monkeypatch.setattr(
+        macos_keychain.os,
+        'getuid',
+        lambda: keychain.stat().st_uid + 1,
+        raising=False,
+    )
 
     with pytest.raises(RuntimeError, match='must be a private regular file'):
         macos_keychain.prepare_private_keychain(home)

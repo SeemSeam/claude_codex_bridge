@@ -157,12 +157,14 @@ The shared keyring reader exposes read operations only:
 
 It does not expose set or delete operations.
 
-On macOS, Claude and AGY support independent Agent-owned login when
-`inherit_auth=false`. CCB creates an owner-only Keychain database inside the
-managed `HOME` and generates `com.apple.security.plist` with both the default
-and search list containing only that database. CCB does not copy external
-rotating or opaque OAuth credentials into it; the user logs in once inside the
-managed Provider session, and the Provider owns subsequent refreshes.
+On macOS, every managed Claude and AGY home receives an owner-only Keychain
+database. Its generated `com.apple.security.plist` contains only that database
+as the default and search list; CCB never attaches the user's login Keychain.
+For inherited Claude auth, CCB reads the external credential and seeds only the
+agent-derived service in this private database. The managed Provider may refresh
+that private copy, but cannot write back to external authority. With
+`inherit_auth=false`, CCB does not copy external rotating or opaque OAuth; the
+user logs in once inside the managed Provider session instead.
 
 Managed Claude must set `CLAUDE_CONFIG_DIR` and
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` to its private `.claude` directory. Inherited
@@ -180,14 +182,18 @@ managed processes are then forced to file storage and never select the source
 keyring. If conversion is unavailable or invalid, CCB leaves that managed
 provider unauthenticated instead of attaching the global credential backend.
 
-On macOS with `inherit_auth=false`, managed AGY uses the same independent-login
-private Keychain route and CCB removes AGY's private recent-keyring-failure
-marker. CCB records the selected auth mode inside the private managed home. A
-transition to independent auth fails closed while old managed auth files remain,
-so a previous inherited projection cannot become the new Agent authority. Once
+Managed AGY projects the external `gemini` / `antigravity` Keychain item
+one-way into its private default Keychain when available. If that source item
+is absent, it keeps inherited auth in its private file store and refreshes the
+recent-keyring-failure marker. With `inherit_auth=false`, CCB removes that marker
+so AGY can use the private Keychain for independent login. CCB records the
+selected auth mode inside the private managed home. A
+transition to independent auth fails closed while old managed auth files or a
+projected private-Keychain item remain, so a previous inherited projection
+cannot become the new Agent authority. Once
 independent mode is established, later starts preserve Provider-written auth
-files. In inherited mode, or where the private Keychain route is unavailable,
-CCB refreshes the marker at
+files. In inherited mode without a projected source Keychain item, or where the
+private Keychain route is unavailable, CCB refreshes the marker at
 `<managed-home>/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable`
 so AGY selects its file token store immediately. The marker is an owner-only
 regular file under the private managed home and must never be read from or
@@ -197,12 +203,12 @@ written into the source user home.
 
 | Provider | Managed account authority | Required isolation behavior |
 | --- | --- | --- |
-| Claude | private `.claude` files; Agent-private macOS Keychain when `inherit_auth=false` | private `HOME`/Claude roots; inherited auth disables login/logout; independent auth can reach only the private Keychain |
+| Claude | private `.claude` files and Agent-private macOS Keychain | inherited auth is seeded one-way and disables login/logout; independent auth can reach only the private Keychain |
 | Codex | private `CODEX_HOME` auth/config/sidecars | private session and SQLite roots; WSL `USERPROFILE` pinned |
 | Gemini | private `.gemini` OAuth/account/encrypted files | `GEMINI_FORCE_FILE_STORAGE=true` and `GEMINI_FORCE_ENCRYPTED_FILE_STORAGE=true`; external keyring read-only migration |
 | OpenCode | private XDG data/config/state and structured storage roots | auth/account files are one-way copies; storage/log writers stay private |
 | Droid | private `<managed-home>/.factory` v2 auth files | `FACTORY_DISABLE_KEYRING=true`; known keyring v2 material is converted to a private key file |
-| AGY | private `.gemini` and `.antigravity` trees | no source symlink or Windows junction; allowlisted file copies only; refresh the private AGY keyring-bypass marker before launch |
+| AGY | private `.gemini` and `.antigravity` trees plus Agent-private macOS Keychain | inherited auth is projected one-way with private file fallback; independent auth may use only the private Keychain |
 | Qwen | private `QWEN_HOME` OAuth/account files | both Qwen file-storage switches enabled |
 | Cursor | private platform-specific `cursor/auth.json` | `AGENT_CLI_CREDENTIAL_STORE=file`; macOS token services are read-only import sources |
 | Copilot | private `COPILOT_HOME` auth-bearing config and secret trees | `COPILOT_DISABLE_KEYTAR=1`; private cache root |
@@ -236,8 +242,8 @@ Provider isolation tests must cover the applicable boundaries:
   source fixture is unchanged;
 - prove destination symlinks, hard links, or junctions are detached without
   changing their source;
-- prove independent macOS login resolves only the Agent-private default/search
-  list and leaves the user's Keychain configuration unchanged;
+- prove inherited and independent macOS modes resolve only the Agent-private
+  default/search list, and leave the user's Keychain configuration unchanged;
 - prove visible and headless launches select managed roots and file-storage
   switches;
 - prove WSL launches pin managed Windows-facing roots;

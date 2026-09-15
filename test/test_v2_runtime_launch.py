@@ -152,6 +152,9 @@ def _stable_claude_cli_capabilities(monkeypatch) -> None:
     )
 
 
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
+
+
 def _clipboard_bind_call(key: str) -> tuple[str, tuple[str, ...]]:
     return (
         'bind-key',

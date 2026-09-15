@@ -95,11 +95,13 @@ def _require_private_regular_file(path: Path) -> None:
         metadata = path.lstat()
     except FileNotFoundError:
         return
+    getuid = getattr(os, 'getuid', None)
+    current_uid = getuid() if callable(getuid) else None
     if (
         stat.S_ISLNK(metadata.st_mode)
         or not stat.S_ISREG(metadata.st_mode)
         or metadata.st_nlink != 1
-        or metadata.st_uid != os.getuid()
+        or (current_uid is not None and metadata.st_uid != current_uid)
     ):
         raise RuntimeError(f'agent-private macOS Keychain path must be a private regular file: {path}')
 

@@ -738,7 +738,7 @@ def _materialize_macos_keychain_preferences(source_home: Path, target_layout: Cl
     # directory.  That made a managed provider logout capable of mutating the
     # external login authority. Detach it before preparing private state.
     _remove_keychains_link(target_keychains)
-    if is_macos() and not _inherits_auth(profile):
+    if is_macos():
         prepare_private_keychain(target_layout.home_root)
     else:
         # An inherited preference can point Security.framework back to the
@@ -782,9 +782,8 @@ def _projected_claude_json_payload(
 
     _merge_profile_mcp_servers(merged, profile=profile)
 
-    if not _inherits_auth(profile):
-        # This HOME is the authority in independent-login mode. Preserve
-        # metadata written by its Provider without importing source metadata.
+    if not _inherits_external_auth(profile):
+        # Preserve Agent-owned metadata without importing source metadata.
         return merged
 
     for key in (*_CLAUDE_JSON_AUTH_METADATA_KEYS, *_CLAUDE_JSON_AUTH_COMPANION_KEYS):
@@ -1152,6 +1151,8 @@ def _sync_managed_macos_keychain_auth(
     service = _managed_macos_keychain_service(target_layout)
     if service in _macos_keychain_services():
         raise RuntimeError('refusing to overwrite the external Claude Keychain login')
+    managed_env = dict(os.environ)
+    managed_env['HOME'] = str(target_layout.home_root)
     try:
         existing = subprocess.run(
             [security, 'find-generic-password', '-a', account, '-s', service, '-w'],
@@ -1159,6 +1160,7 @@ def _sync_managed_macos_keychain_auth(
             capture_output=True,
             text=True,
             timeout=5,
+            env=managed_env,
         )
     except Exception as exc:
         raise RuntimeError(f'cannot inspect agent-private Claude Keychain login: {exc}') from exc
@@ -1188,6 +1190,7 @@ def _sync_managed_macos_keychain_auth(
             capture_output=True,
             text=True,
             timeout=5,
+            env=managed_env,
         )
     except Exception as exc:
         raise RuntimeError(f'cannot seed agent-private Claude Keychain login: {exc}') from exc
@@ -1205,6 +1208,8 @@ def _remove_managed_macos_keychain_auth(target_layout: ClaudeHomeLayout) -> None
     service = _managed_macos_keychain_service(target_layout)
     if service in _macos_keychain_services():
         return
+    managed_env = dict(os.environ)
+    managed_env['HOME'] = str(target_layout.home_root)
     try:
         subprocess.run(
             [security, 'delete-generic-password', '-a', account, '-s', service],
@@ -1212,6 +1217,7 @@ def _remove_managed_macos_keychain_auth(target_layout: ClaudeHomeLayout) -> None
             capture_output=True,
             text=True,
             timeout=5,
+            env=managed_env,
         )
     except Exception:
         pass

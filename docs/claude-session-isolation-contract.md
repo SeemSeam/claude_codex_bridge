@@ -267,11 +267,12 @@ When `ccb` starts a managed Claude agent:
   `Library/Keychains` path to the user's Keychains; startup must remove a
   recognized legacy managed link and legacy copied preference without
   traversing the user's Keychain
-- on macOS with `inherit_auth=false`, startup must create an owner-only
-  Keychain database under the Agent's managed `Library/Keychains`; the managed
-  default and search list must contain only that database, CCB must not project
-  the user's OAuth item, and Claude login/logout commands remain enabled so the
-  user can create and manage an independent Agent login
+- on macOS, startup must create an owner-only Keychain database under the
+  Agent's managed `Library/Keychains`; the managed default and search list must
+  contain only that database. In inherited mode CCB may seed only the
+  agent-derived service in that database and keeps login/logout disabled. With
+  `inherit_auth=false`, CCB must not project the user's OAuth item and leaves
+  login/logout enabled for an independent Agent login
 - the first switch from inherited to independent auth may remove only account
   metadata recorded as CCB-projected; subsequent starts must preserve account
   metadata written by the independent managed Claude process

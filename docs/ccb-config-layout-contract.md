@@ -475,8 +475,9 @@ The same setting enables independent Agent login for Claude and AGY on macOS.
 CCB prepares a private Keychain under the managed Provider home; log in once in
 that managed session, and later starts reuse that Agent-owned credential. When
 changing an existing AGY profile from inherited to independent auth, move or
-remove any old managed auth files first; CCB blocks the transition rather than
-silently treating a prior projection as the independent login.
+remove any old managed auth files and the projected item in the Agent-private
+Keychain first; CCB blocks the transition rather than silently treating a prior
+projection as the independent login.
 
 ### 4.3 Provider Profile MCP Overlay
 
