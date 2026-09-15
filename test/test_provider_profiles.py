@@ -3084,6 +3084,52 @@ def test_materialize_claude_home_config_filters_source_settings_auth_for_private
     assert env == {'MCP_TIMEOUT': '30000'}
 
 
+def test_materialize_claude_home_config_drops_legacy_projected_metadata_when_auth_not_inherited(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(claude_home_runtime.platform, 'system', lambda: 'Linux')
+    monkeypatch.setattr(claude_home_runtime, 'is_macos', lambda: False)
+    source_home = tmp_path / 'system-home'
+    target_home = tmp_path / 'managed-home'
+    target_trust = target_home / '.claude' / '.claude.json'
+    target_trust.parent.mkdir(parents=True)
+    target_trust.write_text(
+        json.dumps(
+            {
+                'oauthAccount': {'emailAddress': 'source@example.test'},
+                '/managed/workspace': {'hasTrustDialogAccepted': True},
+            }
+        ) + '\n',
+        encoding='utf-8',
+    )
+    (target_home / '.ccb-auth-projection.json').write_text(
+        json.dumps(
+            {
+                'schema_version': 1,
+                'record_type': 'ccb_claude_auth_projection',
+                'status': 'inherited_auth',
+                'source_home': str(source_home),
+                'projected_files': [],
+                'projected_env_keys': [],
+            }
+        ) + '\n',
+        encoding='utf-8',
+    )
+
+    layout = materialize_claude_home_config(
+        target_home,
+        profile=ProviderProfileSpec(inherit_auth=False, inherit_api=False),
+        source_home=source_home,
+    )
+
+    payload = json.loads(layout.trust_path.read_text(encoding='utf-8'))
+    assert 'oauthAccount' not in payload
+    assert payload['/managed/workspace']['hasTrustDialogAccepted'] is True
+    manifest = json.loads((target_home / '.ccb-auth-projection.json').read_text(encoding='utf-8'))
+    assert manifest['projected_json_keys'] == []
+
+
 def test_materialize_claude_home_config_drops_projected_metadata_once_then_preserves_private_login(
     tmp_path: Path,
     monkeypatch,

@@ -637,6 +637,8 @@ def _materialize_auth(source_home: Path, target_layout: ClaudeHomeLayout, *, pro
     previous = _read_claude_auth_projection(target_layout)
     previous_files = _manifest_string_set(previous, 'projected_files')
     previous_json_keys = _manifest_string_set(previous, 'projected_json_keys')
+    if _valid_claude_auth_projection(previous) and 'projected_json_keys' not in previous:
+        previous_json_keys.update(_CLAUDE_JSON_AUTH_METADATA_KEYS)
     source_trust = (
         _read_source_json_object(
             source_home / '.claude.json',
