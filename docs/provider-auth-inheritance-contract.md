@@ -208,7 +208,8 @@ written into the source user home.
 | Gemini | private `.gemini` OAuth/account/encrypted files | `GEMINI_FORCE_FILE_STORAGE=true` and `GEMINI_FORCE_ENCRYPTED_FILE_STORAGE=true`; external keyring read-only migration |
 | OpenCode | private XDG data/config/state and structured storage roots | auth/account files are one-way copies; storage/log writers stay private |
 | Droid | private `<managed-home>/.factory` v2 auth files | `FACTORY_DISABLE_KEYRING=true`; known keyring v2 material is converted to a private key file |
-| AGY | private `.gemini` and `.antigravity` trees plus Agent-private macOS Keychain | inherited auth is projected one-way with private file fallback; independent auth may use only the private Keychain |
+| AGY | private `.gemini` and `.antigravity` trees | no source symlink or Windows junction; allowlisted file copies only; refresh the private AGY keyring-bypass marker before launch |
+| AGY (macOS) | private `.gemini` and `.antigravity` trees plus Agent-private Keychain | inherited auth is projected one-way with private file fallback; independent auth may use only the private Keychain |
 | Qwen | private `QWEN_HOME` OAuth/account files | both Qwen file-storage switches enabled |
 | Cursor | private platform-specific `cursor/auth.json` | `AGENT_CLI_CREDENTIAL_STORE=file`; macOS token services are read-only import sources |
 | Copilot | private `COPILOT_HOME` auth-bearing config and secret trees | `COPILOT_DISABLE_KEYTAR=1`; private cache root |
