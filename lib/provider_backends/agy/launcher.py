@@ -4,6 +4,7 @@ import functools
 import hashlib
 import os
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -11,6 +12,8 @@ import urllib.parse
 from pathlib import Path
 
 from provider_core.source_home import current_provider_source_home
+from provider_core.macos_keychain import prepare_private_keychain, private_keychain_path
+from provider_core.platform_info import is_macos
 from provider_core.one_way_inheritance import (
     copy_regular_file,
     ensure_private_descendant_directory,
@@ -30,6 +33,7 @@ from provider_core.caller_env import (
 from provider_core.contracts import ProviderRuntimeLauncher
 from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from provider_profiles import load_resolved_provider_profile
+from storage.atomic import atomic_write_text
 from workspace.models import WorkspacePlan
 
 
@@ -41,6 +45,9 @@ _AGY_CONVERSATIONS_REL = Path('.gemini') / 'antigravity-cli' / 'conversations'
 _AGY_KEYRING_BYPASS_MARKER_REL = (
     Path('.gemini') / 'antigravity-cli' / 'cache' / 'antigravity-keyring-unavailable'
 )
+_AGY_AUTH_MODE_REL = Path('.gemini') / 'antigravity-cli' / 'cache' / 'ccb-auth-mode'
+_AGY_MACOS_KEYCHAIN_ACCOUNT = 'antigravity'
+_AGY_MACOS_KEYCHAIN_SERVICE = 'gemini'
 _AGY_AUTH_FILES = (
     Path('.gemini') / '.env',
     Path('.gemini') / 'google_accounts.json',
@@ -218,6 +225,43 @@ def _sync_private_file(source: Path, target: Path) -> None:
         _log_warn(f'failed to inherit {source} into managed home: {exc}')
 
 
+def _managed_macos_keychain_auth_exists(managed_home: Path) -> bool:
+    if not is_macos():
+        return False
+    keychain = private_keychain_path(managed_home)
+    if keychain.is_symlink():
+        raise RuntimeError(f'managed AGY Keychain is not private: {keychain}')
+    if not keychain.is_file():
+        return False
+    security = shutil.which('security') or '/usr/bin/security'
+    env = dict(os.environ)
+    env['HOME'] = str(managed_home)
+    try:
+        result = subprocess.run(
+            [
+                security,
+                'find-generic-password',
+                '-a',
+                _AGY_MACOS_KEYCHAIN_ACCOUNT,
+                '-s',
+                _AGY_MACOS_KEYCHAIN_SERVICE,
+                str(keychain),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=env,
+        )
+    except Exception as exc:
+        raise RuntimeError(f'cannot inspect managed AGY Keychain login: {type(exc).__name__}') from None
+    if result.returncode == 0:
+        return True
+    if result.returncode == 44:
+        return False
+    raise RuntimeError(f'cannot inspect managed AGY Keychain login: security exited {result.returncode}')
+
+
 def _materialize_private_credentials(
     source_home: Path,
     managed_home: Path,
@@ -232,9 +276,29 @@ def _materialize_private_credentials(
             )
         ensure_private_descendant_directory(managed_home, Path(dirname))
     ensure_private_descendant_directory(managed_home, Path('.gemini') / 'config')
-    if profile is None or bool(getattr(profile, 'inherit_auth', True)):
+    inherit_auth = profile is None or bool(getattr(profile, 'inherit_auth', True))
+    mode_dir = ensure_private_descendant_directory(managed_home, _AGY_AUTH_MODE_REL.parent)
+    mode_path = mode_dir / _AGY_AUTH_MODE_REL.name
+    if mode_path.is_symlink() or (mode_path.exists() and not mode_path.is_file()):
+        raise RuntimeError(f'AGY auth mode marker is not a private regular file: {mode_path}')
+    previous_mode = mode_path.read_text(encoding='utf-8').strip() if mode_path.is_file() else ''
+    if not inherit_auth and previous_mode != 'independent':
+        existing_auth = [
+            managed_home / relative
+            for relative in _AGY_AUTH_FILES
+            if (managed_home / relative).exists() or (managed_home / relative).is_symlink()
+        ]
+        if previous_mode == 'inherited' and _managed_macos_keychain_auth_exists(managed_home):
+            existing_auth.append(private_keychain_path(managed_home))
+        if existing_auth:
+            raise RuntimeError(
+                'managed AGY credentials may belong to inherited auth; '
+                'remove or move those managed credentials before enabling independent auth'
+            )
+    if inherit_auth:
         for relative in _AGY_AUTH_FILES:
             _sync_private_file(source_home / relative, managed_home / relative)
+    atomic_write_text(mode_path, ('inherited' if inherit_auth else 'independent') + '\n')
     if profile is None or bool(getattr(profile, 'inherit_config', True)):
         for relative in _AGY_CONFIG_FILES:
             _sync_private_file(source_home / relative, managed_home / relative)
@@ -262,6 +326,89 @@ def _materialize_file_token_storage_bypass(managed_home: Path) -> Path:
     except OSError as exc:
         raise RuntimeError(f'failed to prepare AGY file token storage marker: {marker}') from exc
     return marker
+
+
+def _remove_file_token_storage_bypass(managed_home: Path) -> None:
+    cache_dir = ensure_private_descendant_directory(
+        managed_home,
+        _AGY_KEYRING_BYPASS_MARKER_REL.parent,
+    )
+    marker = cache_dir / _AGY_KEYRING_BYPASS_MARKER_REL.name
+    if marker.is_symlink() or marker.is_file():
+        marker.unlink()
+
+
+def _prepare_macos_agent_private_keychain(managed_home: Path) -> Path | None:
+    if not is_macos():
+        return None
+    try:
+        return prepare_private_keychain(managed_home)
+    except (OSError, RuntimeError) as exc:
+        _log_warn(f'private macOS Keychain unavailable; using private file storage: {exc}')
+        return None
+
+
+def _project_macos_inherited_keychain_auth(
+    source_home: Path,
+    managed_home: Path,
+    private_keychain: Path,
+) -> bool:
+    security = shutil.which('security') or '/usr/bin/security'
+    source_env = dict(os.environ)
+    source_env['HOME'] = str(source_home)
+    try:
+        result = subprocess.run(
+            [
+                security,
+                'find-generic-password',
+                '-a',
+                _AGY_MACOS_KEYCHAIN_ACCOUNT,
+                '-s',
+                _AGY_MACOS_KEYCHAIN_SERVICE,
+                '-w',
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=source_env,
+        )
+    except Exception as exc:
+        raise RuntimeError(f'cannot read external AGY Keychain login: {type(exc).__name__}') from None
+    if result.returncode == 44:
+        return False
+    if result.returncode != 0:
+        raise RuntimeError(f'security exited {result.returncode}')
+    secret = result.stdout[:-1] if result.stdout.endswith('\n') else result.stdout
+    if not secret:
+        return False
+    managed_env = dict(os.environ)
+    managed_env['HOME'] = str(managed_home)
+    try:
+        result = subprocess.run(
+            [
+                security,
+                'add-generic-password',
+                '-U',
+                '-a',
+                _AGY_MACOS_KEYCHAIN_ACCOUNT,
+                '-s',
+                _AGY_MACOS_KEYCHAIN_SERVICE,
+                '-w',
+                secret,
+                str(private_keychain),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=managed_env,
+        )
+    except Exception as exc:
+        raise RuntimeError(f'cannot seed agent-private AGY Keychain login: {type(exc).__name__}') from None
+    if result.returncode != 0:
+        raise RuntimeError(f'security exited {result.returncode}')
+    return True
 
 
 def _wslpath_to_windows(wsl_path: Path) -> str | None:
@@ -427,7 +574,22 @@ def build_start_cmd(
     managed_home = ensure_private_inheritance_directory(managed_home, credential_home)
     profile = load_resolved_provider_profile(runtime_dir)
     _materialize_private_credentials(credential_home, managed_home, profile=profile)
-    _materialize_file_token_storage_bypass(managed_home)
+    private_keychain = _prepare_macos_agent_private_keychain(managed_home)
+    inherit_auth = profile is None or bool(profile.inherit_auth)
+    inherited_keychain_auth = False
+    if private_keychain is not None and inherit_auth:
+        try:
+            inherited_keychain_auth = _project_macos_inherited_keychain_auth(
+                credential_home,
+                managed_home,
+                private_keychain,
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            _log_warn(f'cannot inherit AGY macOS Keychain login; using private file storage: {exc}')
+    if private_keychain is not None and (not inherit_auth or inherited_keychain_auth):
+        _remove_file_token_storage_bypass(managed_home)
+    else:
+        _materialize_file_token_storage_bypass(managed_home)
 
     cmd_parts = provider_start_parts('agy')
     if command.auto_permission and _YOLO_FLAG not in cmd_parts and _YOLO_FLAG not in spec.startup_args:

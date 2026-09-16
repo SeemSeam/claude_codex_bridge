@@ -7,6 +7,18 @@ from provider_profiles import provider_api_env_keys
 
 
 _CLAUDE_CREDENTIAL_ENV_KEYS = {'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'}
+CLAUDE_AMBIENT_AUTH_ENV_KEYS = frozenset(_CLAUDE_CREDENTIAL_ENV_KEYS | {
+    'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR',
+})
+CLAUDE_AUTH_COMMAND_CONTROL_ENV_KEYS = frozenset({
+    'DISABLE_LOGIN_COMMAND',
+    'DISABLE_LOGOUT_COMMAND',
+})
+CLAUDE_INDEPENDENT_AUTH_ENV_KEYS = (
+    CLAUDE_AMBIENT_AUTH_ENV_KEYS | CLAUDE_AUTH_COMMAND_CONTROL_ENV_KEYS
+)
 _CLAUDE_API_ENV_GROUPS = (
     _CLAUDE_CREDENTIAL_ENV_KEYS,
     {'ANTHROPIC_BASE_URL'},
@@ -173,15 +185,17 @@ def unset_api_env_parts(
     api_keys: set[str],
     explicitly_configured: dict[str, str] | None = None,
 ) -> list[str]:
+    cleared: set[str] = set()
+    if profile is not None and not getattr(profile, "inherit_auth", True):
+        cleared.update(CLAUDE_AMBIENT_AUTH_ENV_KEYS)
     if profile is not None and not profile.inherit_api:
-        cleared = set(api_keys)
+        cleared.update(api_keys)
     else:
         configured = {
             key
             for key, value in dict(explicitly_configured or {}).items()
             if str(value).strip()
         }
-        cleared: set[str] = set()
         for group in _CLAUDE_API_ENV_GROUPS:
             if group & configured:
                 cleared.update(group)

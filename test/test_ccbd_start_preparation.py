@@ -19,6 +19,9 @@ from project.resolver import bootstrap_project
 from storage.paths import PathLayout
 
 
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
+
+
 def _single_codex_project(tmp_path: Path, name: str):
     project_root = tmp_path / name
     (project_root / '.ccb').mkdir(parents=True)

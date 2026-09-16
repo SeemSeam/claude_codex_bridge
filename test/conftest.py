@@ -25,6 +25,19 @@ def pytest_configure() -> None:
         sys.path.insert(0, str(lib_dir))
 
 
+@pytest.fixture
+def stub_claude_private_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
+    import provider_backends.claude.launcher_runtime.home as claude_home_runtime
+
+    def prepare(home: Path) -> Path:
+        keychain = Path(home) / 'Library' / 'Keychains' / 'ccb-provider.keychain-db'
+        keychain.parent.mkdir(parents=True, exist_ok=True)
+        keychain.write_bytes(b'test-keychain')
+        return keychain
+
+    monkeypatch.setattr(claude_home_runtime, 'prepare_private_keychain', prepare)
+
+
 def _write_provider_stub_launchers(bin_dir: Path) -> None:
     stub_path = (repo_root / "test" / "stubs" / "provider_stub.py").resolve()
     python_exe = sys.executable

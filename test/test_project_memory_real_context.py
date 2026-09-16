@@ -3,11 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from provider_backends.claude.launcher_runtime.home import materialize_claude_home_config
 from provider_backends.opencode.launcher import materialize_opencode_memory_config
 import provider_profiles.codex_home_config as codex_home_config
 from provider_profiles.models import ProviderProfileSpec
 from project_memory import materialize_runtime_memory_bundle
+
+
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
 
 
 def _write(path: Path, text: str) -> None:

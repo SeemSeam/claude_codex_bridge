@@ -6,6 +6,8 @@ from pathlib import Path
 import shlex
 from types import SimpleNamespace
 
+import pytest
+
 try:  # pragma: no cover - version shim
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
@@ -23,6 +25,9 @@ from provider_hooks.settings import (
     migrate_legacy_project_ccb_hooks,
 )
 from storage.paths import PathLayout
+
+
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
 
 
 def _spec(name: str, provider: str = "claude", *, provider_profile: ProviderProfileSpec | None = None) -> AgentSpec:

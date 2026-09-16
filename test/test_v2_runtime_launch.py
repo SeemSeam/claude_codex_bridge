@@ -152,6 +152,9 @@ def _stable_claude_cli_capabilities(monkeypatch) -> None:
     )
 
 
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
+
+
 def _clipboard_bind_call(key: str) -> tuple[str, tuple[str, ...]]:
     return (
         'bind-key',
@@ -3430,6 +3433,57 @@ def test_claude_launcher_build_start_cmd_uses_overlay_and_drops_dead_local_user_
     )
 
 
+def test_claude_launcher_allows_login_commands_for_agent_private_auth(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir(parents=True)
+    profile = ResolvedProviderProfile(
+        provider='claude',
+        agent_name='reviewer',
+        mode='isolated',
+        inherit_auth=False,
+        inherit_api=True,
+    )
+    monkeypatch.setenv('ANTHROPIC_AUTH_TOKEN', 'ambient-oauth')
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'ambient-api-key')
+    monkeypatch.setenv('CLAUDE_CODE_OAUTH_TOKEN', 'ambient-claude-oauth')
+    monkeypatch.setenv('CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR', '9')
+    monkeypatch.setenv('DISABLE_LOGIN_COMMAND', '1')
+    monkeypatch.setenv('DISABLE_LOGOUT_COMMAND', '1')
+    monkeypatch.setattr(claude_launcher, 'load_resolved_provider_profile', lambda _runtime: profile)
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: False)
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=runtime_dir, has_history=False),
+    )
+
+    start_cmd = claude_launcher.build_start_cmd(
+        ParsedStartCommand(
+            project=None,
+            agent_names=('reviewer',),
+            restore=False,
+            auto_permission=False,
+        ),
+        _spec('reviewer', provider='claude'),
+        runtime_dir,
+        'claude-private-auth',
+        prepared_state=_claude_prepared_state(runtime_dir),
+    )
+
+    assert 'DISABLE_LOGIN_COMMAND=1' not in start_cmd
+    assert 'DISABLE_LOGOUT_COMMAND=1' not in start_cmd
+    assert 'DISABLE_AUTOUPDATER=1' in start_cmd
+    assert 'unset ANTHROPIC_AUTH_TOKEN' in start_cmd
+    assert 'unset ANTHROPIC_API_KEY' in start_cmd
+    assert 'unset CLAUDE_CODE_OAUTH_TOKEN' in start_cmd
+    assert 'unset CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' in start_cmd
+    assert 'unset DISABLE_LOGIN_COMMAND' in start_cmd
+    assert 'unset DISABLE_LOGOUT_COMMAND' in start_cmd
+
+
 def test_claude_launcher_exports_plugin_seed_before_process_start(monkeypatch, tmp_path: Path) -> None:
     runtime_dir = tmp_path / 'runtime'
     runtime_dir.mkdir(parents=True)
@@ -4954,6 +5008,7 @@ def test_claude_launcher_build_start_cmd_exports_user_session_transport_without_
     monkeypatch.setenv('AGENT_ROLES_STORE', '/home/demo/.roles')
     monkeypatch.setenv('CLAUDE_PROJECTS_ROOT', str(ambient_projects))
     monkeypatch.setenv('CCB_CALLER_ACTOR', 'stale-agent')
+    monkeypatch.setenv('CCB_SOURCE_HOME', str(source_home))
     monkeypatch.setattr('provider_backends.claude.launcher.Path.home', lambda: source_home)
     monkeypatch.setattr('provider_backends.claude.launcher_runtime.home.Path.home', lambda: source_home)
     monkeypatch.setattr(

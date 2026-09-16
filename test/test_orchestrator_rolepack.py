@@ -5,11 +5,16 @@ from pathlib import Path
 import re
 import shutil
 
+import pytest
+
 from provider_profiles.codex_home_config import materialize_codex_home_config
 from provider_backends.claude.launcher_runtime.home import materialize_claude_home_config
 from cli.services.role_command_policy import claude_permission_allowlist, load_role_command_policy
 from cli.services.planner_feedback import parse_planner_feedback_reply
 from rolepacks.manifest import load_role_manifest
+
+
+pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
