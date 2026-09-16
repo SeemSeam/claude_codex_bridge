@@ -50,6 +50,8 @@ def prepare_private_keychain(home: Path) -> Path | None:
         home=home,
         error='cannot unlock agent-private macOS Keychain',
     )
+    # No options intentionally clears both lock-on-sleep and idle timeout;
+    # `security show-keychain-info` then reports `no-timeout`.
     _run_security(
         security,
         ['set-keychain-settings', str(keychain)],

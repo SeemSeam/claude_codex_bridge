@@ -54,7 +54,7 @@ def test_prepare_private_keychain_uses_only_managed_home_state(
         'list-keychains',
     ]
     assert calls[0][0][2:4] == ['-p', '']
-    assert '-l' not in calls[2][0]
+    assert calls[2][0][1:] == ['set-keychain-settings', str(keychain)]
     preferences = plistlib.loads(macos_keychain.keychain_preferences_path(home).read_bytes())
     assert preferences['DefaultKeychain'][0]['DbName'] == str(keychain)
     assert preferences['DLDBSearchList'][0]['DbName'] == str(keychain)
