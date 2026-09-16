@@ -29,6 +29,7 @@ from provider_core.inherited_skills import (
 )
 from provider_core.macos_keychain import (
     prepare_private_keychain,
+    private_keychain_path,
     remove_keychain_preferences,
 )
 from provider_core.platform_info import is_macos
@@ -1155,7 +1156,8 @@ def _sync_managed_macos_keychain_auth(
     managed_env['HOME'] = str(target_layout.home_root)
     try:
         existing = subprocess.run(
-            [security, 'find-generic-password', '-a', account, '-s', service, '-w'],
+            [security, 'find-generic-password', '-a', account, '-s', service, '-w',
+             str(private_keychain_path(target_layout.home_root))],
             check=False,
             capture_output=True,
             text=True,
@@ -1185,6 +1187,7 @@ def _sync_managed_macos_keychain_auth(
                 service,
                 '-w',
                 credential_text,
+                str(private_keychain_path(target_layout.home_root)),
             ],
             check=False,
             capture_output=True,
@@ -1193,7 +1196,7 @@ def _sync_managed_macos_keychain_auth(
             env=managed_env,
         )
     except Exception as exc:
-        raise RuntimeError(f'cannot seed agent-private Claude Keychain login: {exc}') from exc
+        raise RuntimeError(f'cannot seed agent-private Claude Keychain login: {type(exc).__name__}') from None
     if result.returncode != 0:
         raise RuntimeError('cannot seed agent-private Claude Keychain login')
 
@@ -1212,7 +1215,8 @@ def _remove_managed_macos_keychain_auth(target_layout: ClaudeHomeLayout) -> None
     managed_env['HOME'] = str(target_layout.home_root)
     try:
         subprocess.run(
-            [security, 'delete-generic-password', '-a', account, '-s', service],
+            [security, 'delete-generic-password', '-a', account, '-s', service,
+             str(private_keychain_path(target_layout.home_root))],
             check=False,
             capture_output=True,
             text=True,

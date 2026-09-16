@@ -386,7 +386,7 @@ def test_agy_macos_keychain_projection_failure_does_not_echo_secret(
     assert secret not in str(exc_info.value)
 
 
-def test_agy_macos_private_keychain_failure_falls_back_to_private_file_storage(
+def test_agy_macos_private_keychain_failure_blocks_launch(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -408,19 +408,20 @@ def test_agy_macos_private_keychain_failure_falls_back_to_private_file_storage(
     )
     monkeypatch.setenv("AGY_START_CMD", "agy")
 
-    agy_launcher.build_start_cmd(
-        ParsedStartCommand(
-            project=None,
-            agent_names=("agy_agent",),
-            restore=False,
-            auto_permission=False,
-        ),
-        _spec("agy_agent", "agy"),
-        tmp_path / "runtime",
-        "launch-agy",
-    )
+    with pytest.raises(PermissionError, match="Keychain unavailable"):
+        agy_launcher.build_start_cmd(
+            ParsedStartCommand(
+                project=None,
+                agent_names=("agy_agent",),
+                restore=False,
+                auto_permission=False,
+            ),
+            _spec("agy_agent", "agy"),
+            tmp_path / "runtime",
+            "launch-agy",
+        )
 
-    assert (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).is_file()
+    assert not (managed_home / agy_launcher._AGY_KEYRING_BYPASS_MARKER_REL).exists()
 
 
 def test_agy_auth_mode_switch_blocks_old_projection_then_preserves_private_login(

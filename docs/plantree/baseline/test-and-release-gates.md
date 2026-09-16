@@ -4,7 +4,8 @@ Date: 2026-05-25
 
 ## Core PR Maintenance Requirements
 
-Latest review evidence: [PR349-350 review](evidence/pr349-350-review-20260914.md).
+Latest review evidence: [PR350 local integration](evidence/pr350-local-integration-20260916.md).
+Earlier PR review: [PR349-350 review](evidence/pr349-350-review-20260914.md).
 Previous evidence: [PR340-344 review and repairs](evidence/pr340-344-review-20260909.md).
 
 Owner reaffirmation: 2026-09-07. These are mandatory development, PR review,

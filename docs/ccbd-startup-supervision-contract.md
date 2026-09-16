@@ -516,8 +516,9 @@ Managed provider startup mutation rules:
   create an independent login only in that private Keychain. A mode transition
   must fail closed while old managed auth files or a projected private-Keychain
   item remain rather than reclassifying them as independent.
-  An inherited mode without a source Keychain item, or a private-Keychain
-  failure, must safely refresh AGY's
+  Source Keychain read errors and private-Keychain preparation failures block
+  launch. An inherited mode with confirmed absence of a source Keychain item
+  must safely refresh AGY's
   provider-recognized
   `.gemini/antigravity-cli/cache/antigravity-keyring-unavailable` marker inside
   that private home so AGY selects file token storage without first waiting on

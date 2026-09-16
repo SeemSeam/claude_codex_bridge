@@ -161,8 +161,10 @@ On macOS, every managed Claude and AGY home receives an owner-only Keychain
 database. Its generated `com.apple.security.plist` contains only that database
 as the default and search list; CCB never attaches the user's login Keychain.
 For inherited Claude auth, CCB reads the external credential and seeds only the
-agent-derived service in this private database. The managed Provider may refresh
-that private copy, but cannot write back to external authority. With
+agent-derived service in this private database. Local credential writes are
+pinned to that database. This storage boundary does not prove remote OAuth
+refresh/revocation isolation: a copied rotating token is not independent
+authority, and Provider-specific qualification remains required. With
 `inherit_auth=false`, CCB does not copy external rotating or opaque OAuth; the
 user logs in once inside the managed Provider session instead.
 
@@ -192,8 +194,14 @@ transition to independent auth fails closed while old managed auth files or a
 projected private-Keychain item remain, so a previous inherited projection
 cannot become the new Agent authority. Once
 independent mode is established, later starts preserve Provider-written auth
-files. In inherited mode without a projected source Keychain item, or where the
-private Keychain route is unavailable, CCB refreshes the marker at
+files. Re-enabling inheritance from independent mode requires an explicit
+stopped authority transition and must not overwrite that private login.
+Inherited file paths and private Keychain items have a private provenance
+record; confirmed source absence removes only recorded projections. Source
+read errors, empty Keychain credentials, and private Keychain preparation errors
+block launch. They must not silently select stale file credentials instead.
+In inherited mode with confirmed absence of a source Keychain item, CCB
+refreshes the marker at
 `<managed-home>/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable`
 so AGY selects its file token store immediately. The marker is an owner-only
 regular file under the private managed home and must never be read from or

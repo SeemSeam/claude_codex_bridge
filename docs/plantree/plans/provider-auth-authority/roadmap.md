@@ -107,6 +107,9 @@ Date: 2026-08-18
 
 ## In Progress
 
+- Qualify the local PR350 integration and repaired auth boundaries on
+  `integrate/pr350-auth-fixes`; native platform and remote OAuth qualification
+  remain open. See [integration evidence](../../baseline/evidence/pr350-local-integration-20260916.md).
 - Complete organic real-fault qualification for `codex-reconnect` without
   manufacturing provider pressure.
 - Close the writable-home boundary for `provider_profile.home`.
