@@ -801,6 +801,10 @@ def _managed_codex_config_payload(source_config: Path, *, authority: CodexApiAut
             'name': authority.provider_id,
             'wire_api': authority.wire_api,
             'requires_openai_auth': authority.requires_openai_auth,
+            # Codex only sends credentials for a custom provider when the key
+            # is bound through env_key; auth.json/OPENAI_API_KEY alone is
+            # ignored when requires_openai_auth is false (codex >= 0.149).
+            'env_key': 'OPENAI_API_KEY',
             'base_url': authority.base_url,
         }
     }

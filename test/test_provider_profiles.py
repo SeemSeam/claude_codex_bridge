@@ -1787,7 +1787,7 @@ def test_materialize_codex_profile_writes_agent_local_provider_config_for_explic
     assert 'requires_openai_auth = false' in config_text
     assert 'external_migration = false' in config_text
     assert 'https://stale.example.test/v1' not in config_text
-    assert 'env_key' not in config_text
+    assert 'env_key = "OPENAI_API_KEY"' in config_text
     assert codex_provider_authority_fingerprint(profile)
     auth_payload = json.loads((runtime_home / 'auth.json').read_text(encoding='utf-8'))
     assert auth_payload == {'OPENAI_API_KEY': 'profile-key'}
