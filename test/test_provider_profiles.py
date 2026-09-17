@@ -1913,6 +1913,40 @@ def test_materialize_codex_home_config_agent_model_overrides_inherited_global_mo
     assert config['model'] == 'deepseek-v4-pro'
 
 
+@pytest.mark.parametrize(
+    'explicit_key,ambient_key,inherit_api,expects_env_key',
+    [
+        ('profile-key', '', False, True),
+        ('profile-key', 'ambient-key', True, True),
+        ('', 'ambient-key', True, True),
+        ('', 'ambient-key', False, False),
+        ('', '', True, False),
+        ('', '   ', True, False),
+    ],
+)
+def test_codex_custom_endpoint_only_requires_available_api_env(
+    tmp_path: Path, monkeypatch, explicit_key, ambient_key, inherit_api, expects_env_key,
+) -> None:
+    source = tmp_path / 'source'
+    source.mkdir()
+    config = source / 'config.toml'
+    config.write_text('model = "local-model"\n', encoding='utf-8')
+    monkeypatch.setenv('OPENAI_API_KEY', ambient_key)
+    env = {'OPENAI_BASE_URL': 'http://127.0.0.1:11434/v1'}
+    if explicit_key:
+        env['OPENAI_API_KEY'] = explicit_key
+    profile = ProviderProfileSpec(mode='isolated', inherit_api=inherit_api, env=env)
+    target = tmp_path / 'managed'
+    materialize_codex_home_config(target, profile=profile, source_home=source)
+    payload = tomllib.loads((target / 'config.toml').read_text(encoding='utf-8'))
+    provider = payload['model_providers']['custom']
+    assert (provider.get('env_key') == 'OPENAI_API_KEY') is expects_env_key
+    assert provider['requires_openai_auth'] is False
+    assert provider['base_url'] == env['OPENAI_BASE_URL']
+    assert config.read_text(encoding='utf-8') == 'model = "local-model"\n'
+    assert not (source / 'auth.json').exists()
+
+
 def test_materialize_codex_home_config_explicit_model_catalog_wins_over_stale_profile_env(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     source_home = tmp_path / 'system-codex-home'
