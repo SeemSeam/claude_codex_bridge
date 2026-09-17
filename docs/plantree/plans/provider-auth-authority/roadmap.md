@@ -15,6 +15,10 @@ Date: 2026-08-18
 
 ## Done
 
+- Corrected managed Claude API-key approval for explicit profile/agent env and
+  allowed ambient credentials without external writes. Local implementation:
+  [approval evidence](evidence/claude-explicit-key-approval-20260917.md).
+
 - PR353 merged with owner authorization; local compatibility follow-up keeps
   custom endpoints without keys usable while binding explicit/allowed inherited
   keys. [Regression and real HTTP evidence](evidence/pr353-env-key-20260917.md).

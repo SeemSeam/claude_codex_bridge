@@ -2649,6 +2649,41 @@ def test_materialize_claude_home_config_projects_system_settings_into_managed_ho
     assert 'customApiKeyResponses' not in trust
 
 
+@pytest.mark.parametrize('inherit', [False, True])
+@pytest.mark.parametrize('source', ['profile', 'agent', 'ambient', 'token'])
+def test_claude_approval_matches_launch_credential(tmp_path: Path, monkeypatch, inherit, source) -> None:
+    source_home = tmp_path / 'source'
+    source_home.mkdir()
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.delenv('ANTHROPIC_AUTH_TOKEN', raising=False)
+    key = 'fixture-current-api-key-12345678901234567890'
+    env = {'ANTHROPIC_BASE_URL': 'https://endpoint.example.test'}
+    extra_env = {}
+    if source == 'profile':
+        env['ANTHROPIC_API_KEY'] = key
+    elif source == 'agent':
+        env['ANTHROPIC_API_KEY'] = 'stale-profile-key'
+        extra_env['ANTHROPIC_API_KEY'] = key
+    elif source == 'ambient':
+        monkeypatch.setenv('ANTHROPIC_API_KEY', key)
+    else:
+        env['ANTHROPIC_AUTH_TOKEN'] = 'fixture-token'
+        monkeypatch.setenv('ANTHROPIC_API_KEY', key)
+    profile = ProviderProfileSpec(
+        mode='isolated', inherit_api=inherit, inherit_auth=inherit, env=env,
+    )
+    layout = materialize_claude_home_config(
+        tmp_path / 'managed', source_home=source_home, profile=profile, extra_env=extra_env,
+    )
+    trust = json.loads(layout.trust_path.read_text())
+    approved = trust.get('customApiKeyResponses', {}).get('approved', [])
+    expected = source in ('profile', 'agent') or (source == 'ambient' and inherit)
+    assert (key[-20:] in approved) is expected
+    assert 'stale-profile-key' not in approved
+    assert key not in layout.trust_path.read_text()
+    assert list(source_home.iterdir()) == []
+
+
 def test_materialize_claude_home_config_preserves_explicit_api_key_kind(tmp_path: Path) -> None:
     source_home = tmp_path / 'system-home'
     target_home = tmp_path / 'managed-home'

@@ -58,7 +58,11 @@ from storage.atomic import atomic_write_text
 
 from ..home_layout import ClaudeHomeLayout, claude_layout_for_home, claude_layout_from_session_data
 from .session_paths import read_session_payload, session_file_for_runtime_dir, state_dir_for_runtime_dir
-from .env_runtime.exports import CLAUDE_INDEPENDENT_AUTH_ENV_KEYS
+from .env_runtime.exports import (
+    CLAUDE_INDEPENDENT_AUTH_ENV_KEYS,
+    collect_explicit_api_env,
+    inherit_api_env,
+)
 
 _CLAUDE_RUNTIME_SETTINGS_KEYS = ('enabledPlugins', 'hooks', 'permissions')
 _CLAUDE_CCB_PERMISSION_PREFIX = 'Bash(ccb '
@@ -383,6 +387,7 @@ def _prepare_managed_home(
         project_root=project_root,
         workspace_path=workspace_path,
         auto_permission=auto_permission,
+        extra_env=extra_env,
     )
     return _materialize_inherited_assets(
         source_home,
@@ -579,10 +584,13 @@ def _materialize_trust(
     project_root: Path | None,
     workspace_path: Path | None,
     auto_permission: bool = False,
+    extra_env: dict[str, str] | None = None,
 ) -> None:
     source_trust = source_home / '.claude.json'
     profile_servers = _profile_mcp_servers(profile)
-    custom_api_key = _claude_custom_api_key_from_settings(target_layout.settings_path)
+    custom_api_key = _claude_effective_custom_api_key(
+        target_layout.settings_path, profile=profile, extra_env=extra_env,
+    )
     if (
         source_trust.is_file()
         or target_layout.trust_path.exists()
@@ -1480,6 +1488,24 @@ def _claude_custom_api_key_from_settings(settings_path: Path) -> object:
     settings = _read_json_object(settings_path)
     env_payload = _read_env_payload(settings)
     return env_payload.get('ANTHROPIC_API_KEY')
+
+
+def _claude_effective_custom_api_key(settings_path: Path, *, profile, extra_env) -> object:
+    api_keys = provider_api_env_keys('claude')
+    explicit = collect_explicit_api_env(
+        profile=profile, extra_env=extra_env, api_keys=api_keys,
+    )
+    # Explicit credentials are exported by the launcher, intentionally absent
+    # from projected settings. Never approve an inherited key in their place.
+    if any(_env_value_present(explicit.get(key)) for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')):
+        return explicit.get('ANTHROPIC_API_KEY')
+    managed = _read_env_payload(_read_json_object(settings_path))
+    if any(_env_value_present(managed.get(key)) for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')):
+        return managed.get('ANTHROPIC_API_KEY')
+    inherited = inherit_api_env(
+        explicit, profile=profile, inherited_env=dict(os.environ), api_keys=api_keys,
+    )
+    return inherited.get('ANTHROPIC_API_KEY')
 
 
 def _approve_claude_custom_api_key(payload: dict[str, object], api_key: object) -> None:
