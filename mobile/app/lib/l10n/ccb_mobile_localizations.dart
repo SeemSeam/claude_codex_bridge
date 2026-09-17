@@ -159,10 +159,19 @@ class CcbMobileLocalizations {
 
   String get chatBackground => isChinese ? '工作区背景' : 'Workspace background';
 
+  String get backgroundPresets => isChinese ? '默认背景' : 'Built-in backgrounds';
+  String get backgroundMist => isChinese ? '雾蓝' : 'Mist';
+  String get backgroundDunes => isChinese ? '沙丘' : 'Dunes';
+  String get backgroundNight => isChinese ? '夜色' : 'Night';
+  String get backgroundLocalHint =>
+      isChinese
+          ? '自定义图片仅保存在本机，最大 20 MB。提高内容不透明度可让文字更清晰。'
+          : 'Custom images stay on this device, up to 20 MB. Increase content opacity for clearer text.';
+
   String get chatBackgroundDescription =>
       isChinese
-          ? '选择一张本机图片作为聊天和终端的全屏背景。图片只保存在此设备，不会上传到 CCB。'
-          : 'Choose a local image as the full-screen background for chats and terminals. It stays on this device and is never uploaded to CCB.';
+          ? '选择默认背景或自定义图片，用于工作区。'
+          : 'Choose a built-in background or your own image for the workspace.';
 
   String get chatBackgroundSurfaceOpacity =>
       isChinese ? '内容表面不透明度' : 'Content surface opacity';
@@ -463,6 +472,21 @@ class CcbMobileLocalizations {
       isChinese ? '等待 Agent 重启' : 'Pending agent restart';
 
   String get providerPendingShort => isChinese ? '待重启' : 'pending restart';
+
+  String get agentStateWorking => isChinese ? '工作中' : 'Working';
+
+  String get agentStateIdle => isChinese ? '空闲' : 'Idle';
+
+  String get agentStateException => isChinese ? '异常' : 'Exception';
+
+  String get agentStateOffline => isChinese ? '离线' : 'Offline';
+
+  String get agentStateUnknown => isChinese ? '未知' : 'Unknown';
+
+  String get unreadBadgeLabel => isChinese ? '未读' : 'unread';
+
+  String agentWorkingCountLabel(int count) =>
+      isChinese ? '$count 工作中' : '$count working';
 
   String providerConfigured(String model) =>
       isChinese ? '已配置：$model' : 'Configured: $model';

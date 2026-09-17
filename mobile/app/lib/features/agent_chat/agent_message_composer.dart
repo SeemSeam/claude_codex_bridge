@@ -160,7 +160,7 @@ class _AgentMessageComposerState extends State<AgentMessageComposer> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

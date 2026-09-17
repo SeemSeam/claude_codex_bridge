@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CCB Mobile · 保守细调 Demo</title>
+<link rel="stylesheet" href="conservative.css">
+<script defer src="conservative.js"></script>
+</head>
+<body>
+<main class="comparison">
+ <aside><p class="eyebrow">CCB MOBILE / DESIGN REVIEW</p><h1>保持熟悉，<br>收紧细节。</h1><p>窗口、Agent、折叠手柄、终端入口和输入区保留原有层级。仅展示模拟数据，不连接服务器。</p><h2>虚拟机原界面</h2><a href="vm-baseline.png"><img class="baseline" src="vm-baseline.png" alt="此前捕获的虚拟机真实界面，点击查看原图"></a><p class="caption">历史实机截图；内容与右侧模拟数据不同，不作面积收益对比。</p></aside>
+ <section class="phone" aria-label="新版交互 Demo">
+  <div class="status"><span>9:41</span><span>本地 Demo</span></div>
+  <header><button class="icon placeholder" aria-label="返回" title="返回（原入口占位）">←</button><div class="heading"><strong>ccb-v2</strong><span id="provider">Omp</span></div><button class="icon placeholder" aria-label="配置" title="配置（原入口占位）">☷</button><button class="icon placeholder" aria-label="刷新" title="刷新（原入口占位）">↻</button><button id="mode" class="icon" aria-label="切换到终端" title="切换到终端"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m6 9 3 3-3 3m5 0h6"/></svg></button><button class="icon placeholder" aria-label="更多" title="更多（原菜单占位）">⋮</button></header>
+  <div id="switchers"><nav id="windows" aria-label="窗口"></nav><nav id="agents" aria-label="Agent"></nav><div class="handle"><button id="collapse" aria-label="收起窗口与 Agent"><span></span></button></div></div>
+  <button id="summary" hidden aria-label="展开窗口与 Agent"></button>
+  <div id="timeline" tabindex="0" aria-label="对话内容"></div>
+  <footer><div class="composer"><button class="icon placeholder" aria-label="附件" title="附件（原入口占位）">♧</button><textarea rows="1" aria-label="消息草稿" placeholder="Message demo"></textarea><button class="icon placeholder" aria-label="输入选项" title="输入选项（原入口占位）">⌄</button><button id="send" class="icon send" aria-label="发送（模拟）">➤</button></div></footer>
+  <div class="gesture"><span></span></div><div id="notice" role="status" hidden></div>
+ </section>
+ <aside class="notes"><h2>只做细调</h2><p>减少重复的目标说明和行间留白。消息保持原卡片结构，正文优先，时间信息弱化。</p><h2>状态不混用</h2><p><span class="legend working">工作中</span> 绿色底与文字<br><span class="legend idle">空闲</span> 中性底与文字<br><span class="legend error">异常</span> 红色底与文字</p><p>橙色星标表示未读；蓝色轮廓与勾选表示当前选择。选中不会覆盖工作色。</p><h2>可交互检查</h2><p>点击窗口与 Agent；点击手柄折叠；点击顶部终端图标切换，再返回对话。可输入草稿检查保留情况。</p><p class="caption">网页仅示意原生向下阅读时折叠。原生键盘、自动折叠时序、真实终端及无障碍仍需 Flutter 验收。菜单等既有入口仅占位，不新增功能。</p></aside>
+</main>
+</body></html>

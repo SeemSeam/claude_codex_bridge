@@ -140,7 +140,7 @@ class ConversationBubble extends StatelessWidget {
             borderColor: borderColor,
             borderWidth: borderWidth,
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -149,7 +149,7 @@ class ConversationBubble extends StatelessWidget {
                     child: InkWell(
                       onTap: collapsible ? _toggleExpanded : null,
                       child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Icon(conversationIcon(item.kind), size: 16),
                           const SizedBox(width: 6),

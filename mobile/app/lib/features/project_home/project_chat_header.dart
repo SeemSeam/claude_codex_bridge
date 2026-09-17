@@ -35,7 +35,15 @@ class ProjectChatHeader extends StatelessWidget {
     final strings = CcbMobileLocalizations.of(context);
     return SizedBox(
       key: const ValueKey('project-chat-header'),
-      height: 64,
+      // Keep terminal geometry unchanged. Chat saves vertical chrome while
+      // allowing the two identity lines to grow with accessibility text size.
+      height:
+          terminalMode
+              ? 64
+              : (MediaQuery.textScalerOf(context).scale(36) + 16).clamp(
+                56.0,
+                double.infinity,
+              ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
@@ -49,7 +57,7 @@ class ProjectChatHeader extends StatelessWidget {
               ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.symmetric(horizontal: terminalMode ? 8 : 4),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,

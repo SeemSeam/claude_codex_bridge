@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../agent_chat/agent_execution_status.dart';
 import '../../app/chat_background.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project_view.dart';
-import '../../widgets/working_attention_beat.dart';
+import '../../widgets/working_status_style.dart';
 
 class ProjectListScaffold extends StatelessWidget {
   const ProjectListScaffold({
@@ -114,12 +115,15 @@ class ProjectListTile extends StatelessWidget {
     final activeAgent = selectedAgent?.name ?? strings.noAgent;
     final activeWindow = view.activeWindow ?? selectedAgent?.window ?? 'main';
     final root = view.project.root.trim();
+    final workingCount =
+        view.agents.where(agentHasSourceWorkingActivity).length;
+    final accent = workingStatusAccent(Theme.of(context).colorScheme);
     return ProjectWorkingRowHighlight(
       projectId: view.project.id,
       hasWorkingAgents: hasWorkingAgents,
       child: ListTile(
         key: const ValueKey('project-open-current'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         selected: selected,
         selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
         leading: ProjectAttentionAvatar(
@@ -138,7 +142,14 @@ class ProjectListTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (root.isNotEmpty)
-              Text(root, maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                root,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             const SizedBox(height: 4),
             Text(
               'cmd $activeWindow · $activeAgent',
@@ -153,7 +164,25 @@ class ProjectListTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${view.agents.length}'),
+            if (workingCount > 0) ...[
+              Icon(Icons.circle, size: 10, color: accent),
+              const SizedBox(width: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  strings.agentWorkingCountLabel(workingCount),
+                  key: ValueKey('project-working-count-${view.project.id}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.visible,
+                  softWrap: false,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ] else
+              Text('${view.agents.length}'),
             const SizedBox(width: 6),
             const Icon(Icons.chevron_right),
           ],
@@ -208,45 +237,11 @@ class _ProjectWorkingRowHighlightState
             width: 2.2,
           ),
         ),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: projectWorkingRowAccent(colorScheme),
-                    width: 6,
-                  ),
-                ),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: widget.child,
-              ),
-            ),
-            Positioned(
-              right: 3,
-              top: 8,
-              bottom: 8,
-              child: IgnorePointer(
-                child: WorkingAttentionBeat(
-                  key: ValueKey('project-working-row-beat-${widget.projectId}'),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: projectWorkingRowAccent(colorScheme),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: const SizedBox(width: 3),
-                  ),
-                ),
-              ),
-            ),
-          ],
+        child: Material(
+          color: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: widget.child,
         ),
       ),
     );
@@ -269,9 +264,7 @@ Color projectWorkingRowTint(ColorScheme colorScheme) {
 
 @visibleForTesting
 Color projectWorkingRowAccent(ColorScheme colorScheme) {
-  return colorScheme.brightness == Brightness.dark
-      ? const Color(0xFF59DFFF)
-      : const Color(0xFF0077CC);
+  return workingStatusAccent(colorScheme);
 }
 
 @visibleForTesting
@@ -305,6 +298,12 @@ class ProjectAttentionAvatar extends StatelessWidget {
           Center(
             child: CircleAvatar(
               radius: 22,
+              backgroundColor:
+                  hasWorkingAgents
+                      ? workingStatusAccent(colorScheme).withValues(alpha: 0.16)
+                      : null,
+              foregroundColor:
+                  hasWorkingAgents ? workingStatusAccent(colorScheme) : null,
               child: Icon(favorite ? Icons.star : Icons.terminal),
             ),
           ),

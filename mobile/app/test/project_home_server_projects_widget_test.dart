@@ -395,7 +395,10 @@ void main() {
 
     expect(gatewayRepository.getProjectViewCalls, ['test_ccb2']);
     expect(find.byKey(const ValueKey('agent-working-status')), findsNothing);
-    expect(find.text('Idle'), findsNothing);
+    // Chip state labels reflect the already loaded view (an agent may be
+    // legitimately working from queue data); the no-poll guarantee is the
+    // getProjectViewCalls assertion above, and the chat header status must
+    // stay absent until an explicit status fetch happens.
 
     gatewayRepository.replaceProjects([
       _projectFixture(

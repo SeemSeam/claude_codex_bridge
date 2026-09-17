@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../agent_chat/agent_execution_status.dart';
+import '../agent_chat/agent_state_display.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project_view.dart';
+import '../../widgets/working_status_style.dart';
 import 'agent_window_switchers.dart';
 import 'project_view_selection.dart';
 
@@ -22,6 +23,7 @@ class WideAgentColumn extends StatelessWidget {
   final Set<String> unreadAgentNames;
   final ValueChanged<CcbAgent> onAgentSelected;
 
+  @override
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -101,44 +103,81 @@ class _WideAgentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final working = agentHasSourceWorkingActivity(agent);
-    final emphasized = selected || agent.active;
-    return ListTile(
-      key: ValueKey('agent-${agent.name}'),
-      selected: selected,
-      selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-      shape: RoundedRectangleBorder(
-        side:
-            working
-                ? BorderSide(color: colorScheme.tertiary, width: 1.6)
-                : BorderSide.none,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      leading: TaskCompletionUnreadIcon(
-        unreadKey: ValueKey('agent-unread-star-${agent.name}'),
-        showUnread: unread,
-        child: Icon(
-          emphasized ? Icons.auto_awesome_rounded : Icons.auto_awesome_outlined,
-          size: emphasized ? 20 : 18,
-          color:
-              working
-                  ? colorScheme.tertiary
-                  : selected
-                  ? colorScheme.primary
-                  : agent.active
-                  ? colorScheme.tertiary
-                  : colorScheme.onSurfaceVariant,
+    final display = agentActivityDisplay(agent);
+    final stateColor = agentStateColor(display, colorScheme);
+    final fill = agentStateFill(display, colorScheme);
+    final leadingIcon =
+        display == AgentActivityDisplay.idle && selected
+            ? Icons.check_circle
+            : display == AgentActivityDisplay.idle
+            ? Icons.radio_button_unchecked
+            : _wideStateIcon(display);
+    return Tooltip(
+      message: agent.name,
+      child: ListTile(
+        key: ValueKey('agent-${agent.name}'),
+        tileColor: fill,
+        selected: selected,
+        // Selection changes the outline, never the activity background.
+        selectedTileColor: fill,
+        shape: RoundedRectangleBorder(
+          side:
+              selected
+                  ? BorderSide(color: colorScheme.primary, width: 1.6)
+                  : display == AgentActivityDisplay.idle ||
+                      display == AgentActivityDisplay.unknown
+                  ? BorderSide.none
+                  : BorderSide(color: stateColor, width: 1.6),
+          borderRadius: BorderRadius.circular(8),
         ),
-      ),
-      title: Text(agent.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing:
-          agent.queueDepth <= 0
-              ? null
-              : Badge(
+        leading: TaskCompletionUnreadIcon(
+          unreadKey: ValueKey('agent-unread-star-${agent.name}'),
+          showUnread: unread,
+          child: Icon(
+            leadingIcon,
+            size: display == AgentActivityDisplay.idle ? 20 : 16,
+            color:
+                display == AgentActivityDisplay.idle
+                    ? (selected
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant)
+                    : stateColor,
+          ),
+        ),
+        title: Text(
+          agent.name,
+          key: ValueKey('agent-label-${agent.name}'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AgentStateLabel(state: display),
+            if (agent.queueDepth > 0)
+              Badge(
                 label: Text(agent.queueDepth.toString()),
                 child: const SizedBox.square(dimension: 18),
               ),
-      onTap: onTap,
+          ],
+        ),
+        onTap: onTap,
+      ),
     );
+  }
+
+  IconData _wideStateIcon(AgentActivityDisplay state) {
+    switch (state) {
+      case AgentActivityDisplay.working:
+        return Icons.circle;
+      case AgentActivityDisplay.exception:
+        return Icons.error_outline;
+      case AgentActivityDisplay.offline:
+        return Icons.cloud_off_outlined;
+      case AgentActivityDisplay.unknown:
+        return Icons.help_outline;
+      case AgentActivityDisplay.idle:
+        return Icons.radio_button_unchecked;
+    }
   }
 }

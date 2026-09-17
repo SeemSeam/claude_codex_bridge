@@ -4,11 +4,74 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ccb_mobile/ccb_mobile.dart';
 import 'package:ccb_mobile/features/project_home/project_home_scaffold_host.dart';
+import 'package:ccb_mobile/features/project_home/project_chat_header.dart';
 import 'package:ccb_mobile/features/project_home/wide_sidebar_state.dart';
 
 import 'support/project_home_test_fakes.dart';
 
 void main() {
+  testWidgets('compact chat header preserves actions at narrow large text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final view = _view();
+    var terminalCalls = 0;
+    for (final scale in [1.0, 1.6]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(320, 720),
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: Scaffold(
+              body: Align(
+                alignment: Alignment.topCenter,
+                child: ProjectChatHeader(
+                  view: view,
+                  selectedAgent: view.agents.first,
+                  onBack: () {},
+                  onRefreshConversation: () {},
+                  onOpenProviderControl: () {},
+                  onOpenTerminal: () => terminalCalls++,
+                  onOpenConnectionDetails: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final header = tester.getRect(
+        find.byKey(const ValueKey('project-chat-header')),
+      );
+      for (final key in [
+        'project-back-button',
+        'agent-provider-control-action',
+        'agent-conversation-refresh-action',
+        'open-agent-terminal-button',
+        'connection-details-action',
+      ]) {
+        final rect = tester.getRect(find.byKey(ValueKey(key)));
+        expect(rect.height, greaterThanOrEqualTo(48));
+        expect(rect.left, greaterThanOrEqualTo(header.left));
+        expect(rect.right, lessThanOrEqualTo(header.right));
+      }
+      final title = tester.getRect(
+        find.byKey(const ValueKey('project-chat-title')),
+      );
+      final identity = tester.getRect(
+        find.byKey(const ValueKey('agent-provider-identity')),
+      );
+      expect(title.top, greaterThanOrEqualTo(header.top));
+      expect(identity.bottom, lessThanOrEqualTo(header.bottom));
+      await tester.tap(
+        find.byKey(const ValueKey('open-agent-terminal-button')),
+      );
+      expect(tester.takeException(), isNull);
+    }
+    expect(terminalCalls, 2);
+  });
   group('project home scaffold host', () {
     testWidgets('mobile host renders keys and forwards callbacks', (
       tester,
@@ -86,17 +149,19 @@ void main() {
         ),
         findsOneWidget,
       );
+      // The selected agent has queueDepth 1, so authoritative classification
+      // marks it working and it shows the working dot, not a sparkle or check.
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('agent-mobile')),
-          matching: find.byIcon(Icons.auto_awesome_rounded),
+          matching: find.byIcon(Icons.circle),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('agent-lead')),
-          matching: find.byIcon(Icons.auto_awesome_outlined),
+          matching: find.byIcon(Icons.help_outline),
         ),
         findsOneWidget,
       );
@@ -380,10 +445,10 @@ void main() {
           find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
           findsOneWidget,
         );
-      expect(
-        find.byKey(const ValueKey('ccb-live-terminal-view')),
-        findsOneWidget,
-      );
+        expect(
+          find.byKey(const ValueKey('ccb-live-terminal-view')),
+          findsOneWidget,
+        );
 
         await tester.tap(
           find.byKey(const ValueKey('mobile-agent-switcher-expand-action')),
@@ -762,6 +827,180 @@ void main() {
       );
     });
 
+    testWidgets(
+      'collapsed host bar keeps cross-window working status visible',
+      (tester) async {
+        // Selected agent 'lead' is idle in the selected window; the busy
+        // agent lives in the nonselected review window.
+        final view = _view(
+          agentActivity: const {'reviewer': 'running'},
+          mobileQueueDepth: 0,
+        );
+
+        Future<void> pumpHost({required bool collapsed}) {
+          return _pump(
+            tester,
+            ProjectHomeMobileChatScaffoldHost(
+              view: view,
+              selectedAgent: view.agentByName('lead'),
+              repository: RecordingGatewayRepository(),
+              terminalTransport: RecordingTerminalTransport(),
+              usePaneInputForMessages: true,
+              mobileAgentsCollapsed: collapsed,
+              unreadAgentNames: const {'reviewer'},
+              onBack: () {},
+              onOpenConnectionDetails: () {},
+              onCollapseAgents: () {},
+              onExpandAgents: () {},
+              onWindowSelected: (_) {},
+              onAgentSelected: (_) {},
+              onRefreshView: () async => null,
+              onTimelineScrollDirectionChanged: (_) {},
+            ),
+          );
+        }
+
+        await pumpHost(collapsed: true);
+
+        final statusFinder = find.byKey(
+          const ValueKey('mobile-agent-switcher-working-count'),
+        );
+        expect(statusFinder, findsOneWidget);
+        expect(tester.widget<Text>(statusFinder).data, '1 working');
+
+        // The status box is painted fully inside the collapsed bar even
+        // though the summary keeps its own ellipsized space.
+        final barRect = tester.getRect(
+          find.byKey(const ValueKey('mobile-agent-switcher-collapsed')),
+        );
+        final statusRect = tester.getRect(statusFinder);
+        expect(statusRect.width, greaterThan(0));
+        expect(statusRect.right, lessThan(barRect.right));
+        expect(statusRect.top, greaterThan(barRect.top));
+        expect(statusRect.bottom, lessThan(barRect.bottom));
+        expect(
+          find.byKey(const ValueKey('mobile-agent-switcher-summary')),
+          findsOneWidget,
+        );
+        // Unread stays independent and the action row survives.
+        expect(
+          find.byKey(const ValueKey('mobile-agent-switcher-unread-star')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('mobile-agent-switcher-expand-action')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('agent-conversation-refresh-action')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('project-chat-overflow-action')),
+          findsOneWidget,
+        );
+
+        // The expanded path from the same host shows per-window counts.
+        await pumpHost(collapsed: false);
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const ValueKey('window-working-count-review')),
+              )
+              .data,
+          '1 working',
+        );
+        expect(
+          find.byKey(const ValueKey('window-working-count-main')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('collapsed host bar clears working status on idle and failed', (
+      tester,
+    ) async {
+      String? reviewerState = 'running';
+      await _pump(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) {
+            final view = _view(
+              agentActivity: {'reviewer': reviewerState},
+              mobileQueueDepth: 0,
+            );
+            return Stack(
+              children: [
+                ProjectHomeMobileChatScaffoldHost(
+                  view: view,
+                  selectedAgent: view.agentByName('lead'),
+                  repository: RecordingGatewayRepository(),
+                  terminalTransport: RecordingTerminalTransport(),
+                  usePaneInputForMessages: true,
+                  mobileAgentsCollapsed: true,
+                  unreadAgentNames: const {'reviewer'},
+                  onBack: () {},
+                  onOpenConnectionDetails: () {},
+                  onCollapseAgents: () {},
+                  onExpandAgents: () {},
+                  onWindowSelected: (_) {},
+                  onAgentSelected: (_) {},
+                  onRefreshView: () async => null,
+                  onTimelineScrollDirectionChanged: (_) {},
+                ),
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: Column(
+                    children: [
+                      TextButton(
+                        key: const ValueKey('set-reviewer-idle'),
+                        onPressed: () => setState(() => reviewerState = null),
+                        child: const Text('idle'),
+                      ),
+                      TextButton(
+                        key: const ValueKey('set-reviewer-failed'),
+                        onPressed:
+                            () => setState(() => reviewerState = 'failed'),
+                        child: const Text('failed'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('mobile-agent-switcher-working-count')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('set-reviewer-idle')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('mobile-agent-switcher-working-count')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('mobile-agent-switcher-unread-star')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('set-reviewer-failed')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('mobile-agent-switcher-working-count')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('mobile-agent-switcher-unread-star')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('wide terminal temporarily owns the full device width', (
       tester,
     ) async {
@@ -846,6 +1085,8 @@ Future<void> _pump(
 CcbProjectView _view({
   int namespaceEpoch = 4,
   CcbProviderControl? providerControl,
+  Map<String, String?> agentActivity = const {},
+  int mobileQueueDepth = 1,
 }) {
   return CcbProjectView(
     project: CcbProject(
@@ -885,6 +1126,7 @@ CcbProjectView _view({
         order: 0,
         active: false,
         queueDepth: 0,
+        activityState: agentActivity['lead'],
       ),
       CcbAgent(
         name: 'mobile',
@@ -893,8 +1135,9 @@ CcbProjectView _view({
         paneId: '%2',
         order: 1,
         active: true,
-        queueDepth: 1,
+        queueDepth: mobileQueueDepth,
         providerControl: providerControl,
+        activityState: agentActivity['mobile'],
       ),
       CcbAgent(
         name: 'reviewer',
@@ -904,6 +1147,7 @@ CcbProjectView _view({
         order: 0,
         active: false,
         queueDepth: 0,
+        activityState: agentActivity['reviewer'],
       ),
     ],
     contentItems: [],

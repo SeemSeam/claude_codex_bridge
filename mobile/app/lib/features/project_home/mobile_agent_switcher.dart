@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../agent_chat/agent_execution_status.dart';
+import '../agent_chat/agent_state_display.dart';
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_project_view.dart';
 import '../../models/ccb_window.dart';
+import '../../widgets/working_status_style.dart';
 import 'agent_window_switchers.dart';
+import 'working_status_summary.dart';
 import 'project_view_selection.dart';
 
 class MobileAgentSwitcherPanel extends StatelessWidget {
@@ -34,6 +38,7 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = workingStatusAccent(colorScheme);
     final windows = orderedWindowsForView(view);
     final selectedWindow = selectedWindowForView(view, selectedAgent);
     final currentAgents =
@@ -47,6 +52,16 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
       unreadAgentNames: unreadAgentNames,
     );
     final hasUnread = unreadAgentNames.isNotEmpty;
+    // Aggregates come from authoritative execution classification across all
+    // windows, so a nonselected window's work stays visible.
+    final workingAgentCounts = _workingAgentCounts(view, windows);
+    final workingCount = workingAgentCountForView(view);
+    final exceptionCount =
+        view.agents
+            .where(
+              (a) => agentActivityDisplay(a) == AgentActivityDisplay.exception,
+            )
+            .length;
     if (collapsed) {
       return Material(
         key: const ValueKey('mobile-agent-switcher-collapsed'),
@@ -67,21 +82,35 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
                     child: Icon(
                       Icons.auto_awesome_rounded,
                       size: 20,
-                      color: colorScheme.primary,
+                      color:
+                          workingCount > 0
+                              ? accent
+                              : exceptionCount > 0
+                              ? colorScheme.error
+                              : colorScheme.primary,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      _mobileAgentSummary(
-                        selectedWindow: selectedWindow,
-                        selectedAgent: agent,
-                        agentCount: view.agents.length,
-                      ),
-                      key: const ValueKey('mobile-agent-switcher-summary'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            key: const ValueKey(
+                              'mobile-agent-switcher-summary',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                            _mobileAgentSummary(
+                              selectedWindow: selectedWindow,
+                              selectedAgent: agent,
+                              agentCount: view.agents.length,
+                            ),
+                          ),
+                        ),
+                        WorkingCountSummary(count: workingCount),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -110,9 +139,10 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
           windows: windows,
           selectedWindowName: selectedWindow?.name,
           unreadWindowNames: unreadWindowNames,
+          workingAgentCounts: workingAgentCounts,
           onWindowSelected: onWindowSelected,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         AgentSwitcher(
           agents: currentAgents.isEmpty ? view.agents : currentAgents,
           selectedAgentName: selectedAgent?.name,
@@ -126,16 +156,17 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
           key: const ValueKey('mobile-agent-switcher-collapse-action'),
           onTap: onCollapse,
           borderRadius: BorderRadius.circular(4),
-          child: Container(
-            width: 56,
-            height: 8,
-            alignment: Alignment.center,
-            child: Container(
-              width: 36,
-              height: 3,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            width: 72,
+            height: 32,
+            child: Center(
+              child: Container(
+                width: 36,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
           ),
@@ -161,6 +192,20 @@ class MobileAgentSwitcherPanel extends StatelessWidget {
   }
 }
 
+Map<String, int> _workingAgentCounts(
+  CcbProjectView view,
+  List<CcbWindow> windows,
+) {
+  return {
+    for (final window in windows)
+      window.name:
+          agentsForWindow(
+            view,
+            window.name,
+          ).where(agentHasSourceWorkingActivity).length,
+  };
+}
+
 Set<String> _unreadWindowNames({
   required CcbProjectView view,
   required CcbWindow? selectedWindow,
@@ -175,9 +220,13 @@ Set<String> _unreadWindowNames({
     if (window.name == selectedName) {
       continue;
     }
-    final agents = agentsForWindow(view, window.name);
-    if (agents.any((agent) => unreadAgentNames.contains(agent.name))) {
-      unread.add(window.name);
+    // Membership comes from agentsForWindow so agents that only declare
+    // agent.window still map onto their window (window.agents can be empty).
+    for (final member in agentsForWindow(view, window.name)) {
+      if (unreadAgentNames.contains(member.name)) {
+        unread.add(window.name);
+        break;
+      }
     }
   }
   return unread;

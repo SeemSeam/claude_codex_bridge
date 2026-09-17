@@ -9,13 +9,16 @@ import '../../models/ccb_project_view.dart';
 import '../../models/ccb_window.dart';
 import '../../repository/mobile_ccb_repository.dart';
 import '../../transport/terminal_transport.dart';
+import '../agent_chat/agent_state_display.dart';
 import '../agent_chat/selected_agent_workspace.dart';
 import '../provider_control/provider_control_sheet.dart';
 import '../terminal/agent_terminal_workspace.dart';
 import '../../cache/mobile_snapshot_store.dart';
+import '../../widgets/working_status_style.dart';
 import 'gateway_reconnecting_banner.dart';
 import 'project_home_terminal_navigation.dart';
 import 'project_shell_widgets.dart';
+import 'working_status_summary.dart';
 
 class ProjectHomeProjectListHost extends StatelessWidget {
   const ProjectHomeProjectListHost({
@@ -162,6 +165,7 @@ class _ServerProjectListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final strings = CcbMobileLocalizations.of(context);
     final root = project.root.trim();
     final health = project.health.trim();
     return ProjectWorkingRowHighlight(
@@ -169,7 +173,7 @@ class _ServerProjectListTile extends StatelessWidget {
       hasWorkingAgents: hasWorkingAgents,
       child: ListTile(
         key: ValueKey('project-open-${project.id}'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         leading: ProjectAttentionAvatar(
           projectId: project.id,
           favorite: project.favorite,
@@ -186,7 +190,29 @@ class _ServerProjectListTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (root.isNotEmpty)
-              Text(root, maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                root,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (hasWorkingAgents) ...[
+              const SizedBox(height: 4),
+              Text(
+                project.workingAgentCount > 0
+                    ? strings.agentWorkingCountLabel(project.workingAgentCount)
+                    : strings.agentStateWorking,
+                key: ValueKey('project-working-count-${project.id}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: workingStatusAccent(Theme.of(context).colorScheme),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (health.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
@@ -553,6 +579,14 @@ class _MobileCollapsedProjectBar extends StatelessWidget {
     final strings = CcbMobileLocalizations.of(context);
     final selectedWindow = selectedWindowForView(view, selectedAgent);
     final hasUnread = unreadAgentNames.isNotEmpty;
+    final workingCount = workingAgentCountForView(view);
+    final exceptionCount =
+        view.agents
+            .where(
+              (a) => agentActivityDisplay(a) == AgentActivityDisplay.exception,
+            )
+            .length;
+    final accent = workingStatusAccent(colorScheme);
     return Material(
       key: const ValueKey('mobile-agent-switcher-collapsed'),
       color: colorScheme.surface,
@@ -561,8 +595,10 @@ class _MobileCollapsedProjectBar extends StatelessWidget {
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: 60,
+      // Minimum height instead of a fixed 60 so enlarged text grows the bar
+      // instead of clipping the summary or the working status.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 60),
         child: Row(
           children: [
             Expanded(
@@ -577,10 +613,18 @@ class _MobileCollapsedProjectBar extends StatelessWidget {
                           'mobile-agent-switcher-unread-star',
                         ),
                         showUnread: hasUnread,
-                        child: Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 20,
-                          color: colorScheme.primary,
+                        child: Semantics(
+                          label: workingCount > 0 ? 'working' : '',
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 20,
+                            color:
+                                workingCount > 0
+                                    ? accent
+                                    : exceptionCount > 0
+                                    ? colorScheme.error
+                                    : colorScheme.primary,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -597,20 +641,33 @@ class _MobileCollapsedProjectBar extends StatelessWidget {
                               style: Theme.of(context).textTheme.labelLarge,
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              _mobileAgentSummary(
-                                selectedWindow: selectedWindow,
-                                selectedAgent: selectedAgent,
-                                agentCount: view.agents.length,
-                                pendingLabel: strings.providerPendingShort,
-                              ),
-                              key: const ValueKey(
-                                'mobile-agent-switcher-summary',
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: colorScheme.onSurface),
+                            // The summary ellipsizes while the shared working
+                            // status keeps its own never-truncated space.
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _mobileAgentSummary(
+                                      selectedWindow: selectedWindow,
+                                      selectedAgent: selectedAgent,
+                                      agentCount: view.agents.length,
+                                      pendingLabel:
+                                          strings.providerPendingShort,
+                                    ),
+                                    key: const ValueKey(
+                                      'mobile-agent-switcher-summary',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                WorkingCountSummary(count: workingCount),
+                              ],
                             ),
                           ],
                         ),

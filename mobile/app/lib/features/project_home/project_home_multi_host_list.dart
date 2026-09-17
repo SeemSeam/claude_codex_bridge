@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/chat_background.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../pairing/gateway_pairing.dart';
+import '../../widgets/working_status_style.dart';
 import 'project_home_gateway_profiles.dart';
 import 'project_home_multi_host_projects.dart';
 import 'project_list.dart';
@@ -85,9 +86,7 @@ class ProjectHomeMultiHostProjectListHost extends StatelessWidget {
                           // online, so the count is marked as still settling.
                           if (result.catalogs.any((catalog) => catalog.pending))
                             const Padding(
-                              key: ValueKey(
-                                'multi-host-project-list-progress',
-                              ),
+                              key: ValueKey('multi-host-project-list-progress'),
                               padding: EdgeInsets.only(left: 8),
                               child: SizedBox(
                                 width: 12,
@@ -256,6 +255,7 @@ class _MultiHostProjectListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = CcbMobileLocalizations.of(context);
     final project = entry.project;
     final root = project.root.trim();
     final health = project.health.trim();
@@ -264,7 +264,7 @@ class _MultiHostProjectListTile extends StatelessWidget {
       hasWorkingAgents: hasWorkingAgents,
       child: ListTile(
         key: ValueKey('multi-host-project-open-${entry.key}'),
-        contentPadding: const EdgeInsets.fromLTRB(24, 8, 16, 8),
+        contentPadding: const EdgeInsets.fromLTRB(24, 6, 16, 6),
         leading: ProjectAttentionAvatar(
           projectId: project.id,
           favorite: project.favorite,
@@ -281,7 +281,29 @@ class _MultiHostProjectListTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (root.isNotEmpty)
-              Text(root, maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                root,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (hasWorkingAgents) ...[
+              const SizedBox(height: 4),
+              Text(
+                project.workingAgentCount > 0
+                    ? strings.agentWorkingCountLabel(project.workingAgentCount)
+                    : strings.agentStateWorking,
+                key: ValueKey('project-working-count-${project.id}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: workingStatusAccent(theme.colorScheme),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (health.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(

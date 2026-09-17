@@ -112,66 +112,71 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     String? errorMessage;
     await showDialog<void>(
       context: dialogContext,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final strings = CcbMobileLocalizations.of(context);
-          return AlertDialog(
-            title: Text(strings.updateAvailableTitle),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(strings.newVersionAvailable(release.version)),
-                if (downloading) ...[
-                  const SizedBox(height: 16),
-                  const LinearProgressIndicator(),
-                  const SizedBox(height: 8),
-                  Text(strings.downloadingVersion(release.version)),
-                ],
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    errorMessage!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+      builder:
+          (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              final strings = CcbMobileLocalizations.of(context);
+              return AlertDialog(
+                title: Text(strings.updateAvailableTitle),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(strings.newVersionAvailable(release.version)),
+                    if (downloading) ...[
+                      const SizedBox(height: 16),
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 8),
+                      Text(strings.downloadingVersion(release.version)),
+                    ],
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed:
+                        downloading ? null : () => Navigator.of(context).pop(),
+                    child: Text(strings.later),
+                  ),
+                  FilledButton(
+                    key: const ValueKey('startup-update-install-button'),
+                    onPressed:
+                        downloading
+                            ? null
+                            : () async {
+                              setDialogState(() {
+                                downloading = true;
+                                errorMessage = null;
+                              });
+                              try {
+                                final apk = await service.downloadApk(release);
+                                await widget.installApk(apk);
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                              } catch (_) {
+                                if (context.mounted) {
+                                  setDialogState(() {
+                                    downloading = false;
+                                    errorMessage = strings.updateDownloadFailed;
+                                  });
+                                }
+                              }
+                            },
+                    child: Text(strings.updateNow),
                   ),
                 ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: downloading ? null : () => Navigator.of(context).pop(),
-                child: Text(strings.later),
-              ),
-              FilledButton(
-                key: const ValueKey('startup-update-install-button'),
-                onPressed: downloading
-                    ? null
-                    : () async {
-                        setDialogState(() {
-                          downloading = true;
-                          errorMessage = null;
-                        });
-                        try {
-                          final apk = await service.downloadApk(release);
-                          await widget.installApk(apk);
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                          }
-                        } catch (_) {
-                          if (context.mounted) {
-                            setDialogState(() {
-                              downloading = false;
-                              errorMessage = strings.updateDownloadFailed;
-                            });
-                          }
-                        }
-                      },
-                child: Text(strings.updateNow),
-              ),
-            ],
-          );
-        },
-      ),
+              );
+            },
+          ),
     );
   }
 
@@ -212,6 +217,10 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     if (selection == null) {
       return;
     }
+    await _saveChatBackground(selection);
+  }
+
+  Future<void> _saveChatBackground(CcbChatBackgroundSelection selection) async {
     final preference = await _chatBackgroundStore.save(
       selection,
       surfaceOpacity:
@@ -241,30 +250,27 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     if (current == null) {
       return;
     }
-    final normalized = opacity.clamp(
-      ccbMinWorkspaceSurfaceOpacity,
-      ccbMaxWorkspaceSurfaceOpacity,
-    ).toDouble();
+    final normalized =
+        opacity
+            .clamp(ccbMinWorkspaceSurfaceOpacity, ccbMaxWorkspaceSurfaceOpacity)
+            .toDouble();
     setState(() {
-      _chatBackgroundPreference = current.copyWith(
-        surfaceOpacity: normalized,
-      );
+      _chatBackgroundPreference = current.copyWith(surfaceOpacity: normalized);
     });
-    _chatBackgroundOpacityWrite = _chatBackgroundOpacityWrite
-        .then((_) async {
-          try {
-            final saved = await _chatBackgroundStore.updateSurfaceOpacity(
-              normalized,
-            );
-            if (mounted && saved != null) {
-              setState(() {
-                _chatBackgroundPreference = saved;
-              });
-            }
-          } catch (_) {
-            // The in-memory value remains usable until the next app restart.
-          }
-        });
+    _chatBackgroundOpacityWrite = _chatBackgroundOpacityWrite.then((_) async {
+      try {
+        final saved = await _chatBackgroundStore.updateSurfaceOpacity(
+          normalized,
+        );
+        if (mounted && saved != null) {
+          setState(() {
+            _chatBackgroundPreference = saved;
+          });
+        }
+      } catch (_) {
+        // The in-memory value remains usable until the next app restart.
+      }
+    });
     await _chatBackgroundOpacityWrite;
   }
 
@@ -319,17 +325,19 @@ class _CcbMobileAppState extends State<CcbMobileApp> {
     final repository = FakeMobileCcbRepository.demo();
     return MaterialApp(
       navigatorKey: _navigatorKey,
-      builder: (context, child) => CcbChatBackgroundScope(
-        preference: _chatBackgroundPreference,
-        onChoose: _chooseChatBackground,
-        onClear: _clearChatBackground,
-        onSurfaceOpacityChanged: _setChatBackgroundSurfaceOpacity,
-        child: CcbTerminalShortcutPreferencesScope(
-          preferences: _terminalShortcutPreferences,
-          onChanged: _setTerminalShortcutPreferences,
-          child: child ?? const SizedBox.shrink(),
-        ),
-      ),
+      builder:
+          (context, child) => CcbChatBackgroundScope(
+            preference: _chatBackgroundPreference,
+            onChoose: _chooseChatBackground,
+            onSaveImage: _saveChatBackground,
+            onClear: _clearChatBackground,
+            onSurfaceOpacityChanged: _setChatBackgroundSurfaceOpacity,
+            child: CcbTerminalShortcutPreferencesScope(
+              preferences: _terminalShortcutPreferences,
+              onChanged: _setTerminalShortcutPreferences,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          ),
       onGenerateTitle: (context) => CcbMobileLocalizations.of(context).appTitle,
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: CcbMobileLocalizations.supportedLocales,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_theme.dart';
 import '../../app/background_connection.dart';
 import '../../app/chat_background.dart';
+import '../../app/chat_background_presets.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import 'gateway_pairing_panel.dart';
 import 'project_home_update_panel.dart';
@@ -47,6 +48,19 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final strings = CcbMobileLocalizations.of(context);
+    final connectionSteps = <Widget>[
+      _OnboardingStep(
+        icon: Icons.terminal,
+        title: strings.runComputerCommandTitle,
+        body: strings.runComputerCommandBody,
+        code: 'ccb update mobile',
+      ),
+      _OnboardingStep(
+        icon: Icons.qr_code_scanner,
+        title: strings.scanQrTitle,
+        body: strings.scanQrBody,
+      ),
+    ];
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -69,12 +83,12 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
               ],
               Icon(
                 Icons.mobile_friendly,
-                size: 54,
+                size: onClose == null ? 54 : 32,
                 color: theme.colorScheme.primary,
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: onClose == null ? 16 : 8),
               Text(
-                strings.connectTitle,
+                onClose == null ? strings.connectTitle : strings.settings,
                 key: const ValueKey('project-home-onboarding-title'),
                 style: theme.textTheme.headlineSmall,
                 textAlign: TextAlign.center,
@@ -87,18 +101,17 @@ class ProjectHomeOnboardingScaffold extends StatelessWidget {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
-              _OnboardingStep(
-                icon: Icons.terminal,
-                title: strings.runComputerCommandTitle,
-                body: strings.runComputerCommandBody,
-                code: 'ccb update mobile',
-              ),
-              _OnboardingStep(
-                icon: Icons.qr_code_scanner,
-                title: strings.scanQrTitle,
-                body: strings.scanQrBody,
-              ),
+              SizedBox(height: onClose == null ? 24 : 12),
+              if (onClose == null)
+                ...connectionSteps
+              else
+                ExpansionTile(
+                  key: const ValueKey('settings-connection-help'),
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(strings.connectTitle),
+                  leading: const Icon(Icons.help_outline),
+                  children: connectionSteps,
+                ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const ValueKey('project-home-onboarding-scan-button'),
@@ -161,6 +174,21 @@ class _ChatBackgroundSection extends StatefulWidget {
 
 class _ChatBackgroundSectionState extends State<_ChatBackgroundSection> {
   bool _busy = false;
+
+  Future<void> _choosePreset(CcbBackgroundPreset preset) async {
+    final save = widget.scope.onSaveImage;
+    if (_busy || save == null) return;
+    setState(() => _busy = true);
+    try {
+      final selection = await createCcbBackgroundPreset(preset);
+      if (!mounted) return;
+      await save(selection);
+    } catch (error) {
+      if (mounted) _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _choose() async {
     if (_busy) {
@@ -287,6 +315,54 @@ class _ChatBackgroundSectionState extends State<_ChatBackgroundSection> {
                 ),
               ),
             ],
+            if (widget.scope.onSaveImage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                strings.backgroundPresets,
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final preset in CcbBackgroundPreset.values)
+                    SizedBox(
+                      width: 88,
+                      child: OutlinedButton(
+                        key: ValueKey('background-preset-${preset.name}'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.all(6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: _busy ? null : () => _choosePreset(preset),
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: CustomPaint(
+                                size: const Size(74, 62),
+                                painter: CcbBackgroundPresetPainter(preset),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(switch (preset) {
+                              CcbBackgroundPreset.mist =>
+                                strings.backgroundMist,
+                              CcbBackgroundPreset.dunes =>
+                                strings.backgroundDunes,
+                              CcbBackgroundPreset.night =>
+                                strings.backgroundNight,
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
@@ -317,7 +393,7 @@ class _ChatBackgroundSectionState extends State<_ChatBackgroundSection> {
               min: ccbMinWorkspaceSurfaceOpacity,
               max: ccbMaxWorkspaceSurfaceOpacity,
               onChanged:
-                  _busy
+                  _busy || imagePath == null
                       ? null
                       : (value) => unawaited(
                         widget.scope.onSurfaceOpacityChanged(value),
@@ -348,6 +424,13 @@ class _ChatBackgroundSectionState extends State<_ChatBackgroundSection> {
                   ),
                 ],
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              strings.backgroundLocalHint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

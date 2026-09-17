@@ -54,6 +54,21 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
 
 ## Planning Files
 
+- [Settings background presets](topics/settings-background-presets.md) tracks
+  the authorized offline wallpaper choices and conservative settings cleanup.
+
+- [Conservative UI optimization list](topics/conservative-ui-optimization.md)
+  is the current scope for visual refinement; Terminal stays unchanged except
+  for a conditional review of shortcut-bar folding.
+
+- [Conservative UI demo review](../../../../design-demo/MULTI_WINDOW_REVIEW.md)
+  records the isolated prototype scope: preserve existing navigation and dual
+  modes; adjust spacing and state styling only. Pending owner review, not a
+  production implementation approval.
+
+- [Agent working visibility](topics/agent-working-visibility.md) defines the
+  current agent/window/home status and mobile usability improvement package.
+
 - [goal.md](goal.md) is the reusable long-running goal prompt for landing the
   full mobile project.
 - [goal-emulator-only.md](goal-emulator-only.md) is the reusable long-running

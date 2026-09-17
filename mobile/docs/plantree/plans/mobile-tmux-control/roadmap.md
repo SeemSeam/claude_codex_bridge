@@ -2,6 +2,38 @@
 
 Date: 2026-06-18
 
+## Settings Background Presets — Locally Verified
+
+2026-09-17: implement three offline backgrounds on the existing custom-image
+store and compact the settings introduction. Scope and verification:
+[settings backgrounds](topics/settings-background-presets.md).
+Analyze and full suite passed (838 tests, 1 skip); final thumbnail adjustment
+passed 10 focused tests, APK rebuilt/installed and cold-start background
+restoration verified on emulator-5554. Not committed or released.
+
+## Conservative UI Refinement — Locally Verified
+
+2026-09-17: owner accepted the conservative demo direction. The
+[optimization list](topics/conservative-ui-optimization.md) defines ordered
+visual refinements and native acceptance checks. Preserve existing window /
+Agent navigation, automatic collapse and dual modes. Terminal layout stays;
+shortcut folding was inspected and retained. Chat/header/composer and home
+spacing refinements landed locally; analyze, 121 targeted and 836 full tests
+(1 skip), APK build/install and emulator review passed. Evidence is in the
+linked topic. Next: owner visual acceptance; not committed or released.
+
+## Agent Working Visibility — Visual Revision Locally Verified
+
+2026-09-16: demo implementation independently reviewed by agent1; 835 tests
+passed, 1 skipped, analyze/build passed, actual expanded and collapsed Android
+emulator pages verified. Not committed or released. Scope and evidence:
+[agent working visibility](topics/agent-working-visibility.md).
+User feedback: working and selection remain too similar. Current execution:
+[Agent state colors](topics/agent-state-colors.md), whole-label green/gray/red
+states, independent orange unread badges and explicit localized state text.
+Revision implemented; agent1 independently verified tests, build and actual
+expanded/folded emulator pages. Next: user review; no commit or release yet.
+
 ## Phase 4I: Paseo-Aligned Provider Control Plane — Complete
 
 Status: Complete (2026-08-12).
