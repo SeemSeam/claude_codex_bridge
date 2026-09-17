@@ -1,5 +1,14 @@
 # Changelog
 
+## v8.6.18 (2026-09-17)
+
+- Clarified Mobile Agent activity/unread states and tightened chat layout.
+- Added offline background presets and refined settings while preserving custom images.
+- Integrated PR #350 private Keychain inheritance with local auth qualification.
+- Fixed PR #353 key binding without breaking unauthenticated Codex endpoints.
+- Corrected Claude explicit API-key approval without external Provider writes.
+- Full English and Chinese notes: [v8.6.18](docs/releases/v8.6.18.md).
+
 ## v8.6.17 (2026-09-14)
 
 - Fixed Codex `task_complete.error` handling so safety and provider failures
