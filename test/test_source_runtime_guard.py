@@ -59,10 +59,7 @@ def test_source_ccb_rejects_stateful_commands_outside_test_roots() -> None:
 
     assert proc.returncode == 1
     assert "Refusing to run the CCB source checkout outside an allowed test project" in proc.stderr
-    assert (
-        "Use `/home/bfly/yunwei/ccb_source/ccb_test` from "
-        "`/home/bfly/yunwei/test_ccb2` for source-change validation"
-    ) in proc.stderr
+    assert "Validate source changes from a directory under an allowed source root." in proc.stderr
 
 
 def test_source_ccb_default_allowed_roots_are_dedicated_test_project_only() -> None:
