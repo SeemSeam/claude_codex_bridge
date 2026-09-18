@@ -247,7 +247,7 @@ CCB는 전문 agent를 패키징하기 위한 host-neutral 명세인 [Agent Role
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=da517368" alt="WeChat 그룹" width="240">
+  <img src="../assets/weixin.png?v=5d912c6b" alt="WeChat 그룹" width="240">
 </p>
 
 <a id="community"></a>
