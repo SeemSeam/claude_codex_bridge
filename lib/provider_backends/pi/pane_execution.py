@@ -281,8 +281,9 @@ class PiPaneExecutionAdapter:
                 return ProviderPollResult(submission=updated)
             return updated
 
-        if bool(state.get("reply_delivery_complete_on_dispatch")):
-            return _reply_delivery_result(submission, state, now=now)
+        # Reply deliveries no longer complete at dispatch: the anchored
+        # extension event flow below (request_start -> terminal/superseded)
+        # owns the delivery turn and holds the target slot until turn end.
 
         event_path = Path(_text(state.get("event_path")))
         batch = read_pi_events(
@@ -944,28 +945,6 @@ def _terminal_result(
         decision=decision,
     )
 
-
-def _reply_delivery_result(
-    submission: ProviderSubmission,
-    state: dict[str, object],
-    *,
-    now: str,
-) -> ProviderPollResult:
-    state["anchor_seen"] = True
-    return _terminal_result(
-        submission,
-        state,
-        now=now,
-        status=CompletionStatus.COMPLETED,
-        reason="reply_delivery_sent",
-        reply="",
-        confidence=CompletionConfidence.OBSERVED,
-        diagnostics_extra={
-            "reply_delivery": True,
-            "delivery_status": "sent",
-            "submission_mode": _text(state.get("mode")),
-        },
-    )
 
 
 def _remember_assistant(

@@ -70,11 +70,10 @@ class CodexProviderAdapter:
                 result = ProviderPollResult(
                     submission=updated_submission,
                     items=result.items,
-                    decision=result.decision,
                 )
-            reply_delivery_result = _reply_delivery_accepted_result(result, now=now)
-            if reply_delivery_result is not None:
-                return reply_delivery_result
+            # Reply deliveries no longer complete at anchor acceptance: the
+            # anchored detector runs to the exact processing turn end, so the
+            # target's execution slot stays held until the turn fence.
         if result is None and submission is not original_submission:
             return ProviderPollResult(submission=submission)
         return result
@@ -483,48 +482,6 @@ def _record_delivery_progress(submission: ProviderSubmission, *, now: str) -> Pr
         updated_state.pop('delivery_session_missing_since', None)
     return replace(submission, runtime_state=updated_state)
 
-
-def _reply_delivery_accepted_result(
-    result: ProviderPollResult,
-    *,
-    now: str,
-) -> ProviderPollResult | None:
-    state = dict(result.submission.runtime_state)
-    if not bool(state.get('reply_delivery_complete_on_dispatch')):
-        return None
-    if not bool(state.get('anchor_seen')):
-        return None
-
-    request_anchor = request_anchor_from_runtime_state(state, fallback=result.submission.job_id)
-    updated = replace(
-        result.submission,
-        runtime_state={
-            **state,
-            'delivery_state': 'accepted',
-            'delivery_confirmed_at': str(state.get('delivery_confirmed_at') or now),
-        },
-    )
-    source_cursor = result.items[-1].cursor if result.items else None
-    decision = CompletionDecision(
-        terminal=True,
-        status=CompletionStatus.COMPLETED,
-        reason='reply_delivery_sent',
-        confidence=CompletionConfidence.OBSERVED,
-        reply='',
-        anchor_seen=True,
-        reply_started=False,
-        reply_stable=True,
-        provider_turn_ref=request_anchor or result.submission.job_id,
-        source_cursor=source_cursor,
-        finished_at=now,
-        diagnostics={
-            'reply_delivery': True,
-            'delivery_status': 'accepted',
-            'provider': result.submission.provider,
-            'submission_mode': str(state.get('mode') or 'active'),
-        },
-    )
-    return ProviderPollResult(submission=updated, items=result.items, decision=decision)
 
 
 def _delivery_progress_tracking_required(state: dict[str, object]) -> bool:

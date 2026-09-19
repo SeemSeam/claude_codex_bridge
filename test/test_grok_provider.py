@@ -287,7 +287,7 @@ def test_grok_pane_adapter_sends_to_visible_pane_and_finishes_from_native_turn_e
     ]
 
 
-def test_grok_reply_delivery_is_dispatched_to_visible_pane_without_headless_session(
+def test_grok_reply_delivery_dispatches_and_holds_until_anchored_turn_end(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -299,17 +299,61 @@ def test_grok_reply_delivery_is_dispatched_to_visible_pane_without_headless_sess
     adapter = GrokPaneExecutionAdapter()
 
     submission = adapter.start(
-        _pane_job(message_type='reply_delivery', no_wrap=True),
+        _pane_job(message_type='reply_delivery'),
         context=_pane_context(tmp_path),
         now='2026-07-13T00:00:00Z',
     )
     result = adapter.poll(submission, now='2026-07-13T00:00:01Z')
 
-    assert backend.sent == [('%9', 'visible request')]
-    assert result is not None and result.decision is not None
-    assert result.decision.status is CompletionStatus.COMPLETED
-    assert result.decision.reason == 'reply_delivery_sent'
-    assert result.decision.diagnostics['submission_mode'] == 'grok_pane'
+    assert backend.sent[0][0] == '%9'
+    assert 'CCB_REQ_ID: job_grok_pane_1' in backend.sent[0][1]
+    # Sending is transport only: no terminal decision at dispatch.
+    assert result is None or result.decision is None
+
+    _write_pane_events(
+        home,
+        [
+            {
+                'method': 'session/update',
+                'params': {
+                    'sessionId': 'session-visible',
+                    'update': {
+                        'sessionUpdate': 'user_message_chunk',
+                        'content': {'type': 'text', 'text': backend.sent[0][1]},
+                    },
+                },
+            },
+            {
+                'method': 'session/update',
+                'params': {
+                    'sessionId': 'session-visible',
+                    'update': {
+                        'sessionUpdate': 'agent_message_chunk',
+                        'content': {'type': 'text', 'text': 'delivered seen'},
+                    },
+                },
+                '_meta': {'promptId': 'prompt-visible'},
+            },
+            {
+                'method': '_x.ai/session/update',
+                'params': {
+                    'sessionId': 'session-visible',
+                    'update': {
+                        'sessionUpdate': 'turn_completed',
+                        'prompt_id': 'prompt-visible',
+                        'stop_reason': 'end_turn',
+                    },
+                },
+            },
+        ],
+    )
+
+    held_submission = result.submission if result is not None else submission
+    finished = adapter.poll(held_submission, now='2026-07-13T00:00:05Z')
+
+    assert finished is not None and finished.decision is not None
+    assert finished.decision.status is CompletionStatus.COMPLETED
+    assert finished.decision.reason == 'grok_run_stop'
 
 
 def test_grok_pane_adapter_preserves_compact_reply_mode_without_static_guidance(

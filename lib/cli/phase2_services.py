@@ -65,6 +65,7 @@ from cli.services.inbox import inbox_target
 from cli.services.kill import kill_project
 from cli.services.layout import layout_command
 from cli.services.logs import agent_logs
+from cli.services.screen import agent_screen
 from cli.services.loop_capacity import loop_capacity
 from cli.services.loop_run_once import loop_run_once
 from cli.services.loop_runner import loop_runner_auto, loop_runner_once
@@ -94,6 +95,7 @@ def build_phase2_dispatch_services(**overrides):
         approve_project_commands_context=approve_project_commands_context,
         agent_lifecycle=agent_lifecycle,
         agent_logs=agent_logs,
+        agent_screen=agent_screen,
         arm_fault_rule=arm_fault_rule,
         cancel_job=cancel_job,
         active_job_followup=active_job_followup,

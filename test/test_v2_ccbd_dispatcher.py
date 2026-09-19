@@ -572,9 +572,11 @@ def test_dispatcher_hard_gate_rejects_terminal_before_provider_acceptance(tmp_pa
     terminal = dispatcher.get_snapshot(job_id).latest_decision
     assert terminal.status is CompletionStatus.INCOMPLETE
     assert terminal.reason == 'terminal_before_provider_acceptance'
-    assert terminal.reply == ''
+    assert 'received no usable reply body' in terminal.reply
+    assert 'incomplete/terminal_before_provider_acceptance' in terminal.reply
     assert terminal.anchor_seen is False
     assert terminal.diagnostics['completion_gate'] == 'provider_acceptance'
+    assert terminal.diagnostics['notice_kind'] == 'empty_result'
     assert 'suppress_completion_state_merge' not in terminal.diagnostics
 
 
@@ -610,8 +612,10 @@ def test_dispatcher_hard_gate_rejects_terminal_after_rotate_without_fresh_anchor
     terminal = dispatcher.get_snapshot(job_id).latest_decision
     assert terminal.status is CompletionStatus.INCOMPLETE
     assert terminal.reason == 'terminal_after_session_rotate_without_anchor'
-    assert terminal.reply == ''
+    assert 'received no usable reply body' in terminal.reply
+    assert 'incomplete/terminal_after_session_rotate_without_anchor' in terminal.reply
     assert terminal.anchor_seen is False
+    assert terminal.diagnostics['notice_kind'] == 'empty_result'
     assert 'suppress_completion_state_merge' not in terminal.diagnostics
 
 
@@ -2144,6 +2148,7 @@ def test_dispatcher_provider_start_exception_fails_job_and_releases_agent(tmp_pa
         'error_type': 'RuntimeError',
         'provider': 'codex',
         'provider_start_error': 'provider bootstrap exploded',
+        'caller_inspection': True,
     }
     runtime = registry.get('codex')
     assert runtime is not None

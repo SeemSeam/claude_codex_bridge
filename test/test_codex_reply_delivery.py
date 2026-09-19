@@ -46,7 +46,7 @@ def test_codex_reply_delivery_forces_anchor_wrapping_and_waits_for_acceptance(mo
     assert submission.runtime_state["reply_delivery_complete_on_dispatch"] is True
 
 
-def test_codex_reply_delivery_completes_only_after_request_anchor_is_observed(monkeypatch, tmp_path: Path) -> None:
+def test_codex_reply_delivery_holds_through_anchor_and_completes_at_turn_end(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_module
 
     work_dir = tmp_path / "repo"
@@ -119,13 +119,56 @@ def test_codex_reply_delivery_completes_only_after_request_anchor_is_observed(mo
             "reply_delivery_complete_on_dispatch": True,
         },
     )
-
     result = codex_module.CodexProviderAdapter().poll(submission, now="2026-07-15T00:00:02Z")
 
+    # Anchor acceptance proves the delivered prompt entered the provider
+    # turn; it must NOT terminalize the delivery while the turn is running.
     assert result is not None
-    assert result.decision is not None
-    assert result.decision.status is CompletionStatus.COMPLETED
-    assert result.decision.reason == "reply_delivery_sent"
-    assert result.decision.anchor_seen is True
-    assert result.decision.diagnostics["delivery_status"] == "accepted"
+    assert result.decision is None
+    assert result.submission.runtime_state["anchor_seen"] is True
     assert result.submission.runtime_state["delivery_state"] == "accepted"
+
+    log_path.write_text(
+        log_path.read_text(encoding="utf-8")
+        + "\n".join(
+            (
+                json.dumps(
+                    {
+                        "timestamp": "2026-07-15T00:00:03Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "agent_message",
+                            "role": "assistant",
+                            "text": "",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-07-15T00:00:04Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "task_complete",
+                            "turn_id": "turn-job-reply",
+                            "reason": "task_complete",
+                            "last_agent_message": "",
+                        },
+                    }
+                ),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    finished = codex_module.CodexProviderAdapter().poll(result.submission, now="2026-07-15T00:00:05Z")
+
+    # The anchored turn boundary ends the held delivery. The adapter emits the
+    # empty boundary as evidence; the dispatcher tracker plus polling gate
+    # terminalize it (normalized to a completed delivery, turn end proof).
+    assert finished is not None
+    assert finished.decision is None
+    boundary = [item for item in finished.items if item.kind.value == 'turn_boundary']
+    assert boundary, finished.items
+    assert boundary[-1].payload.get('reason') == 'task_complete'
+    assert boundary[-1].payload.get('last_agent_message') == ''

@@ -55,9 +55,9 @@ def poll_submission(
     dispatch_items = ()
     if isinstance(prompt_dispatch, ProviderSubmission):
         submission = prompt_dispatch
-    reply_delivery_terminal = _reply_delivery_terminal_if_dispatched(submission, now=now)
-    if reply_delivery_terminal is not None:
-        return _merge_poll_result_items(reply_delivery_terminal, prefix_items=dispatch_items)
+    # Reply deliveries no longer complete when the prompt is sent: the
+    # attributed Stop hook / event-stream turn boundary below completes them,
+    # holding the target's execution slot until the exact turn end.
     hook_result = poll_exact_hook(submission, now=now) if _prompt_completion_is_eligible(submission) else None
     if hook_result is None:
         hook_result = _orphaned_exact_hook(submission, prepared=prepared, now=now)
@@ -765,41 +765,6 @@ def _prompt_delivery_due(
     # a serial mailbox queue forever when the prompt detector never converges.
     return _ready_wait_timed_out(submission, now=now)
 
-
-def _reply_delivery_terminal_if_dispatched(
-    submission: ProviderSubmission,
-    *,
-    now: str,
-) -> ProviderPollResult | None:
-    if not bool(submission.runtime_state.get("reply_delivery_complete_on_dispatch", False)):
-        return None
-    if not bool(submission.runtime_state.get("prompt_sent", False)):
-        return None
-    provider_turn_ref = str(
-        submission.runtime_state.get("request_anchor")
-        or submission.runtime_state.get("pane_id")
-        or submission.job_id
-    ).strip()
-    decision = CompletionDecision(
-        terminal=True,
-        status=CompletionStatus.COMPLETED,
-        reason="reply_delivery_sent",
-        confidence=CompletionConfidence.OBSERVED,
-        reply="",
-        anchor_seen=True,
-        reply_started=False,
-        reply_stable=True,
-        provider_turn_ref=provider_turn_ref or submission.job_id,
-        source_cursor=None,
-        finished_at=now,
-        diagnostics={
-            "reply_delivery": True,
-            "delivery_status": "sent",
-            "provider": submission.provider,
-            "submission_mode": "active",
-        },
-    )
-    return ProviderPollResult(submission=submission, decision=decision)
 
 
 def _ready_wait_timed_out(submission: ProviderSubmission, *, now: str) -> bool:

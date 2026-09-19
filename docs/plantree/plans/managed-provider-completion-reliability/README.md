@@ -45,6 +45,10 @@ does not override provider/session contracts.
 
 ## Related Plans
 
+- [Empty-result caller notices](../inter-agent-comm-reliability/topics/empty-result-caller-notice.md):
+  2026-09-18 planned policy replaces automatic empty-result recovery with a
+  caller inspection notice; preserves exact terminal evidence and attribution.
+
 - [../ccb-maintenance-heartbeat/README.md](../ccb-maintenance-heartbeat/README.md)
 - [../ccb-maintenance-heartbeat/topics/ask-runtime-health-mechanism.md](../ccb-maintenance-heartbeat/topics/ask-runtime-health-mechanism.md)
 

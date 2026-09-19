@@ -20,22 +20,12 @@ def with_retry_failure_reply(
     detail = retry_failure_detail(decision)
     is_fault_drill = str(decision.diagnostics.get('error_type') or '').strip().lower() == 'fault_injection'
     is_runtime_failure = str(decision.reason or '').strip().lower() in DEFAULT_RETRYABLE_RUNTIME_REASONS
-    is_empty_provider_reply = (
-        str(decision.reason or '').strip().lower() == 'task_complete_empty_reply'
-        or str(decision.diagnostics.get('error_type') or '').strip().lower() == 'empty_provider_reply'
-    )
     if scheduling_error:
         if is_fault_drill:
             reply = (
                 f"Fault injection drill forced agent '{job.agent_name}' to fail on attempt "
                 f'{attempt_number}/{max_attempts} ({detail}), but automatic retry could not be scheduled '
                 f"({scheduling_error}). Execute this task locally or resend it to another healthy registered agent."
-            )
-        elif is_empty_provider_reply:
-            reply = (
-                f"Delivery to agent '{job.agent_name}' produced an empty provider reply on attempt "
-                f'{attempt_number}/{max_attempts} ({detail}), but automatic retry could not be scheduled '
-                f"({scheduling_error}). Inspect the agent session before deciding whether to continue or resend."
             )
         elif is_runtime_failure:
             reply = (
@@ -54,11 +44,6 @@ def with_retry_failure_reply(
             reply = (
                 f"Fault injection drill forced agent '{job.agent_name}' to fail after {attempt_number} attempts "
                 f'({detail}). Execute this task locally or resend it to another healthy registered agent.'
-            )
-        elif is_empty_provider_reply:
-            reply = (
-                f"Delivery to agent '{job.agent_name}' produced an empty reply after {attempt_number} attempts "
-                f'({detail}). Inspect the agent session before deciding whether to continue or resend.'
             )
         elif is_runtime_failure:
             reply = (

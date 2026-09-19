@@ -37,7 +37,8 @@ class DispatcherState(
     def _normalize_slot(self, target_kind: TargetKind | str, target_name: str) -> TargetSlot:
         return TargetKind(target_kind), str(target_name)
 
-    def rebuild(self, job_store: JobStore, *, agent_names: Iterable[str]) -> None:
+    def rebuild(self, job_store: JobStore, *, agent_names: Iterable[str], mailbox_order=None) -> None:
+        mailbox_order_by_agent = dict(mailbox_order or {})
         self._job_index.clear()
         self._active_jobs.clear()
         for queue in self._queues.values():
@@ -51,10 +52,46 @@ class DispatcherState(
                 latest_by_job[record.job_id] = record
                 self._job_index[record.job_id] = self._normalize_slot(record.target_kind, record.target_name)
                 self._ensure_queue((record.target_kind, record.target_name))
+            running: list[str] = []
+            pending: list[str] = []
             for job_id in order:
                 latest = latest_by_job[job_id]
-                slot = self._normalize_slot(latest.target_kind, latest.target_name)
                 if latest.status is JobStatus.RUNNING:
-                    self._active_jobs[slot] = job_id
+                    running.append(job_id)
                 elif latest.status in _PENDING_STATES:
-                    self._ensure_queue(slot).push(job_id)
+                    pending.append(job_id)
+            for job_id in _admission_ordered(pending, mailbox_order_by_agent.get(agent_name) or ()):
+                slot = self._normalize_slot(
+                    latest_by_job[job_id].target_kind,
+                    latest_by_job[job_id].target_name,
+                )
+                self._ensure_queue(slot).push(job_id)
+            for job_id in running:
+                slot = self._normalize_slot(
+                    latest_by_job[job_id].target_kind,
+                    latest_by_job[job_id].target_name,
+                )
+                self._active_jobs[slot] = job_id
+
+
+def _admission_ordered(pending: list[str], mailbox_job_ids) -> list[str]:
+    """Order pending jobs by durable mailbox admission, then JobStore order.
+
+    The mailbox inbound history is the single FIFO that spans task requests
+    and result deliveries. JobStore order is only a fallback for pending jobs
+    without a matching pending mailbox event (legacy state), so delayed
+    delivery-job materialization or a stale-head repair can never move an
+    already admitted entry behind a newer one after restart.
+    """
+    pending_set = set(pending)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for job_id in mailbox_job_ids:
+        if job_id in pending_set and job_id not in seen:
+            ordered.append(job_id)
+            seen.add(job_id)
+    for job_id in pending:
+        if job_id not in seen:
+            ordered.append(job_id)
+            seen.add(job_id)
+    return ordered

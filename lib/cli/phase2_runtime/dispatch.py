@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .handlers_ask import handle_ask
+from .handlers_screen import handle_screen
 from .handlers_mailbox import (
     handle_ack,
     handle_cancel,
@@ -72,6 +73,7 @@ _HANDLERS = {
     'kill': handle_kill,
     'layout': handle_layout,
     'logs': handle_logs,
+    'screen': handle_screen,
     'loop-capacity': handle_loop_capacity,
     'loop-run-once': handle_loop_run_once,
     'loop-runner': handle_loop_runner,

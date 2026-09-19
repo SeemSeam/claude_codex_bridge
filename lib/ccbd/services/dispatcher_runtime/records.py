@@ -58,7 +58,13 @@ def _mark_project_view_dirty(dispatcher) -> None:
 
 
 def rebuild_dispatcher_state(dispatcher) -> None:
-    dispatcher._state.rebuild(dispatcher._job_store, agent_names=dispatcher._config.agents)
+    from .fifo_order import mailbox_pending_job_order
+
+    dispatcher._state.rebuild(
+        dispatcher._job_store,
+        agent_names=dispatcher._config.agents,
+        mailbox_order=mailbox_pending_job_order(dispatcher, dispatcher._config.agents),
+    )
 
 
 __all__ = [

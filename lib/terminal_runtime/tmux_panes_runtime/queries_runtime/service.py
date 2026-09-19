@@ -76,6 +76,21 @@ def is_pane_alive(service, pane_id: str) -> bool:
     return service.pane_is_alive_fn(getattr(cp, "stdout", "") or "")
 
 
+def capture_screen(service, pane_id: str, *, history_lines: int = 0) -> str | None:
+    """Capture the visible screen and an explicitly bounded scrollback prefix."""
+    if not service.looks_like_pane_id_fn(pane_id):
+        return None
+    if not 0 <= history_lines <= 1000:
+        raise ValueError('history_lines must be between 0 and 1000')
+    args = ['capture-pane', '-p', '-t', pane_id]
+    if history_lines:
+        args.extend(['-S', f'-{history_lines}'])
+    cp = run_tmux_capture(service, args, timeout=2.0)
+    if cp is None or getattr(cp, 'returncode', 1) != 0:
+        return None
+    return service.strip_ansi_fn(getattr(cp, 'stdout', '') or '')
+
+
 def run_tmux_capture(service, args: list[str], *, timeout: float | None = None):
     try:
         return service.tmux_run_fn(args, capture=True, timeout=timeout)

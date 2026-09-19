@@ -3,12 +3,17 @@ from __future__ import annotations
 from ccbd.api_models import JobStatus
 
 from ..failure_policy import is_nonretryable_api_failure
+from ..finalization_runtime.empty_result_notice import is_pure_empty_provider_outcome
 
 DEFAULT_RETRYABLE_REASONS = frozenset({'api_error', 'transport_error'})
 DEFAULT_RETRYABLE_ERROR_TYPES = frozenset({'api_error', 'transport_error', 'provider_api_error'})
 DEFAULT_RETRYABLE_RUNTIME_REASONS = frozenset({'pane_dead', 'pane_unavailable', 'runtime_unavailable', 'backend_unavailable'})
-DEFAULT_RETRYABLE_INCOMPLETE_REASONS = frozenset({'task_complete_empty_reply'})
-DEFAULT_RETRYABLE_INCOMPLETE_ERROR_TYPES = frozenset({'empty_provider_reply'})
+# Empty terminal results are never automatically retried: the daemon emits a
+# one-time caller inspection notice instead (see the empty-result
+# caller-notice plan topic). Only attributable transport/runtime diagnostics
+# remain retryable for INCOMPLETE outcomes.
+DEFAULT_RETRYABLE_INCOMPLETE_REASONS: frozenset[str] = frozenset()
+DEFAULT_RETRYABLE_INCOMPLETE_ERROR_TYPES: frozenset[str] = frozenset()
 TIMEOUT_INSPECTION_REASONS = frozenset({'timeout'})
 
 
@@ -71,6 +76,11 @@ def is_retryable_failure(
 ) -> bool:
     status = decision.status.value
     if status == JobStatus.INCOMPLETE.value:
+        if is_pure_empty_provider_outcome(decision):
+            # Pure empty provider results are never automatically retried or
+            # reactivated, even when a generic delivery_retryable diagnostic
+            # is attached: the caller inspection notice owns recovery.
+            return False
         if has_retryable_diagnostic(decision):
             return True
         reason = str(decision.reason or '').strip().lower()

@@ -49,14 +49,31 @@ def test_retry_policy_honors_delivery_retryable_diagnostic() -> None:
     )
 
 
-def test_retry_policy_retries_empty_provider_reply_incomplete() -> None:
+def test_retry_policy_does_not_retry_empty_provider_reply_incomplete() -> None:
     decision = SimpleNamespace(
         status=CompletionStatus.INCOMPLETE,
         reason="task_complete_empty_reply",
         diagnostics={"error_type": "empty_provider_reply"},
     )
 
-    assert is_retryable_failure(
+    assert not is_retryable_failure(
+        decision,
+        retry_policy={
+            "retryable_reasons": ["api_error", "transport_error"],
+            "retryable_runtime_reasons": ["pane_dead", "pane_unavailable"],
+        },
+        provider_supports_resume_value=True,
+    )
+
+
+def test_retry_policy_does_not_retry_empty_hook_reply_incomplete() -> None:
+    decision = SimpleNamespace(
+        status=CompletionStatus.INCOMPLETE,
+        reason="hook_stop_empty_reply",
+        diagnostics={"error_type": "empty_provider_reply"},
+    )
+
+    assert not is_retryable_failure(
         decision,
         retry_policy={
             "retryable_reasons": ["api_error", "transport_error"],

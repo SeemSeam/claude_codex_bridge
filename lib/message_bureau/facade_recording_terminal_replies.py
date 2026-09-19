@@ -43,12 +43,21 @@ def record_reply(
         'decision_diagnostics': dict(decision.diagnostics or {}),
         'silence_on_success': bool(job.request.silence_on_success),
     }
+    notice_kind = str(dict(decision.diagnostics or {}).get('notice_kind') or '').strip()
     if empty_cancel_notice:
         diagnostics.update(
             {
                 'notice': True,
                 'notice_kind': 'cancelled',
                 'delivery_mode': 'auto_consumed_control_notice',
+            }
+        )
+    elif notice_kind:
+        diagnostics.update(
+            {
+                'notice': True,
+                'notice_kind': notice_kind,
+                'delivery_mode': 'caller_notice',
             }
         )
     service._reply_store.append(

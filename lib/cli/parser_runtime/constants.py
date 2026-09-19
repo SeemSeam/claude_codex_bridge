@@ -24,6 +24,7 @@ SUBCOMMANDS = {
     'ack',
     'agent',
     'logs',
+    'screen',
     'layout',
     'loop',
     'plan',

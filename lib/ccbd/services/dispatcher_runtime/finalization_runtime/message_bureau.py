@@ -16,9 +16,11 @@ from ..callbacks import (
     terminalize_cancelled_parent_edge,
 )
 from ..reply_delivery import is_reply_delivery_job
+from .empty_result_notice import is_empty_result_outcome, with_empty_result_notice, with_abnormal_result_guidance
 from .artifacts import spill_terminal_reply_if_needed
 from .message_bureau_persistence import persist_reply_decision
 from .message_bureau_retry import reply_decision_without_automatic_retry, schedule_automatic_retry
+
 
 
 def record_message_bureau_completion(
@@ -63,6 +65,12 @@ def record_message_bureau_completion(
             decision,
             finished_at=finished_at,
         )
+    reply_decision = _empty_result_notice_decision(
+        dispatcher,
+        terminal,
+        reply_decision,
+        deliver_to_caller=_should_deliver_to_caller(terminal),
+    )
     if reply_decision is not decision:
         reply_decision = spill_terminal_reply_if_needed(
             dispatcher,
@@ -169,6 +177,23 @@ def _should_deliver_to_caller(job) -> bool:
         and bool(getattr(job.request, 'silence_on_success', False))
     )
 
+
+
+def _empty_result_notice_decision(dispatcher, terminal, decision, *, deliver_to_caller: bool):
+    """Caller inspection notice for empty or abnormal terminal results.
+
+    Chain children keep the continuation protocol (their internal reply feeds
+    the parent and never notifies the caller directly), silenced successes
+    keep no obligation, and internal reply deliveries were already excluded.
+    The notice rides the caller's ordinary FIFO through ``record_reply``.
+    """
+    if not deliver_to_caller:
+        return decision
+    if callback_child_edge(dispatcher, terminal) is not None:
+        return decision
+    if not is_empty_result_outcome(decision):
+        return with_abnormal_result_guidance(decision, terminal)
+    return with_empty_result_notice(decision, terminal, finished_at=decision.finished_at or '')
 
 __all__ = [
     'record_message_bureau_cancellation',

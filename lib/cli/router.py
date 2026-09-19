@@ -104,6 +104,7 @@ def print_start_help(*, file=None) -> None:
               ccb ask <agent> [from <sender>] <message>
               ccb followup <job_id> --message <text>
               ccb doctor
+              ccb screen <agent> [--lines 120] [--json]
 
             Diagnostics-only control-plane status:
               ccb ping <agent|ccbd>
@@ -309,6 +310,13 @@ _COMMAND_HELP = {
           ccb inbox --detail <agent_name>   Expand inbox-item detail for one agent.
           Prefer `ccb pend --inbox [--detail] <agent>` as the converged observer entrypoint.
           Use `ccb trace <id>` for lineage when needed.
+    """,
+    "screen": """
+        usage: ccb screen <agent> [--lines 0..1000] [--json]
+
+        Read-only tmux text capture of the named agent in the mounted project.
+        Default: visible screen. --lines N adds up to N scrollback lines.
+        No daemon startup, key input, focus change, or log fallback.
     """,
     "logs": """
         usage: ccb logs <agent>

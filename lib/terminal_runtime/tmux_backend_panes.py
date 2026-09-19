@@ -64,6 +64,11 @@ class TmuxBackendPaneQueryMixin:
     def get_text(self, pane_id: str, lines: int = 20) -> Optional[str]:
         return self.get_pane_content(pane_id, lines=lines)
 
+    def capture_screen(self, pane_id: str, *, history_lines: int = 0) -> Optional[str]:
+        from .tmux_panes_runtime.queries_runtime.service import capture_screen
+
+        return capture_screen(self._pane_service(), pane_id, history_lines=history_lines)
+
     def is_pane_alive(self, pane_id: str) -> bool:
         return self._services.pane_service.is_pane_alive(pane_id)
 

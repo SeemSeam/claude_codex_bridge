@@ -82,6 +82,10 @@ class FakeProviderAdapter:
             confidence=directive.confidence,
             diagnostics={'provider': self.provider, 'task_id': job.request.task_id},
             runtime_state={
+                'reply_delivery_complete_on_dispatch': str(
+                    job.request.message_type or ''
+                ).strip().lower()
+                == 'reply_delivery',
                 'events': [
                     {
                         'at_ms': event.at_ms,

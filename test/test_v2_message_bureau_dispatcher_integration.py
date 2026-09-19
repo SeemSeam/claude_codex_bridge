@@ -183,11 +183,12 @@ class ActiveReplyDeliveryExecutionService:
         self.started: list[str] = []
         self.finished: list[str] = []
         self._state_store = None
+        self._active: dict[str, ProviderSubmission] = {}
 
     def start(self, job, *, runtime_context=None):
         del runtime_context
         self.started.append(job.job_id)
-        return ProviderSubmission(
+        submission = ProviderSubmission(
             job_id=job.job_id,
             agent_name=job.agent_name,
             provider=job.provider,
@@ -198,12 +199,15 @@ class ActiveReplyDeliveryExecutionService:
             diagnostics={'provider': job.provider, 'mode': 'active'},
             runtime_state={'mode': 'active', 'request_anchor': job.job_id},
         )
+        self._active[job.job_id] = submission
+        return submission
 
     def cancel(self, job_id: str) -> None:
-        del job_id
+        self._active.pop(job_id, None)
 
     def finish(self, job_id: str) -> None:
         self.finished.append(job_id)
+        self._active.pop(job_id, None)
 
     def poll(self):
         return ()
@@ -3753,8 +3757,8 @@ def test_dispatcher_auto_retries_retryable_api_failures_before_delivering_failed
     assert 'failed after 3 attempts' in ack['reply']
 
 
-def test_dispatcher_auto_retries_empty_provider_replies_before_delivering_incomplete_reply(tmp_path: Path) -> None:
-    project_root = tmp_path / 'repo-auto-retry-empty-provider-reply'
+def test_dispatcher_delivers_one_empty_result_notice_without_auto_retry(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-empty-result-notice'
     ctx = _bootstrap_test_project(project_root)
     layout = PathLayout(project_root)
     config = _provider_config('codex', 'claude', 'gemini')
@@ -3768,8 +3772,8 @@ def test_dispatcher_auto_retries_empty_provider_replies_before_delivering_incomp
             project_id=ctx.project_id,
             to_agent='codex',
             from_actor='claude',
-            body='empty provider reply retry test',
-            task_id='task-auto-retry-empty-provider-reply',
+            body='empty provider reply notice test',
+            task_id='task-empty-result-notice',
             reply_to=None,
             message_type='ask',
             delivery_scope=DeliveryScope.SINGLE,
@@ -3778,26 +3782,10 @@ def test_dispatcher_auto_retries_empty_provider_replies_before_delivering_incomp
     message = MessageStore(layout).list_all()[-1]
     job_id = receipt.jobs[0].job_id
 
-    for expected_retry_index in (1, 2):
-        dispatcher.tick()
-        dispatcher.complete(job_id, _empty_provider_reply_decision())
-
-        claude_inbox = dispatcher.inbox('claude')
-        assert claude_inbox['item_count'] == 0
-
-        latest_attempts = {}
-        for record in AttemptStore(layout).list_message(message.message_id):
-            latest_attempts[record.attempt_id] = record
-        pending_retry = next(
-            attempt
-            for attempt in latest_attempts.values()
-            if attempt.retry_index == expected_retry_index and attempt.attempt_state is AttemptState.PENDING
-        )
-        job_id = pending_retry.job_id
-
     dispatcher.tick()
     dispatcher.complete(job_id, _empty_provider_reply_decision())
 
+    # First finalized empty outcome: one notice, zero automatic retries.
     claude_inbox = dispatcher.inbox('claude')
     assert claude_inbox['item_count'] == 1
     assert claude_inbox['head']['event_type'] == 'task_reply'
@@ -3805,19 +3793,214 @@ def test_dispatcher_auto_retries_empty_provider_replies_before_delivering_incomp
     latest_attempts = {}
     for record in AttemptStore(layout).list_message(message.message_id):
         latest_attempts[record.attempt_id] = record
-    assert len(latest_attempts) == 3
-    assert {attempt.retry_index for attempt in latest_attempts.values()} == {0, 1, 2}
+    assert len(latest_attempts) == 1
+    assert {attempt.retry_index for attempt in latest_attempts.values()} == {0}
     assert {attempt.attempt_state for attempt in latest_attempts.values()} == {AttemptState.INCOMPLETE}
 
     replies = ReplyStore(layout).list_message(message.message_id)
     assert len(replies) == 1
     assert replies[0].terminal_status is ReplyTerminalStatus.INCOMPLETE
-    assert 'empty reply after 3 attempts' in replies[0].reply
+    assert replies[0].diagnostics['notice'] is True
+    assert replies[0].diagnostics['notice_kind'] == 'empty_result'
+    assert replies[0].diagnostics['decision_diagnostics']['notice_job_id'] == job_id
+    assert 'received no usable reply body' in replies[0].reply
+    assert job_id in replies[0].reply
+    assert 'incomplete/task_complete_empty_reply' in replies[0].reply
+    assert 'turn-empty-provider-reply' in replies[0].reply
+    assert 'ccb screen codex' in replies[0].reply
+    assert f'ccb trace {job_id}' in replies[0].reply
+
+    # Repeated terminal events must not duplicate the notice.
+    dispatcher.complete(job_id, _empty_provider_reply_decision())
+    assert len(ReplyStore(layout).list_message(message.message_id)) == 1
+
+    # Daemon restart must not duplicate the notice either.
+    restarted = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:01:00Z')
+    restarted.complete(job_id, _empty_provider_reply_decision())
+    assert len(ReplyStore(layout).list_message(message.message_id)) == 1
+    assert restarted.inbox('claude')['item_count'] == 1
 
     ack = dispatcher.ack_reply('claude')
     assert ack['reply_terminal_status'] == 'incomplete'
-    assert 'empty reply after 3 attempts' in ack['reply']
 
+
+def test_dispatcher_superseded_incomplete_empty_result_yields_notice_not_empty_reply(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo-superseded-empty-result-notice'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='superseded probe',
+            task_id='task-superseded-empty-result',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    message = MessageStore(layout).list_all()[-1]
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+    dispatcher.complete(
+        job_id,
+        CompletionDecision(
+            terminal=True,
+            status=CompletionStatus.INCOMPLETE,
+            reason='omp_request_superseded',
+            confidence=CompletionConfidence.DEGRADED,
+            reply='',
+            anchor_seen=True,
+            reply_started=False,
+            reply_stable=False,
+            provider_turn_ref='turn-superseded',
+            source_cursor=None,
+            finished_at='2026-03-30T00:00:10Z',
+            diagnostics={'superseded_by': 'unmanaged_input'},
+        ),
+    )
+
+    inbox = dispatcher.inbox('claude')
+    assert inbox['item_count'] == 1
+    assert inbox['head']['event_type'] == 'task_reply'
+    replies = ReplyStore(layout).list_message(message.message_id)
+    assert len(replies) == 1
+    assert replies[0].diagnostics['notice_kind'] == 'empty_result'
+    assert 'received no usable reply body' in replies[0].reply
+    assert 'incomplete/omp_request_superseded' in replies[0].reply
+    attempts_by_id = {
+        record.attempt_id: record for record in AttemptStore(layout).list_message(message.message_id)
+    }
+    assert len(attempts_by_id) == 1
+    assert next(iter(attempts_by_id.values())).attempt_state is AttemptState.INCOMPLETE
+
+
+def test_dispatcher_pure_empty_result_never_auto_retries_despite_retryable_diagnostic(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo-pure-empty-no-retry-bypass'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='pure empty retry bypass probe',
+            task_id='task-pure-empty-retry-bypass',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    message = MessageStore(layout).list_all()[-1]
+    job_id = receipt.jobs[0].job_id
+    dispatcher.tick()
+    dispatcher.complete(
+        job_id,
+        CompletionDecision(
+            terminal=True,
+            status=CompletionStatus.INCOMPLETE,
+            reason='task_complete_empty_reply',
+            confidence=CompletionConfidence.DEGRADED,
+            reply='',
+            anchor_seen=True,
+            reply_started=False,
+            reply_stable=False,
+            provider_turn_ref='turn-pure-empty',
+            source_cursor=None,
+            finished_at='2026-03-30T00:00:10Z',
+            diagnostics={'error_type': 'empty_provider_reply', 'delivery_retryable': True},
+        ),
+    )
+
+    # Zero automatic retry jobs, zero reactivation; one caller notice.
+    attempts_by_id = {
+        record.attempt_id: record for record in AttemptStore(layout).list_message(message.message_id)
+    }
+    assert len(attempts_by_id) == 1
+    assert next(iter(attempts_by_id.values())).retry_index == 0
+    assert next(iter(attempts_by_id.values())).attempt_state is AttemptState.INCOMPLETE
+    assert dispatcher._state.active_job('codex') is None
+    replies = ReplyStore(layout).list_message(message.message_id)
+    assert len(replies) == 1
+    assert replies[0].diagnostics['notice_kind'] == 'empty_result'
+    assert 'received no usable reply body' in replies[0].reply
+    for _ in range(3):
+        dispatcher.tick()
+    assert len({record.attempt_id for record in AttemptStore(layout).list_message(message.message_id)}) == 1
+
+
+def test_chain_caller_receives_notice_when_final_continuation_is_empty(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-chain-empty-continuation-notice'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    parent_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='user',
+            body='root task',
+            task_id='task-chain-empty-continuation',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    ).jobs[0].job_id
+    dispatcher.tick()
+    child_job_id = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='claude',
+            from_actor='codex',
+            body='child task',
+            task_id='task-chain-empty-continuation',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+            route_options={'mode': 'chain'},
+        )
+    ).jobs[0].job_id
+    edge = CallbackEdgeStore(layout).get_latest_for_child_job(child_job_id)
+    assert edge is not None
+    dispatcher.complete(parent_job_id, _decision(reply='delegated'))
+    dispatcher.tick()
+    dispatcher.complete(child_job_id, _decision(reply='child done'))
+
+    edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
+    assert edge is not None
+    assert edge.continuation_job_id
+
+    # The final continuation turn ends with an empty body: the original
+    # caller must receive the inspection notice, not a silent empty reply.
+    dispatcher.complete(edge.continuation_job_id, _empty_provider_reply_decision())
+    final_edge = CallbackEdgeStore(layout).get_latest(edge.edge_id)
+    assert final_edge is not None
+    assert final_edge.state is CallbackEdgeState.DONE
+    watch = dispatcher.watch(parent_job_id, start_line=0)
+    assert 'received no usable reply body' in watch['reply']
+    assert 'incomplete/task_complete_empty_reply' in watch['reply']
 
 def test_dispatcher_auto_retries_retryable_delivery_incomplete_before_delivering_reply(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-auto-retry-delivery-incomplete'
@@ -4640,6 +4823,9 @@ def test_dispatcher_does_not_auto_retry_nonretryable_quota_api_failures(tmp_path
     assert 'failed after 3 attempts' not in replies[0].reply
     assert 'quota/billing error' in replies[0].reply
     assert 'error_code=InsufficientQuota' in replies[0].reply
+    assert 'ccb screen codex' in replies[0].reply
+    assert f'ccb trace {job_id}' in replies[0].reply
+    assert replies[0].reply.count('[CCB caller inspection]') == 1
 
     ack = dispatcher.ack_reply('claude')
     assert ack['reply_terminal_status'] == 'failed'
@@ -5587,8 +5773,8 @@ def test_dispatcher_tick_promotes_head_reply_into_tracked_delivery_before_queued
     assert started_after[0].job_id == queued_job_id
 
 
-def test_dispatcher_failed_reply_delivery_requeues_original_reply_head(tmp_path: Path) -> None:
-    project_root = tmp_path / 'repo-reply-delivery-failure'
+def test_dispatcher_failed_reply_delivery_after_acceptance_consumes_head(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-reply-delivery-failure-accepted'
     ctx = _bootstrap_test_project(project_root)
     layout = PathLayout(project_root)
     config = _provider_config('codex', 'claude')
@@ -5603,7 +5789,7 @@ def test_dispatcher_failed_reply_delivery_requeues_original_reply_head(tmp_path:
             to_agent='codex',
             from_actor='claude',
             body='question for codex',
-            task_id='task-reply-failure',
+            task_id='task-reply-failure-accepted',
             reply_to=None,
             message_type='ask',
             delivery_scope=DeliveryScope.SINGLE,
@@ -5611,13 +5797,15 @@ def test_dispatcher_failed_reply_delivery_requeues_original_reply_head(tmp_path:
     )
     reply_job_id = reply_receipt.jobs[0].job_id
     dispatcher.tick()
-    dispatcher.complete(reply_job_id, _decision(reply='reply that should stay queued'))
+    dispatcher.complete(reply_job_id, _decision(reply='reply that reached processing'))
 
     started = dispatcher.tick()
     assert len(started) == 1
     delivery_job = started[0]
     assert delivery_job.request.message_type == 'reply_delivery'
 
+    # The delivered prompt was accepted into a processing turn (anchor seen);
+    # a later failure must not redeliver the same result.
     dispatcher.complete(
         delivery_job.job_id,
         CompletionDecision(
@@ -5637,15 +5825,77 @@ def test_dispatcher_failed_reply_delivery_requeues_original_reply_head(tmp_path:
     )
 
     inbox = dispatcher.inbox('claude')
-    assert inbox['head']['event_type'] == 'task_reply'
-    assert inbox['head']['reply'] == 'reply that should stay queued'
-    head_record = InboundEventStore(layout).get_latest('claude', inbox['head']['inbound_event_id'])
-    assert head_record is not None
-    assert delivery_job_id_from_payload(head_record.payload_ref) is None
-    mailbox = MailboxStore(layout).load('claude')
-    assert mailbox is not None
-    assert mailbox.summary_source == 'transition-rewrite-head'
-    assert delivery_job_id_from_payload(mailbox.head_payload_ref) is None
+    assert inbox['item_count'] == 0
+    assert inbox['head'] is None
+    latest_by_event = {}
+    for record in InboundEventStore(layout).list_agent('claude'):
+        if record.event_type.value == 'task_reply':
+            latest_by_event[record.inbound_event_id] = record
+    assert latest_by_event
+    assert all(record.status.value == 'consumed' for record in latest_by_event.values())
+
+
+def test_dispatcher_pre_acceptance_reply_delivery_failure_requeues_bounded(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-reply-delivery-failure-pre-acceptance'
+    ctx = _bootstrap_test_project(project_root)
+    layout = PathLayout(project_root)
+    config = _provider_config('codex', 'claude')
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
+    registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-30T00:00:00Z')
+
+    reply_receipt = dispatcher.submit(
+        MessageEnvelope(
+            project_id=ctx.project_id,
+            to_agent='codex',
+            from_actor='claude',
+            body='question for codex',
+            task_id='task-reply-failure-pre-acceptance',
+            reply_to=None,
+            message_type='ask',
+            delivery_scope=DeliveryScope.SINGLE,
+        )
+    )
+    reply_job_id = reply_receipt.jobs[0].job_id
+    dispatcher.tick()
+    dispatcher.complete(reply_job_id, _decision(reply='reply queued behind transport'))
+
+    # Repeated pre-acceptance transport failures: requeue is bounded, then the
+    # reply is abandoned with attributable diagnostics instead of occupying
+    # the mailbox head forever.
+    terminal_statuses = []
+    for _ in range(4):
+        started = dispatcher.tick()
+        delivery_jobs = [job for job in started if job.request.message_type == 'reply_delivery']
+        assert len(delivery_jobs) == 1
+        dispatcher.complete(
+            delivery_jobs[0].job_id,
+            CompletionDecision(
+                terminal=True,
+                status=CompletionStatus.FAILED,
+                reason='reply_delivery_transport_unavailable',
+                confidence=CompletionConfidence.DEGRADED,
+                reply='',
+                anchor_seen=False,
+                reply_started=False,
+                reply_stable=False,
+                provider_turn_ref='turn-transport-unavailable',
+                source_cursor=None,
+                finished_at='2026-03-30T00:00:10Z',
+                diagnostics={'error_type': 'transport_error'},
+            ),
+        )
+        terminal_statuses.append(dispatcher.get(delivery_jobs[0].job_id).status.value)
+
+    inbox = dispatcher.inbox('claude')
+    assert inbox['item_count'] == 0
+    latest_by_event = {}
+    for record in InboundEventStore(layout).list_agent('claude'):
+        if record.event_type.value == 'task_reply':
+            latest_by_event[record.inbound_event_id] = record
+    assert latest_by_event
+    assert all(record.status.value == 'consumed' for record in latest_by_event.values())
 
 
 def test_confirmed_empty_codex_reply_delivery_consumes_head_without_requeue(tmp_path: Path) -> None:
@@ -5751,8 +6001,10 @@ def test_dispatcher_ack_rejects_reply_after_auto_delivery_is_scheduled(tmp_path:
     assert delivery_job.job_id in message
 
 
-def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_service(tmp_path: Path) -> None:
-    project_root = tmp_path / 'repo-reply-delivery-autocomplete'
+def test_dispatcher_reply_delivery_without_flag_waits_for_provider_turn_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = tmp_path / 'repo-reply-delivery-turn-end'
     ctx = _bootstrap_test_project(project_root)
     layout = PathLayout(project_root)
     config = _provider_config('codex', 'claude')
@@ -5760,13 +6012,15 @@ def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_servic
     registry.upsert(_runtime('codex', project_id=ctx.project_id, layout=layout, pid=101))
     registry.upsert(_runtime('claude', project_id=ctx.project_id, layout=layout, pid=102))
     execution_service = ActiveReplyDeliveryExecutionService()
+    clock = {'now': '2026-03-30T00:00:00Z'}
     dispatcher = JobDispatcher(
         layout,
         config,
         registry,
         execution_service=execution_service,
-        clock=lambda: '2026-03-30T00:00:00Z',
+        clock=lambda: clock['now'],
     )
+    monkeypatch.setenv('CCB_REPLY_DELIVERY_NO_EVIDENCE_TIMEOUT_S', '60')
 
     reply_receipt = dispatcher.submit(
         MessageEnvelope(
@@ -5774,7 +6028,7 @@ def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_servic
             to_agent='codex',
             from_actor='claude',
             body='question for codex',
-            task_id='task-reply-autocomplete',
+            task_id='task-reply-turn-end',
             reply_to=None,
             message_type='ask',
             delivery_scope=DeliveryScope.SINGLE,
@@ -5790,7 +6044,7 @@ def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_servic
             to_agent='claude',
             from_actor='user',
             body='real work queued behind reply',
-            task_id='task-behind-reply-autocomplete',
+            task_id='task-behind-reply-turn-end',
             reply_to=None,
             message_type='ask',
             delivery_scope=DeliveryScope.SINGLE,
@@ -5800,25 +6054,45 @@ def test_dispatcher_tick_auto_consumes_reply_delivery_head_with_execution_servic
 
     started = dispatcher.tick()
 
+    # A missing delivery flag does not imply missing provider turn tracking:
+    # the delivery stays running and the queued request stays queued.
     assert len(started) == 1
     delivery_job = started[0]
     assert delivery_job.request.message_type == 'reply_delivery'
-    assert delivery_job.status.value == 'completed'
+    assert delivery_job.status.value == 'running'
     assert delivery_job.job_id in execution_service.started
-    assert delivery_job.job_id in execution_service.finished
-    inbox_after = dispatcher.inbox('claude')
-    assert inbox_after['item_count'] == 1
-    assert inbox_after['head']['event_type'] == 'task_request'
-
-    queue_after = dispatcher.queue('claude', detail=True)
-    assert queue_after['agent']['mailbox_state'] == 'blocked'
-    assert queue_after['agent']['queue_depth'] == 1
-    assert queue_after['agent']['queued_events'][0]['event_type'] == 'task_request'
     assert dispatcher.get(queued_job_id).status.value == 'accepted'
+    held_again = dispatcher.tick()
+    assert held_again == ()
+    assert dispatcher.get(delivery_job.job_id).status.value == 'running'
 
-    started_after = dispatcher.tick()
-    assert len(started_after) == 1
-    assert started_after[0].job_id == queued_job_id
+    # Neither the former timeout setting nor a day of elapsed time is turn
+    # completion. The provider has not emitted a terminal decision.
+    for timestamp in ('2026-03-30T00:01:01Z', '2026-03-31T00:00:00Z'):
+        clock['now'] = timestamp
+        assert dispatcher.tick() == ()
+        assert dispatcher.get(delivery_job.job_id).status.value == 'running'
+        assert dispatcher.get(queued_job_id).status.value == 'accepted'
+        assert queued_job_id not in execution_service.started
+        assert delivery_job.job_id not in execution_service.finished
+
+    # The ordinary provider completion path releases the slot, even without
+    # a reply-delivery runtime flag.
+    update = ExecutionUpdate(
+        job_id=delivery_job.job_id,
+        items=(),
+        decision=_decision(reply='processed result'),
+        submission=execution_service._active[delivery_job.job_id],
+    )
+    monkeypatch.setattr(execution_service, 'poll', lambda: (update,))
+    assert [job.job_id for job in dispatcher.poll_completions()] == [delivery_job.job_id]
+    terminal = dispatcher.get(delivery_job.job_id)
+    assert terminal is not None
+    assert terminal.status.value == 'completed'
+    assert terminal.terminal_decision['reason'] == 'task_complete'
+    assert dispatcher.inbox('claude')['item_count'] == 1
+    assert dispatcher.inbox('claude')['head']['event_type'] == 'task_request'
+    assert [(job.job_id, job.status.value) for job in dispatcher.tick()] == [(queued_job_id, 'running')]
 
 
 def test_dispatcher_tick_keeps_live_running_reply_delivery_head_with_execution_service(tmp_path: Path) -> None:
@@ -5923,8 +6197,13 @@ def test_dispatcher_tick_repairs_stale_running_reply_delivery_head_with_executio
     stale = dispatcher.get(delivery_job.job_id)
     assert stale is not None
     assert stale.status.value == 'incomplete'
-    assert any(job.request.message_type == 'reply_delivery' and job.status.value == 'completed' for job in repaired)
-    assert dispatcher.inbox('claude')['item_count'] == 0
+    assert stale.terminal_decision['reason'] == 'reply_delivery_stale_running_repaired'
+    # The stale running job is terminalized; the reply requeues (restart
+    # repair cannot know whether the prompt was accepted), a fresh delivery
+    # job starts and holds under the no-flag execution service.
+    assert any(job.request.message_type == 'reply_delivery' and job.status.value == 'running' for job in repaired)
+    assert dispatcher.inbox('claude')['item_count'] == 1
+    assert dispatcher.inbox('claude')['head']['event_type'] == 'task_reply'
 
 
 def test_dispatcher_shutdown_terminalizes_reply_delivery_without_spawning_replacement(tmp_path: Path) -> None:

@@ -8,6 +8,9 @@ from provider_execution.completion_authority import annotate_completion_authorit
 
 from .execution_cleanup import finish_stale_execution_update
 from .records import append_event, get_job
+from .reply_delivery_runtime.common import is_reply_delivery_job
+
+_EMPTY_TURN_END_REASONS = frozenset({'task_complete_empty_reply', 'hook_stop_empty_reply'})
 
 
 def poll_completion_updates(dispatcher) -> tuple:
@@ -20,7 +23,7 @@ def poll_completion_updates(dispatcher) -> tuple:
         if _skip_update(dispatcher, current, update.job_id):
             continue
         tracked = _ingest_update_items(dispatcher, current, update)
-        decision = _resolve_update_decision(dispatcher, update, tracked)
+        decision = _resolve_update_decision(dispatcher, update, tracked, current)
         if decision is not None:
             completed.append(dispatcher.complete(update.job_id, decision))
             completed_ids.add(update.job_id)
@@ -53,14 +56,23 @@ def _ingest_update_items(dispatcher, current, update) -> CompletionTrackerView |
     return tracked
 
 
-def _resolve_update_decision(dispatcher, update, tracked):
+def _resolve_update_decision(dispatcher, update, tracked, job):
     decision = update.decision
     if decision is None and tracked is not None and tracked.decision.terminal:
         decision = tracked.decision
-    return _validate_provider_completion_decision(getattr(update, 'submission', None), decision)
+    return _validate_provider_completion_decision(getattr(update, 'submission', None), decision, job)
 
 
-def _validate_provider_completion_decision(submission, decision):
+def _validate_provider_completion_decision(submission, decision, job=None):
+    """Shared provider turn-end gate for ordinary asks and reply deliveries.
+
+    The provider's own terminal decision is the turn-end judgement for both
+    message classes; provider raw-event interpretation stays in the adapters
+    and completion detectors. This gate annotates authority, keeps the
+    existing codex acceptance isolation for every completion, and applies the
+    one delivery-specific policy: a reply delivery owes transport plus one
+    processing turn, not a reply body.
+    """
     decision = annotate_completion_authority(
         submission,
         decision,
@@ -68,13 +80,16 @@ def _validate_provider_completion_decision(submission, decision):
     )
     if decision is None:
         return None
-    if not decision.terminal or decision.status is not CompletionStatus.COMPLETED:
+    if not decision.terminal:
+        return decision
+    reply_delivery = _is_reply_delivery(submission, job)
+    if reply_delivery and decision.status is CompletionStatus.INCOMPLETE:
+        decision = _reply_delivery_turn_end_outcome(decision)
+    if decision.status is not CompletionStatus.COMPLETED:
         return decision
     if not _requires_codex_active_acceptance_gate(submission):
         return decision
-    if _is_confirmed_reply_delivery_completion(submission, decision):
-        return decision
-    if not str(decision.reply or '').strip():
+    if not reply_delivery and not str(decision.reply or '').strip():
         return _incomplete_provider_completion(
             decision,
             reason='task_complete_empty_reply',
@@ -104,6 +119,59 @@ def _validate_provider_completion_decision(submission, decision):
     )
 
 
+def _reply_delivery_turn_end_outcome(decision):
+    """Deliver an empty processing-turn end as a completed reply delivery.
+
+    A reply-delivery job holds the target execution slot until the delivered
+    message's provider turn ends. The delivery owes transport plus one turn,
+    not a reply body: a turn that ends without assistant text is a successful
+    delivery. Attributable failures, cancellations, and other incomplete
+    outcomes keep their own status and semantics; abnormal terminal outcomes
+    are never rewritten into success here.
+    """
+    if decision.status is not CompletionStatus.INCOMPLETE:
+        return decision
+    diagnostics = dict(decision.diagnostics or {})
+    reason = str(decision.reason or '').strip().lower()
+    error_type = str(diagnostics.get('error_type') or '').strip().lower()
+    if (
+        reason not in _EMPTY_TURN_END_REASONS
+        and not reason.endswith('_empty_reply')
+        and error_type != 'empty_provider_reply'
+    ):
+        return decision
+    merged = {
+        **diagnostics,
+        'reply_delivery_turn_end': True,
+        'original_status': decision.status.value,
+        'original_reason': decision.reason or '',
+        'empty_reply': True,
+    }
+    return replace(
+        decision,
+        status=CompletionStatus.COMPLETED,
+        reason='reply_delivery_turn_complete',
+        reply='',
+        diagnostics=merged,
+    )
+
+
+def _is_reply_delivery(submission, job) -> bool:
+    """Identify reply-delivery jobs from the durable job record.
+
+    The job-level marker (``reply_delivery`` message type or provider option)
+    is the delivery identity authority, exactly as the reply-delivery
+    finalization paths identify these jobs. The legacy
+    ``reply_delivery_complete_on_dispatch`` runtime flag stays readable for
+    persisted submissions validated without their job record; it identifies
+    the message class only and never declares completion capability.
+    """
+    if job is not None:
+        return is_reply_delivery_job(job)
+    runtime_state = dict(getattr(submission, 'runtime_state', {}) or {})
+    return bool(runtime_state.get('reply_delivery_complete_on_dispatch'))
+
+
 def _requires_codex_active_acceptance_gate(submission) -> bool:
     if submission is None:
         return False
@@ -111,20 +179,6 @@ def _requires_codex_active_acceptance_gate(submission) -> bool:
         return False
     runtime_state = dict(getattr(submission, 'runtime_state', {}) or {})
     return str(runtime_state.get('mode') or '').strip().lower() == 'active'
-
-
-def _is_confirmed_reply_delivery_completion(submission, decision) -> bool:
-    """Allow an empty Codex transport acknowledgement only with full delivery proof."""
-    runtime_state = dict(getattr(submission, 'runtime_state', {}) or {})
-    diagnostics = dict(decision.diagnostics or {})
-    return (
-        bool(runtime_state.get('reply_delivery_complete_on_dispatch'))
-        and str(runtime_state.get('delivery_state') or '').strip().lower() == 'accepted'
-        and bool(runtime_state.get('anchor_seen') or decision.anchor_seen)
-        and str(decision.reason or '').strip().lower() == 'reply_delivery_sent'
-        and diagnostics.get('reply_delivery') is True
-        and str(diagnostics.get('delivery_status') or '').strip().lower() == 'accepted'
-    )
 
 
 def _incomplete_provider_completion(decision, *, reason: str, gate: str, diagnostics: dict | None = None):
@@ -163,7 +217,7 @@ def _tick_tracker(dispatcher, completed: list, completed_ids: set[str]) -> None:
             completed.append(
                 dispatcher.complete(
                     tracked.job_id,
-                    _validate_provider_completion_decision(submission, tracked.decision),
+                    _validate_provider_completion_decision(submission, tracked.decision, current),
                 )
             )
             completed_ids.add(tracked.job_id)

@@ -4,7 +4,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from completion.models import CompletionSourceKind
+from completion.models import CompletionConfidence, CompletionDecision, CompletionSourceKind, CompletionStatus
 from provider_backends.claude.execution import ClaudeProviderAdapter
 from provider_backends.claude.execution_runtime.polling import (
     _orphaned_exact_hook,
@@ -507,7 +507,7 @@ def test_poll_submission_reply_delivery_defers_before_ready_timeout(monkeypatch)
     assert sent == []
 
 
-def test_poll_submission_reply_delivery_dispatches_after_ready_timeout(monkeypatch) -> None:
+def test_poll_submission_reply_delivery_dispatches_after_ready_timeout_and_holds(monkeypatch) -> None:
     submission = ProviderSubmission(
         job_id="job_reply",
         agent_name="agent1",
@@ -548,23 +548,32 @@ def test_poll_submission_reply_delivery_dispatches_after_ready_timeout(monkeypat
     )
     monkeypatch.setattr(
         "provider_backends.claude.execution_runtime.polling.poll_exact_hook",
-        lambda submission, now: (_ for _ in ()).throw(AssertionError("hook should not run")),
+        lambda submission, now: None,
+    )
+    monkeypatch.setattr(
+        "provider_backends.claude.execution_runtime.polling._orphaned_exact_hook",
+        lambda submission, prepared, now: None,
     )
     monkeypatch.setattr(
         "provider_backends.claude.execution_runtime.polling.ensure_active_pane_alive",
-        lambda submission, backend, pane_id, now: (_ for _ in ()).throw(AssertionError("liveness should not run")),
+        lambda submission, backend, pane_id, now: None,
+    )
+    monkeypatch.setattr(
+        "provider_backends.claude.execution_runtime.polling.read_events",
+        lambda reader, state: ([], state),
     )
 
     result = poll_submission(None, submission, now="2026-04-06T00:00:01Z")
 
+    # The bounded ready-wait send is transport only: the delivery stays held
+    # (no terminal decision) until the attributed turn-end evidence arrives.
     assert isinstance(result, ProviderPollResult)
-    assert result.decision is not None
-    assert result.decision.reason == "reply_delivery_sent"
+    assert result.decision is None
     assert result.submission.runtime_state["prompt_sent"] is True
     assert sent == [("%1", "CCB_REPLY from=agent2 reply=rep_1")]
 
 
-def test_poll_submission_reply_delivery_completes_after_dispatch(monkeypatch) -> None:
+def test_poll_submission_reply_delivery_completes_at_attributed_turn_end(monkeypatch) -> None:
     submission = ProviderSubmission(
         job_id="job_reply",
         agent_name="agent1",
@@ -578,7 +587,9 @@ def test_poll_submission_reply_delivery_completes_after_dispatch(monkeypatch) ->
             "mode": "active",
             "pane_id": "%1",
             "prompt_text": "CCB_REPLY from=agent2 reply=rep_1",
-            "prompt_sent": False,
+            "prompt_sent": True,
+            "prompt_sent_at": "2026-04-06T00:00:01Z",
+            "anchor_seen": True,
             "reply_delivery_complete_on_dispatch": True,
             "reply_delivery_require_ready": True,
             "request_anchor": "job_reply",
@@ -598,6 +609,20 @@ def test_poll_submission_reply_delivery_completes_after_dispatch(monkeypatch) ->
             sent.append((pane_id, text))
 
     prepared = SimpleNamespace(reader=object(), backend=ReadyBackend(), pane_id="%1")
+    hook_decision = CompletionDecision(
+        terminal=True,
+        status=CompletionStatus.COMPLETED,
+        reason="hook_stop",
+        confidence=CompletionConfidence.EXACT,
+        reply="",
+        anchor_seen=True,
+        reply_started=False,
+        reply_stable=True,
+        provider_turn_ref="job_reply",
+        source_cursor=None,
+        finished_at="2026-04-06T00:00:05Z",
+        diagnostics={"reply_delivery": True},
+    )
 
     monkeypatch.setattr(
         "provider_backends.claude.execution_runtime.polling.prepare_active_poll_without_liveness",
@@ -605,20 +630,22 @@ def test_poll_submission_reply_delivery_completes_after_dispatch(monkeypatch) ->
     )
     monkeypatch.setattr(
         "provider_backends.claude.execution_runtime.polling.poll_exact_hook",
-        lambda submission, now: (_ for _ in ()).throw(AssertionError("hook should not run")),
-    )
-    monkeypatch.setattr(
-        "provider_backends.claude.execution_runtime.polling.ensure_active_pane_alive",
-        lambda submission, backend, pane_id, now: (_ for _ in ()).throw(AssertionError("liveness should not run")),
+        lambda submission, now: ProviderPollResult(
+            submission=submission,
+            items=(),
+            decision=hook_decision,
+        ),
     )
 
-    result = poll_submission(None, submission, now="2026-04-06T00:00:01Z")
+    result = poll_submission(None, submission, now="2026-04-06T00:00:05Z")
 
+    # Sending never completes the delivery by itself; the attributed Stop
+    # hook for this delivery's anchor is the turn-end evidence.
     assert isinstance(result, ProviderPollResult)
     assert result.decision is not None
-    assert result.decision.reason == "reply_delivery_sent"
-    assert result.submission.runtime_state["prompt_sent"] is True
-    assert sent == [("%1", "CCB_REPLY from=agent2 reply=rep_1")]
+    assert result.decision.terminal is True
+    assert result.decision.reason == "hook_stop"
+    assert sent == []
 
 
 def test_looks_ready_accepts_nbsp_prompt_line() -> None:

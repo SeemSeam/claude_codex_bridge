@@ -271,24 +271,38 @@ def test_cursor_pane_adapter_error_turn_fails_closed(monkeypatch, tmp_path: Path
     assert result.decision.reply == "partial reply"
 
 
-def test_cursor_reply_delivery_sends_raw_body_and_completes_on_dispatch(
+def test_cursor_reply_delivery_sends_raw_body_and_holds_until_turn_end(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    _, backend, _ = _bind_cursor(monkeypatch, tmp_path)
+    home, backend, _ = _bind_cursor(monkeypatch, tmp_path)
     adapter = CursorPaneExecutionAdapter()
 
     submission = adapter.start(
-        _pane_job(message_type="reply_delivery", no_wrap=True),
+        _pane_job(message_type="reply_delivery"),
         context=_pane_context(tmp_path),
         now="2026-08-11T00:00:00Z",
     )
     result = adapter.poll(submission, now="2026-08-11T00:00:01Z")
+    assert backend.sent == [("%9", "CCB_REQ_ID: job_cursor_pane_1\n\nvisible request\n")]
+    # Sending is transport only: the delivery holds until the anchored
+    # transcript turn ends.
+    assert result is None or result.decision is None
 
-    assert backend.sent == [("%9", "visible request")]
-    assert result is not None and result.decision is not None
-    assert result.decision.status is CompletionStatus.COMPLETED
-    assert result.decision.reason == "reply_delivery_sent"
+    transcript = _cursor_transcript(home)
+    _append_cursor_records(
+        transcript,
+        {"role": "user", "message": {"content": [{"type": "text", "text": backend.sent[0][1]}]}},
+        {"role": "assistant", "message": {"content": [{"type": "text", "text": "delivered seen"}]}},
+        {"type": "turn_ended", "status": "success"},
+    )
+
+    held_submission = result.submission if result is not None else submission
+    finished = adapter.poll(held_submission, now="2026-08-11T00:00:04Z")
+
+    assert finished is not None and finished.decision is not None
+    assert finished.decision.status is CompletionStatus.COMPLETED
+    assert finished.decision.reason != "reply_delivery_sent"
 
 
 def test_cursor_pane_restore_requires_resubmission() -> None:

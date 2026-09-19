@@ -145,8 +145,9 @@ class GrokPaneExecutionAdapter:
         if pane_dead is not None:
             return pane_dead
 
-        if bool(state.get('reply_delivery_complete_on_dispatch')):
-            return _reply_delivery_result(submission, state, now=now)
+        # Reply deliveries no longer complete at dispatch: the anchored event
+        # stream below owns the delivery turn and holds the slot until the
+        # anchored turn terminalizes.
 
         events_root = Path(str(state.get('events_root') or ''))
         events, offsets = read_new_grok_events(events_root, dict(state.get('event_offsets') or {}))
@@ -365,33 +366,6 @@ def _content_text(value: object) -> str:
         return str(value['text'])
     return _content_text(value.get('content'))
 
-
-def _reply_delivery_result(
-    submission: ProviderSubmission,
-    state: dict[str, object],
-    *,
-    now: str,
-) -> ProviderPollResult:
-    decision = CompletionDecision(
-        terminal=True,
-        status=CompletionStatus.COMPLETED,
-        reason='reply_delivery_sent',
-        confidence=CompletionConfidence.OBSERVED,
-        reply='',
-        anchor_seen=True,
-        reply_started=False,
-        reply_stable=True,
-        provider_turn_ref=str(state.get('pane_id') or submission.job_id),
-        source_cursor=None,
-        finished_at=now,
-        diagnostics={
-            'reply_delivery': True,
-            'delivery_status': 'sent',
-            'submission_mode': _MODE,
-            'provider': submission.provider,
-        },
-    )
-    return ProviderPollResult(submission=submission, decision=decision)
 
 
 def _terminal_decision(

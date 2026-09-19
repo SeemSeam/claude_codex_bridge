@@ -299,6 +299,15 @@ class ParsedDoctorCommand:
 
 
 @dataclass(frozen=True)
+class ParsedScreenCommand:
+    project: str | None
+    agent_name: str
+    lines: int = 0
+    json_output: bool = False
+    kind: str = 'screen'
+
+
+@dataclass(frozen=True)
 class ParsedLogsCommand:
     project: str | None
     agent_name: str
@@ -325,6 +334,7 @@ __all__ = [
     'ParsedKillCommand',
     'ParsedLayoutCommand',
     'ParsedLogsCommand',
+    'ParsedScreenCommand',
     'ParsedLoopCapacityCommand',
     'ParsedLoopTopologyCommand',
     'ParsedLoopRunOnceCommand',

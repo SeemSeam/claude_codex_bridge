@@ -264,11 +264,11 @@ class CursorPaneExecutionAdapter:
             state["started_at"] = now
             state["prompt_deferred_until_ready"] = False
             updated = replace(submission, runtime_state=state)
-            if bool(state.get("reply_delivery_complete_on_dispatch")):
-                return _reply_delivery_result(updated, state, now=now)
+            # Sending is transport only: the anchored transcript flow below
+            # owns the delivery turn and holds the slot until turn end.
             return ProviderPollResult(submission=updated, items=(), decision=None)
-        if bool(state.get("reply_delivery_complete_on_dispatch")):
-            return _reply_delivery_result(submission, state, now=now)
+        # Reply deliveries continue into the anchored transcript flow; there
+        # is no dispatch-completion shortcut on this path.
 
         cursor_home = Path(str(state.get("cursor_home") or ""))
         matched_path = str(state.get("matched_transcript_path") or "")
@@ -459,33 +459,6 @@ def _cursor_pane_status(backend: object, pane_id: str) -> str:
 def _cursor_pane_busy(backend: object, pane_id: str) -> bool:
     return _cursor_pane_status(backend, pane_id) != "idle"
 
-
-def _reply_delivery_result(
-    submission: ProviderSubmission,
-    state: dict[str, object],
-    *,
-    now: str,
-) -> ProviderPollResult:
-    decision = CompletionDecision(
-        terminal=True,
-        status=CompletionStatus.COMPLETED,
-        reason="reply_delivery_sent",
-        confidence=CompletionConfidence.OBSERVED,
-        reply="",
-        anchor_seen=True,
-        reply_started=False,
-        reply_stable=True,
-        provider_turn_ref=str(state.get("pane_id") or submission.job_id),
-        source_cursor=None,
-        finished_at=now,
-        diagnostics={
-            "reply_delivery": True,
-            "delivery_status": "sent",
-            "submission_mode": _MODE,
-            "provider": submission.provider,
-        },
-    )
-    return ProviderPollResult(submission=submission, decision=decision)
 
 
 def _terminal_decision(
