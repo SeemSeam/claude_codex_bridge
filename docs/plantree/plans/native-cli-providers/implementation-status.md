@@ -5,6 +5,11 @@ Last updated: 2026-09-05
 
 ## Current Phase
 
+2026-09-19 local candidate: [OMP exact context resume](topics/omp-context-resume.md)
+implemented in OMP launcher/session/extension with 236 passing tests including
+isolated real OMP RPC history loading. Not installed or released. Next: review
+and controlled CCB-managed restart qualification; original demo remains untouched.
+
 Native completion pivot is implemented in source and `v7.5.0` has been
 published. Kimi, DeepSeek/DeepCode, AGY, and MiMo now use provider-native
 session/event logs or structured result streams for completion detection

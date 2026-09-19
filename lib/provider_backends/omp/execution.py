@@ -50,7 +50,8 @@ class OmpExecutionAdapter:
             "restore_detail": (
                 "Visible-pane jobs rebind to the exact live OMP extension "
                 "instance; persisted omp_run jobs retain the headless "
-                "resubmit contract"
+                "resubmit contract. Pane relaunch separately selects a validated "
+                "observed native conversation with --resume; see omp_resume_status"
             ),
         }
 

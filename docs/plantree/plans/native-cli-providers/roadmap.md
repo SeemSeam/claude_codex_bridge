@@ -5,6 +5,11 @@ Last updated: 2026-09-05
 
 ## Status Summary
 
+- OMP exact conversation resume: implemented and verified locally (2026-09-19;
+  236 tests including isolated real OMP history loading; not installed/released).
+  [Scope and verification](topics/omp-context-resume.md). User authorized fixing
+  the observed fresh-context restart; installed sessions remain untouched.
+
 - Current status: native completion pivot has landed in source and `v7.5.0`
   has been published. Kimi, DeepSeek/DeepCode, AGY, and MiMo no longer use
   `CCB_DONE` as their primary completion signal. Kimi and OpenCode inherited
