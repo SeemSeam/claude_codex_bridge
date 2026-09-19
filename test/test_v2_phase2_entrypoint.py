@@ -2086,7 +2086,8 @@ def test_ccb_opencode_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch
         job_id = _extract_accepted_job_id(stdout, target='demo')
 
         pend = _wait_for_phase2_status(project_root, job_id, 'failed', timeout=5.0)
-        assert 'reply: \n' in pend or pend.rstrip().endswith('reply:')
+        assert 'ccb screen demo' in pend
+        assert f'ccb trace {job_id}' in pend
         assert 'completion_reason: pane_dead' in pend
         assert 'completion_confidence: degraded' in pend
 
@@ -2353,7 +2354,8 @@ def test_ccb_droid_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch, t
         job_id = _extract_accepted_job_id(stdout, target='demo')
 
         pend = _wait_for_phase2_status(project_root, job_id, 'failed', timeout=5.0)
-        assert 'reply: \n' in pend or pend.rstrip().endswith('reply:')
+        assert 'ccb screen demo' in pend
+        assert f'ccb trace {job_id}' in pend
         assert 'completion_reason: pane_dead' in pend
         assert 'completion_confidence: degraded' in pend
 
