@@ -2274,8 +2274,9 @@ def test_native_cli_launcher_builds_provider_state_payload(
     assert payload[f'{provider}_state_dir'] == str(state_dir)
     assert payload[f'{provider}_home'] == str(state_dir / 'home')
     assert payload[f'{provider}_data_dir'] == str(state_dir / 'data')
-    if provider == 'pi':
-        assert 'pi_session_id' not in payload
+    if provider in {'pi', 'omp'}:
+        # CCB launch identity is not a provider-native conversation identity.
+        assert f'{provider}_session_id' not in payload
     else:
         assert payload[f'{provider}_session_id'] == 'sess-native'
     assert f'HOME={shlex.quote(str(state_dir / "home"))}' in start_cmd

@@ -34,6 +34,8 @@ open (see roadmap).
 - [Screen and abnormal reply guidance](evidence/screen-caller-inspection-20260919.md):
   read-only `ccb screen <agent>` and caller-owned abnormal-result inspection
   landed in source; real Codex/OMP pane capture verified without daemon restart.
+- [v8.6.19 release validation](evidence/release-8619-validation-20260919.md):
+  source commits, full-suite failure audit, corrected rerun and package gates.
 
 - [Unified FIFO design](topics/unified-message-fifo.md): ordering, execution
   ownership, recovery, implementation slices, acceptance tests, and the Q1

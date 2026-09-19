@@ -2801,7 +2801,8 @@ def test_ccbd_socket_opencode_pane_dead_becomes_failed_degraded(monkeypatch, tmp
     job_id = submit['job_id']
 
     failed = _wait_for_job_status(client, job_id, 'failed', timeout=3.0)
-    assert failed['reply'] == ''
+    assert 'ccb screen demo' in failed['reply']
+    assert f'ccb trace {job_id}' in failed['reply']
     assert failed['completion_reason'] == 'pane_dead'
     assert failed['completion_confidence'] == 'degraded'
 
@@ -2981,7 +2982,8 @@ def test_ccbd_socket_droid_pane_dead_becomes_failed_degraded(monkeypatch, tmp_pa
     job_id = submit['job_id']
 
     failed = _wait_for_job_status(client, job_id, 'failed', timeout=3.0)
-    assert failed['reply'] == ''
+    assert 'ccb screen demo' in failed['reply']
+    assert f'ccb trace {job_id}' in failed['reply']
     assert failed['completion_reason'] == 'pane_dead'
     assert failed['completion_confidence'] == 'degraded'
 
