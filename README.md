@@ -315,7 +315,7 @@ Supported managed Agents receive the built-in `ask`, `ccb-clear`, `ccb-compact`,
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="assets/weixin.png?v=da517368" alt="CCB WeChat group 2" width="240">
+  <img src="assets/weixin.png?v=5d912c6b" alt="CCB WeChat group 2" width="240">
 </p>
 
 > WeChat group QR codes are valid for seven days. If this one has expired, add `seemseam-com` to request the latest invitation.
