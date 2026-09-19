@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.6.19 (2026-09-19)
+
+- Unified per-agent chronological ask/reply queues, held until provider processing turns end.
+- Added read-only `ccb screen <agent>` with bounded scrollback and JSON output.
+- Added English caller inspection guidance for empty and abnormal replies without automatic empty-result retries.
+- Restored the exact observed OMP native conversation on relaunch and pane recovery.
+- Full English and Chinese notes: [v8.6.19](docs/releases/v8.6.19.md).
+
 ## v8.6.18 (2026-09-17)
 
 - Clarified Mobile Agent activity/unread states and tightened chat layout.

@@ -1,7 +1,7 @@
 # OMP exact conversation resume
 
 Date: 2026-09-19
-Status: Implemented and verified locally; not committed, installed or released
+Status: Committed in 4b966363b; included in the v8.6.19 release candidate
 
 User authorized OMP context restoration aligned with other providers. Restart
 must preserve the exact observed native conversation, not merely relaunch a pane.
