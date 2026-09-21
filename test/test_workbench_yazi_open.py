@@ -13,6 +13,11 @@ import uuid
 
 import pytest
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 CI uses the existing tomli dependency.
+    import tomli as tomllib
+
 from cli.tools_runtime import workbench
 
 
@@ -26,7 +31,6 @@ from cli.tools_runtime import workbench
     ('Linux', '6.8.0', {'WSL_INTEROP': '/run/WSL/1_interop'}, ['wslview', 'gio'], 'wslview'),
 ])
 def test_system_opener_preserves_multiple_paths(tmp_path, monkeypatch, system, release, wsl_env, tools, expected):
-    import tomllib
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'data'))
     paths = workbench._paths()
     profile = paths['yazi_safe_profile']
@@ -98,7 +102,6 @@ def test_native_file_open_and_directory_navigation(tmp_path, monkeypatch, rich):
     profile.mkdir(parents=True)
     workbench._write_yazi_config(paths, rich=rich)
     # Parsing also catches invalid generated TOML before native startup.
-    import tomllib
     for name in ('yazi.toml', 'keymap.toml'):
         tomllib.loads((profile / name).read_text())
     files = tmp_path / 'files'
