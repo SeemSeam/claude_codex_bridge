@@ -5,6 +5,12 @@ Branch: `release/v8.7.1`, based on local `9e8ff7420` (`release/v8.7.0`).
 Scope: Rich system-default file opening, macOS/WSL routing, version metadata,
 bilingual documentation and local commit. No public mutation authorized here.
 
+Publication follow-up: on 2026-09-21 the owner explicitly requested publishing
+8.7.1. The release operation now includes fast-forwarding the default branch,
+pushing the immutable tag, GitHub assets/notes and npm through existing workflows.
+The testing-only input-guard limitations remain disclosed, not resolved by the
+publication request. Public outcome must be verified separately.
+
 ## Checks
 
 - Rich generation and opener tests: **34 passed**, including 2 real Yazi 26.5.6
