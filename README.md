@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.6.13-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.0-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -32,7 +32,7 @@
 
 [中文](README/zh.md) | **English** | [日本語](README/ja.md) | [Français](README/fr.md) | [Deutsch](README/de.md) | [العربية](README/ar.md) | [Español](README/es.md) | [Português](README/pt.md) | [한국어](README/ko.md) | [Русский](README/ru.md)
 
-[Quick Start](#quick-start) · [Mobile App](#mobile-app) · [Rich Mode](#rich-mode) · [Configure Agents](#configure-agents) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+[Quick Start](#quick-start) · [Message Queues](#message-queues) · [Mobile App](#mobile-app) · [Rich Mode](#rich-mode) · [Configure Agents](#configure-agents) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-en-light.png" alt="CCB visible multi-agent CLI workspace" width="960">
@@ -51,6 +51,47 @@
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
+
+<a id="message-queues"></a>
+
+## New in 8.7.0: Humans and Agents Share the Queue
+
+### Human / agent queue mode
+
+Incoming agent messages wait while you compose a draft, avoiding interruption
+or accidental submission of your text together with a returned result. CCB first
+waits for the target agent's current turn to end, then checks the input box for
+the message at the front of the queue.
+
+- Empty input: deliver the next eligible message in queue order.
+- Nonempty input: wait up to **180 seconds**. Clearing or submitting your draft
+  releases the message once the agent is idle again.
+- Still nonempty after 180 seconds: clear the draft once, confirm the box is
+  empty, then deliver. Continuing to type does **not** reset this timer; this
+  mode does not preserve a draft indefinitely.
+- Busy, modal or unrecognized input state: keep waiting without clearing or
+  sending. Closing the modal or restoring the normal input surface allows
+  checks to continue.
+
+### Agent / agent queue mode
+
+Requests (`ask`) and returned results (`back`) share one chronological FIFO
+queue per target agent. Each message waits until the target finishes processing
+the previous one, including returned results. Later replies cannot interrupt
+an earlier reply's processing turn; different agents can still work in parallel.
+
+**We recommend testing these queue modes with Claude, Codex and OMP in managed
+tmux panes.** Input protection for other providers will follow; their existing
+delivery behavior is unchanged and should not be assumed to protect drafts.
+OMP currently requires its default Status Band input layout and the new managed
+extension. After upgrading, restart the project when idle to load the new daemon
+and provider extensions.
+
+This is a first version for testing. Codex/Claude deadline clearing uses `Ctrl-C`;
+a simultaneous user action can still cause interruption. The final screen-check,
+paste and Enter sequence is not atomic against typing at that exact instant.
+See the [8.7.0 notes](docs/releases/v8.7.0.md) for tested
+scope, upgrade guidance and the Codex remote-session recovery limitation.
 
 <a id="how-to-install"></a>
 
@@ -242,9 +283,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.6.13 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.0 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.6.13 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.6.13/ccb-mobile-v8.6.13.apk)
+- [Download CCB Mobile v8.7.0 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.0/ccb-mobile-v8.7.0.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 

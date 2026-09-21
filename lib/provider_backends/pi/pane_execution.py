@@ -31,6 +31,7 @@ from provider_execution.common import (
     send_prompt_to_runtime_target,
 )
 from terminal_runtime import get_backend_for_session
+from provider_execution.draft_guard import initial_guard_state, allow_submission_send, guarded_send, send_unknown_result
 
 from provider_backends.native_cli_support.prompt import (
     clean_native_reply,
@@ -160,6 +161,7 @@ class PiPaneExecutionAdapter:
         )
         actor = _text(job.agent_name)
         state: dict[str, object] = {
+            **(initial_guard_state('omp', prepared.backend, session_data) if self.provider == 'omp' else {}),
             "mode": self.pane_mode,
             "provider": self.provider,
             "session_field_prefix": self.session_field_prefix,
@@ -509,6 +511,7 @@ class PiPaneExecutionAdapter:
         state = dict(submission.runtime_state)
         state.pop("backend", None)
         state.pop("pending_prompt", None)
+        state.pop("_draft_guard", None)
         return state
 
     def resume(
@@ -634,6 +637,9 @@ def _dispatch_if_ready(
             detail=_provider_reason(state, "completion_extension_not_ready"),
         )
     if observation.busy:
+        guard = state.get('_draft_guard')
+        if guard is not None:
+            guard.reset('provider_busy')
         state["runtime_instance_id"] = observation.runtime_instance_id
         state["event_offset"] = observation.next_offset
         _persist_observed_native_session(state, observation, observed_at=now)
@@ -654,6 +660,17 @@ def _dispatch_if_ready(
     state["runtime_instance_id"] = observation.runtime_instance_id
     state["event_offset"] = observation.next_offset
     _persist_observed_native_session(state, observation, observed_at=now)
+    if state.get('draft_guard_enabled'):
+        if not allow_submission_send('omp', state):
+            return replace(submission, runtime_state=state)
+        def send():
+            _append_dispatch(state, prompt=prompt, now=now)
+            send_prompt_to_runtime_target(state.get('backend'), _text(state.get('pane_id')), prompt)
+        guarded_send(state, send)
+        state['prompt_sent_at'] = now
+        state.pop('pending_prompt', None)
+        updated = replace(submission, runtime_state=state)
+        return send_unknown_result(updated, now=now) or updated
     try:
         _append_dispatch(state, prompt=prompt, now=now)
         send_prompt_to_runtime_target(

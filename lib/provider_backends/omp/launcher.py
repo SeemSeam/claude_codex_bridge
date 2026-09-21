@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 from pathlib import Path
 
 from provider_backends.native_cli_support import NativeCliLaunchConfig
@@ -106,6 +107,7 @@ def _launch_config() -> NativeCliLaunchConfig:
         visible_raw_env_names=(
             "CCB_OMP_COMPLETION_EVENTS",
             "CCB_OMP_DISPATCH_EVENTS",
+            "CCB_OMP_COMPOSER_SOCKET",
         ),
     )
 
@@ -184,6 +186,8 @@ def _build_session_payload(
     payload.update(
         {
             "omp_completion_schema_version": _OMP_COMPLETION_SCHEMA_VERSION,
+            "omp_draft_guard_version": 1,
+            "omp_draft_guard_socket": str(prepared_state.get("omp_draft_guard_socket") or ""),
             "omp_completion_extension": str(
                 prepared_state.get("omp_completion_extension") or ""
             ),
@@ -250,6 +254,7 @@ def _omp_visible_env(prepared_state: dict[str, object]) -> dict[str, str]:
         "PI_CODING_AGENT_SESSION_DIR": str(session_dir),
         "CCB_OMP_COMPLETION_EVENTS": str(completion_events),
         "CCB_OMP_DISPATCH_EVENTS": str(dispatch_events),
+        "CCB_OMP_COMPOSER_SOCKET": str(prepared_state.get("omp_draft_guard_socket") or ""),
     }
 
 
@@ -290,6 +295,10 @@ def _materialize_completion_extension(
     prepared_state["omp_completion_extension"] = str(extension_path)
     prepared_state["omp_completion_event_log"] = str(completion_events)
     prepared_state["omp_dispatch_event_log"] = str(dispatch_events)
+    socket_token = hashlib.sha256(str(completion_events.resolve()).encode()).hexdigest()[:24]
+    prepared_state["omp_draft_guard_socket"] = str(
+        Path(tempfile.gettempdir()) / f"ccb-editor-{socket_token}.sock"
+    )
 
 
 def _write_owner_only(path: Path, content: str) -> None:
@@ -383,7 +392,11 @@ def _omp_completion_extension_source() -> str:
         '  pi.on("turn_end", async (event: any) => {',
         '  pi.on("turn_end", async (event: any, ctx: any) => {\n    observeNativeSession(ctx);',
     )
-    return source
+    from .composer_bridge import BRIDGE, IMPORTS
+    return IMPORTS + source.replace(
+        'export default function ccbOmpCompletion(pi: any): void {',
+        'export default function ccbOmpCompletion(pi: any): void {' + BRIDGE,
+    )
 
 
 __all__ = ["build_runtime_launcher", "prepare_launch_context"]

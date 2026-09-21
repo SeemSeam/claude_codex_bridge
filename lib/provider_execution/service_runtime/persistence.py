@@ -72,6 +72,11 @@ def persist_submission(
                 runtime_state = dict(exported)
                 resume_capable = callable(getattr(adapter, "resume", None))
     runtime_state = with_reliability_state(runtime_state, submission.runtime_state)
+    if submission.runtime_state.get('draft_guard_enabled'):
+        runtime_state.update({key: value for key, value in submission.runtime_state.items()
+                              if key.startswith('draft_guard_') or key == 'prompt_sent'})
+        if submission.provider == 'codex' and submission.runtime_state.get('prompt_sent') is False:
+            runtime_state['pending_prompt'] = submission.runtime_state.get('pending_prompt', '')
     persisted = PersistedExecutionState(
         submission=ProviderSubmission(
             job_id=submission.job_id,

@@ -170,6 +170,15 @@ def _freeze_next_job_id(app: CcbdApp, monkeypatch: pytest.MonkeyPatch, job_id: s
     monkeypatch.setattr(app.dispatcher, '_new_id', _new_id)
 
 
+@pytest.fixture
+def noninteractive_socket_transport(monkeypatch):
+    # These protocol tests inject runtimes/readers without a real composer.
+    # Model their unprotected fake transport at the new pre-claim boundary;
+    # actual empty/draft/unknown FIFO behavior is in test_input_draft_fifo.py.
+    monkeypatch.setattr('provider_execution.draft_guard.resolve_job_target', lambda job, context: None)
+
+
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_roundtrip_and_shutdown(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
     ctx = _prepare_project(project_root, _single_agent_config_text('codex', 'codex'))
@@ -258,6 +267,7 @@ def test_ccbd_socket_roundtrip_and_shutdown(tmp_path: Path) -> None:
     assert app.mount_manager.load_state().mount_state.value == 'unmounted'
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_get_and_watch_resolve_callback_root_final_reply(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-callback-get-watch'
     ctx = _prepare_project(project_root, _agent_config_text(('main', 'codex'), ('worker', 'codex')))
@@ -1276,6 +1286,7 @@ def test_ccbd_missing_runtime_is_proactively_mounted_when_start_policy_exists(tm
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_queue_reports_registered_agent_mailboxes(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-queue'
     ctx = _prepare_project(
@@ -1521,6 +1532,7 @@ def test_ccbd_socket_rejects_cmd_sender(tmp_path: Path) -> None:
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_resubmit_creates_new_message_record_with_origin(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-resubmit-socket'
     ctx = _prepare_project(project_root, _single_agent_config_text('codex', 'codex'))
@@ -1573,6 +1585,7 @@ def test_ccbd_resubmit_creates_new_message_record_with_origin(tmp_path: Path) ->
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_retry_creates_new_attempt_under_existing_message(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-retry-socket'
     ctx = _prepare_project(project_root, _single_agent_config_text('codex', 'codex'))
@@ -1746,6 +1759,7 @@ def test_ccbd_attach_empty_binding_fields_clear_previous_refs(tmp_path: Path) ->
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_codex_protocol_turn_completes_via_tracker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_adapter_module
 
@@ -1881,6 +1895,7 @@ def test_ccbd_socket_codex_protocol_turn_completes_via_tracker(monkeypatch, tmp_
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_codex_protocol_turn_handles_interrupted_abort(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_adapter_module
 
@@ -1997,6 +2012,7 @@ def test_ccbd_socket_codex_protocol_turn_handles_interrupted_abort(monkeypatch, 
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_claude_session_boundary_completes_via_tracker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import claude as claude_adapter_module
 
@@ -2099,6 +2115,7 @@ def test_ccbd_socket_claude_session_boundary_completes_via_tracker(monkeypatch, 
     assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures('noninteractive_socket_transport')
 def test_ccbd_socket_claude_turn_duration_completion_without_done_marker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import claude as claude_adapter_module
 

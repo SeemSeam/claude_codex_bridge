@@ -64,6 +64,7 @@ def has_semantic_progress_item(result: ProviderPollResult) -> bool:
 def semantic_progress_marker(submission: ProviderSubmission) -> tuple[object, ...]:
     runtime_state = dict(submission.runtime_state)
     return (
+        bool(runtime_state.get('prompt_sent')),
         submission.reply,
         submission.status,
         submission.reason,
@@ -96,6 +97,8 @@ def timeout_poll_result(
     adapter,
     now: str,
 ) -> ProviderPollResult | None:
+    if submission.runtime_state.get('draft_guard_enabled') and submission.runtime_state.get('prompt_sent') is False:
+        return None  # Deliberate human-draft wait is not provider execution.
     policy = timeout_policy_for(service, job_id=job_id, adapter=adapter)
     if policy is None:
         return None

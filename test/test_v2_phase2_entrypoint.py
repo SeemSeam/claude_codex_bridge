@@ -3275,6 +3275,8 @@ def test_ccb_two_named_codex_agents_concurrent_ask_isolated(monkeypatch, tmp_pat
     monkeypatch.setattr(codex_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
     monkeypatch.setattr(codex_adapter_module, 'CodexLogReader', FakeReader)
     app = CcbdApp(project_root)
+    # Pre-claim inspection must resolve the same fake transport as the sender.
+    monkeypatch.setattr('terminal_runtime.get_backend_for_session', lambda data: FakeBackend())
     _freeze_job_ids(app, monkeypatch, *request_ids)
     monkeypatch.setattr(app.health_monitor, 'check_all', lambda: {})
     thread = threading.Thread(target=app.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True)
@@ -3497,6 +3499,8 @@ def test_ccb_two_named_codex_agents_recover_after_ccbd_restart(monkeypatch, tmp_
     monkeypatch.setattr(codex_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
     monkeypatch.setattr(codex_adapter_module, 'CodexLogReader', FakeReader)
     app1 = CcbdApp(project_root)
+    # Pre-claim inspection must resolve the same fake transport as the sender.
+    monkeypatch.setattr('terminal_runtime.get_backend_for_session', lambda data: FakeBackend())
     _freeze_job_ids(app1, monkeypatch, *request_ids)
     thread1 = threading.Thread(target=app1.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True)
     thread1.start()
@@ -3688,6 +3692,8 @@ def test_ccb_two_named_claude_agents_concurrent_ask_isolated(monkeypatch, tmp_pa
     monkeypatch.setattr(claude_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
     monkeypatch.setattr(claude_adapter_module, 'ClaudeLogReader', FakeReader)
     app = CcbdApp(project_root)
+    # Pre-claim inspection must resolve the same fake transport as the sender.
+    monkeypatch.setattr('terminal_runtime.get_backend_for_session', lambda data: FakeBackend())
     _freeze_job_ids(app, monkeypatch, *request_ids)
     thread = threading.Thread(target=app.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True)
     thread.start()

@@ -1,0 +1,247 @@
+[
+  {
+    "provider": "codex",
+    "case": "initial",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 10
+  },
+  {
+    "provider": "codex",
+    "case": "single",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m PROBE_DRAFT\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 13,
+    "cursor_y": 10
+  },
+  {
+    "provider": "codex",
+    "case": "multiline",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m FIRST_LINE\n  SECOND_LINE\n  THIRD_LINE\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 12,
+    "cursor_y": 12
+  },
+  {
+    "provider": "codex",
+    "case": "blank_first_line",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m\n  SECOND_LINE\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 13,
+    "cursor_y": 11
+  },
+  {
+    "provider": "codex",
+    "case": "trailing_blank_lines",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m FIRST_LINE\n\n\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 12
+  },
+  {
+    "provider": "codex",
+    "case": "spaces",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 5,
+    "cursor_y": 10
+  },
+  {
+    "provider": "codex",
+    "case": "newlines",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m\n\n\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 12
+  },
+  {
+    "provider": "codex",
+    "case": "unicode",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m 中文输入测试🙂\n  下一行\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 8,
+    "cursor_y": 11
+  },
+  {
+    "provider": "codex",
+    "case": "wrap",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRA\n  PPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPE\n  D_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 108,
+    "cursor_y": 12
+  },
+  {
+    "provider": "codex",
+    "case": "large_paste",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m \u001b[38;5;6m[Pasted Content 1559 chars]\u001b[39m\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 29,
+    "cursor_y": 10
+  },
+  {
+    "provider": "codex",
+    "case": "model_picker",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n  \u001b[1mSelect Model and Effort\u001b[0m\n  \u001b[2mAccess legacy models by running codex -m <model_name> or in your config.toml\u001b[0m\n\n\u001b[1m\u001b[38;5;6m› 1. gpt-6-astra (current)  Our most capable model for complex, demanding work.\u001b[0m\n  2. gpt-5.6-sol            \u001b[2mLatest frontier agentic coding model.\u001b[0m\n  3. gpt-5.6-terra          \u001b[2mBalanced agentic coding model for everyday work.\u001b[0m\n  4. gpt-5.6-luna           \u001b[2mFast and affordable agentic coding model.\u001b[0m\n  5. gpt-5.5                \u001b[2mFrontier model for complex coding, research, and real-world work.\u001b[0m\n\n  \u001b[2mPress enter to confirm or esc to go back\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 110,
+    "cursor_y": 19
+  },
+  {
+    "provider": "codex",
+    "case": "small_empty",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\n│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\n│                                           │\n│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\n│ directory: \u001b[0m~\u001b[2m                              │\n╰───────────────────────────────────────────╯\n\n\u001b[0m  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 10
+  },
+  {
+    "provider": "codex",
+    "case": "small_multiline",
+    "text": "\n\n\u001b[1m›\u001b[0m NARROW_LONG_LINE_NARROW_LONG_LINE_NARROW_L\n  ONG_LINE_NARROW_LONG_LINE_NARROW_LONG_LINE\n  _NARROW_LONG_LINE_NARROW_LONG_LINE_NARROW_\n  LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_LIN\n  E_NARROW_LONG_LINE_NARROW_LONG_LINE_NARROW\n  _LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_LI\n  NE_NARROW_LONG_LINE_NARROW_LONG_LINE_NARRO\n  W_LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_L\n  INE_NARROW_LONG_LINE_NARROW_LONG_LINE_NARR\n  OW_LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_\n  LINE_\n  TAIL_LINE\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[39m\n",
+    "cursor_x": 11,
+    "cursor_y": 13
+  },
+  {
+    "provider": "claude",
+    "case": "initial",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on · ? for shortcuts · ← for agents\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 6
+  },
+  {
+    "provider": "claude",
+    "case": "single",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ PROBE_DRAFT\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 13,
+    "cursor_y": 6
+  },
+  {
+    "provider": "claude",
+    "case": "multiline",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ FIRST_LINE\n  SECOND_LINE\n  THIRD_LINE\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m                                                                     \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 12,
+    "cursor_y": 8
+  },
+  {
+    "provider": "claude",
+    "case": "blank_first_line",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \n  SECOND_LINE\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m                                                                     \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 13,
+    "cursor_y": 7
+  },
+  {
+    "provider": "claude",
+    "case": "trailing_blank_lines",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ FIRST_LINE\n\n  \u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m                                                                     \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 8
+  },
+  {
+    "provider": "claude",
+    "case": "spaces",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯    \u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 5,
+    "cursor_y": 6
+  },
+  {
+    "provider": "claude",
+    "case": "newlines",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \n\n  \u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m                                                                     \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 8
+  },
+  {
+    "provider": "claude",
+    "case": "unicode",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ 中文输入测试🙂\n  下一行\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m                                                                     \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 8,
+    "cursor_y": 7
+  },
+  {
+    "provider": "claude",
+    "case": "wrap",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WR\n  APPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAP\n  PED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPED_WRAPPE\n  D_\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 4,
+    "cursor_y": 9
+  },
+  {
+    "provider": "claude",
+    "case": "large_paste",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ [Pasted text #2 +59 lines]\u001b[7m \u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246mpaste again to expand\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 28,
+    "cursor_y": 6
+  },
+  {
+    "provider": "claude",
+    "case": "model_picker",
+    "text": "\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude\u001b[39m\n\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;246m/model\u001b[39m\n\n\u001b[38;5;153m\u001b[49m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[1m\u001b[38;5;153mSelect model\u001b[0m\n  \u001b[38;5;246mSwitch between\u001b[39m \u001b[38;5;246mClaude\u001b[39m \u001b[38;5;246mmodels.\u001b[39m \u001b[38;5;246mYour pick\u001b[39m \u001b[38;5;246mbecomes\u001b[39m \u001b[38;5;246mthe default for new sessions. For other/previous\u001b[39m \u001b[38;5;246mmodel \u001b[39m\n  \u001b[38;5;246mnames, specify with --model.\u001b[39m\n\n  \u001b[38;5;153m❯\u001b[39m \u001b[38;5;246m1. \u001b[38;5;114mDefault (recommended)\u001b[39m \u001b[38;5;114m✔\u001b[39m  \u001b[38;5;246mUse the default model (currently Opus 5 (1M context)) · $5/$25 per Mtok\u001b[39m\n    \u001b[38;5;246m2. \u001b[39mOpus (1M context)        \u001b[38;5;246mOpus 5 with 1M context · Best for everyday, complex tasks · $5/$25 per Mtok\u001b[39m\n    \u001b[38;5;246m3. \u001b[39mFable                    \u001b[38;5;174mFable 5.1\u001b[38;5;246m ·\u001b[39m \u001b[38;5;246mMost\u001b[39m \u001b[38;5;246mcapable for your\u001b[39m \u001b[38;5;246mhardest and longest-running tasks · \u001b[39m\n                                \u001b[38;5;246m$10/$50 per Mtok\u001b[39m\n    \u001b[38;5;246m4. \u001b[39mSonnet                   \u001b[38;5;246mSonnet\u001b[39m \u001b[38;5;246m5 ·\u001b[39m \u001b[38;5;246mEfficient for\u001b[39m \u001b[38;5;246mroutine\u001b[39m \u001b[38;5;246mtasks · $2/$10 per\u001b[39m \u001b[38;5;246mMtok\u001b[39m\n    \u001b[38;5;246m5. \u001b[39mSonnet 5 (1M context)    \u001b[38;5;246mSonnet 5 for long sessions · $2/$10 per Mtok\u001b[39m\n    \u001b[38;5;246m6. \u001b[39mHaiku                    \u001b[38;5;246mHaiku 4.5 · Fastest for\u001b[39m \u001b[38;5;246mquick answers · $1/$5\u001b[39m \u001b[38;5;246mper\u001b[39m \u001b[38;5;246mMtok\u001b[39m\n\n  \u001b[38;5;174m●\u001b[38;5;246m High effort (default)\u001b[38;5;239m ←/→ to adjust\u001b[39m\n\n  \u001b[38;5;246mEnter\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246mset\u001b[39m \u001b[38;5;246mas\u001b[39m \u001b[38;5;246mdefault\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246ms\u001b[39m \u001b[38;5;246mto use this session only\u001b[39m \u001b[38;5;246m· Esc to cancel\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 12
+  },
+  {
+    "provider": "claude",
+    "case": "small_empty",
+    "text": "           \u001b[1mClaude\u001b[0m \u001b[1mCode\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[38;5;246mOpus\u001b[39m \u001b[38;5;246m5\u001b[39m \u001b[38;5;246m(1M\u001b[39m \u001b[38;5;246mcontext)\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mAPI\u001b[39m \u001b[38;5;246mUsage\u001b[39m \u001b[38;5;246mBilling\u001b[39m\n\u001b[38;5;174m \u001b[39m \u001b[38;5;174m▝▝\u001b[39m \u001b[38;5;174m▝▝\u001b[39m    \u001b[38;5;246m/…/claude\u001b[39m\n\n\n\u001b[38;5;244m─────────────────────────────────────────────\n\u001b[39m❯ \u001b[7m \u001b[0m\n\u001b[38;5;244m─────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246mpaste\u001b[39m \u001b[38;5;246magain to expand\u001b[39m\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 7
+  },
+  {
+    "provider": "claude",
+    "case": "small_multiline",
+    "text": "❯ NARROW_LONG_LINE_NARROW_LONG_LINE_NARROW_\n  LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_LI\n  NE_NARROW_LONG_LINE_NARROW_LONG_LINE_NARR\n  OW_LONG_LINE_NARROW_LONG_LINE_NARROW_LONG\n  _LINE_NARROW_LONG_LINE_NARROW_LONG_LINE_N\n  ARROW_LONG_LINE_NARROW_LONG_LINE_NARROW_L\n  ONG_LINE_NARROW_LONG_LINE_NARROW_LONG_LIN\n  E_NARROW_LONG_LINE_NARROW_LONG_LINE_NARRO\n  W_LONG_LINE_NARROW_LONG_LINE_NARROW_LONG_\n  LINE_NARROW_LONG_LINE_NARROW_LONG_LINE_NA\n  RROW_LONG_LINE_\n  TAIL_LINE\u001b[7m \u001b[0m\n\u001b[38;5;244m─────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246mpaste\u001b[39m \u001b[38;5;246magain\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246mexpand\u001b[39m\n                      \u001b[38;5;246mctrl+g\u001b[39m \u001b[38;5;246mto\u001b[39m \u001b[38;5;246medit\u001b[39m \u001b[38;5;246min\u001b[39m \u001b[38;5;246mVim\u001b[39m\n\n",
+    "cursor_x": 11,
+    "cursor_y": 11
+  },
+  {
+    "provider": "claude",
+    "case": "normal_initial",
+    "text": "\n\u001b[38;5;174m ▐\u001b[48;5;16m▛███▛█\u001b[39m\u001b[49m   \u001b[1mClaude Code\u001b[0m \u001b[38;5;246mv2.1.278\u001b[39m\n\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mSonnet 4.6 · API Usage Billing\u001b[39m\n\u001b[38;5;174m  ▝▝ ▝▝  \u001b[39m  \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude-normal\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mT\u001b[0;2mry \"write a test for <filepath>\"\u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on · ? for shortcuts · ← for agents\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "ghost_after_new_turn",
+    "text": "\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mSonnet 4.6 · API Usage Billing\u001b[39m\n\u001b[38;5;174m  ▝▝ ▝▝  \u001b[39m  \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude-normal\u001b[39m\n\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mPlease propose a tiny test plan. Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:39 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mWhich verification comes next? Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCogitated for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯\u001b[39m \u001b[38;5;231m/model\u001b[39m \u001b[49m\n\u001b[38;5;246m  ⎿  \u001b[39mKept model as \u001b[38;5;153mSonnet 4.6\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mGive another verification step. Do not run tools.\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0;2mun the tests\u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on · ? for shortcuts · ← for agents\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "accepted_cursor_at_start",
+    "text": "\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mSonnet 4.6 · API Usage Billing\u001b[39m\n\u001b[38;5;174m  ▝▝ ▝▝  \u001b[39m  \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude-normal\u001b[39m\n\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mPlease propose a tiny test plan. Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:39 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mWhich verification comes next? Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCogitated for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯\u001b[39m \u001b[38;5;231m/model\u001b[39m \u001b[49m\n\u001b[38;5;246m  ⎿  \u001b[39mKept model as \u001b[38;5;153mSonnet 4.6\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mGive another verification step. Do not run tools.\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0mun the tests\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246m⏸ manual mode on\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "accepted_cleared",
+    "text": "\u001b[38;5;174m▝▜\u001b[48;5;16m█████\u001b[49m█▀\u001b[39m  \u001b[38;5;246mSonnet 4.6 · API Usage Billing\u001b[39m\n\u001b[38;5;174m  ▝▝ ▝▝  \u001b[39m  \u001b[38;5;246m/var/tmp/ccb-composer-probe-U4zRvY/claude-normal\u001b[39m\n\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mPlease propose a tiny test plan. Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:39 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mWhich verification comes next? Do not run tools.\u001b[39m\n\n\u001b[38;5;231m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCogitated for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯\u001b[39m \u001b[38;5;231m/model\u001b[39m \u001b[49m\n\u001b[38;5;246m  ⎿  \u001b[39mKept model as \u001b[38;5;153mSonnet 4.6\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mGive another verification step. Do not run tools.\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\u001b[49m\n\u001b[38;5;231m●\u001b[39m Run the tests\n\n\u001b[38;5;246m✻\u001b[39m \u001b[38;5;246mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0;2mun the tests\u001b[0m\n\u001b[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;246mPress Ctrl-C again to exit\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "light_ghost",
+    "text": "\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mWhich verification comes next? Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCogitated for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯\u001b[39m \u001b[38;5;16m/model\u001b[39m \u001b[49m\n\u001b[38;5;241m  ⎿  \u001b[39mKept model as \u001b[38;5;105mSonnet 4.6\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mGive another verification step. Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\u001b[49m\n\u001b[38;5;16m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯\u001b[39m \u001b[38;5;16m/theme\u001b[39m\n\u001b[38;5;241m\u001b[49m  ⎿  \u001b[39mTheme set to light\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mTheme probe light. Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mBaked for 0s · done 10:42 AM\u001b[39m\n                                                                                            \u001b[38;5;241m● high · /effort\u001b[39m\n\u001b[38;5;246m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0;2mun the tests\u001b[0m\n\u001b[38;5;246m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;241m⏸ manual mode on · ? for shortcuts · ← for agents\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "light_accepted_at_start",
+    "text": "\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mWhich verification comes next? Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCogitated for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯\u001b[39m \u001b[38;5;16m/model\u001b[39m \u001b[49m\n\u001b[38;5;241m  ⎿  \u001b[39mKept model as \u001b[38;5;105mSonnet 4.6\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mGive another verification step. Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\u001b[49m\n\u001b[38;5;16m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[38;5;248m\u001b[48;5;255m❯\u001b[39m \u001b[38;5;16m/theme\u001b[39m\n\u001b[38;5;241m\u001b[49m  ⎿  \u001b[39mTheme set to light\n\n\u001b[38;5;248m\u001b[48;5;255m❯ \u001b[38;5;16mTheme probe light. Do not run tools.\u001b[39m\n\n\u001b[38;5;16m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[38;5;241m✻\u001b[39m \u001b[38;5;241mBaked for 0s · done 10:42 AM\u001b[39m\n                                                                                            \u001b[38;5;241m● high · /effort\u001b[39m\n\u001b[38;5;246m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0mun the tests\n\u001b[38;5;246m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[38;5;241m⏸ manual mode on\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "ansi_dark_ghost",
+    "text": "\n\u001b[37m\u001b[100m❯ \u001b[97mGive another verification step. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯ \u001b[97mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯\u001b[39m \u001b[97m/theme\u001b[39m\n\u001b[37m\u001b[49m  ⎿  \u001b[39mTheme set to light\n\n\u001b[37m\u001b[100m❯ \u001b[97mTheme probe light. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mBaked for 0s · done 10:42 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯\u001b[39m \u001b[97m/theme\u001b[39m\n\u001b[37m\u001b[49m  ⎿  \u001b[39mTheme set to dark-ansi\n\n\u001b[37m\u001b[100m❯ \u001b[97mTheme probe ANSI dark. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mWorked for 0s · done 10:43 AM\u001b[39m\n                                                                                            \u001b[37m● high · /effort\u001b[39m\n\u001b[37m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0;2mun the tests\u001b[0m\n\u001b[37m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[37m⏸ manual mode on · ? for shortcuts · ← for agents\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "claude",
+    "case": "ansi_dark_accepted_at_start",
+    "text": "\n\u001b[37m\u001b[100m❯ \u001b[97mGive another verification step. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mCrunched for 0s · done 10:40 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯ \u001b[97mCCB_PROBE_NEW_MESSAGE\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mCooked for 0s · done 10:41 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯\u001b[39m \u001b[97m/theme\u001b[39m\n\u001b[37m\u001b[49m  ⎿  \u001b[39mTheme set to light\n\n\u001b[37m\u001b[100m❯ \u001b[97mTheme probe light. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mBaked for 0s · done 10:42 AM\u001b[39m\n\n\u001b[37m\u001b[100m❯\u001b[39m \u001b[97m/theme\u001b[39m\n\u001b[37m\u001b[49m  ⎿  \u001b[39mTheme set to dark-ansi\n\n\u001b[37m\u001b[100m❯ \u001b[97mTheme probe ANSI dark. Do not run tools.\u001b[39m\n\n\u001b[97m\u001b[49m●\u001b[39m Run the tests\n\n\u001b[37m✻\u001b[39m \u001b[37mWorked for 0s · done 10:43 AM\u001b[39m\n                                                                                            \u001b[37m● high · /effort\u001b[39m\n\u001b[37m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m❯ \u001b[7mR\u001b[0mun the tests\n\u001b[37m──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\u001b[39m  \u001b[37m⏸ manual mode on\u001b[39m\n",
+    "cursor_x": 2,
+    "cursor_y": 32
+  },
+  {
+    "provider": "codex",
+    "case": "busy_connection_probe",
+    "text": "\u001b[2m╭───────────────────────────────────────────╮\u001b[0m\n\u001b[2m│ >_ \u001b[0;1mOpenAI Codex\u001b[0;2m (v0.155.1)                │\u001b[0m\n\u001b[2m│                                           │\u001b[0m\n\u001b[2m│ model:     \u001b[0mgpt-6-astra\u001b[2m   \u001b[0m\u001b[38;5;6m/model\u001b[2m\u001b[39m to change │\u001b[0m\n\u001b[2m│ directory: \u001b[0m~\u001b[2m                              │\u001b[0m\n\u001b[2m╰───────────────────────────────────────────╯\u001b[0m\n\n  \u001b[1mTip:\u001b[0m \u001b[3mNew\u001b[0m Build faster with Codex.\n\n\n\u001b[1;2m› \u001b[0mUI_BUSY_PROBE no tools\n\n\n• \u001b[2mWorking\u001b[0m \u001b[2m(0s • esc to interrupt)\u001b[0m\n\n\n\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-6-astra default\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m~\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;156;222;211mrenaming... ⠸\u001b[39m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor_x": 2,
+    "cursor_y": 16
+  }
+]

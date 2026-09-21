@@ -42,8 +42,13 @@ def _skip_update(dispatcher, current, job_id: str) -> bool:
 
 def _ingest_update_items(dispatcher, current, update) -> CompletionTrackerView | None:
     tracker = dispatcher._completion_tracker
+    state = getattr(getattr(update, 'submission', None), 'runtime_state', {})
+    if _waiting_for_draft(state):
+        if tracker is not None:
+            tracker.finish(update.job_id)
+        return None
     if tracker is not None and tracker.current(update.job_id) is None:
-        tracker.start(current, started_at=current.updated_at)
+        tracker.start(current, started_at=str(state.get('prompt_sent_at') or current.updated_at))
     tracked: CompletionTrackerView | None = None
     for item in update.items:
         append_event(dispatcher, current, 'completion_item', item.to_record(), timestamp=item.timestamp)
@@ -207,6 +212,11 @@ def _tick_tracker(dispatcher, completed: list, completed_ids: set[str]) -> None:
     tracker = dispatcher._completion_tracker
     if tracker is None:
         return
+    active = getattr(dispatcher._execution_service, '_active', {})
+    if isinstance(active, dict):
+        for job_id, submission in tuple(active.items()):
+            if _waiting_for_draft(submission.runtime_state):
+                tracker.finish(job_id)
     for tracked in tracker.tick_all(now=dispatcher._clock()):
         current = get_job(dispatcher, tracked.job_id)
         if _skip_tracked_completion(dispatcher, current, tracked.job_id, completed_ids):
@@ -228,6 +238,10 @@ def _active_submission(dispatcher, job_id: str):
     if not isinstance(active, dict):
         return None
     return active.get(job_id)
+
+
+def _waiting_for_draft(state) -> bool:
+    return bool(state.get('draft_guard_enabled') and state.get('prompt_sent') is False)
 
 
 def _skip_tracked_completion(dispatcher, current, job_id: str, completed_ids: set[str]) -> bool:

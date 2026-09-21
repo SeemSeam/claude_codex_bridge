@@ -1,5 +1,14 @@
 # Changelog
 
+## v8.7.0 (2026-09-21)
+
+- Added human/agent input-draft protection on top of chronological agent/agent ask/back queues.
+- Wait for the current turn and queue head, then wait up to 180 seconds for a nonempty composer before one confirmed clear and delivery.
+- Recommend testing with Claude, Codex and OMP managed tmux panes; other providers' input protection follows in later updates.
+- Fixed historical interrupt text and ordinary draft keywords falsely blocking delivery, and Claude busy animation without an interrupt hint being missed.
+- Verified real model tasks, ask/back ordering, draft waiting, modal recovery and narrow panes; retained the explicit Codex remote-session recovery limitation.
+- English and Chinese notes: [v8.7.0](docs/releases/v8.7.0.md).
+
 ## v8.6.19 (2026-09-19)
 
 - Unified per-agent chronological ask/reply queues, held until provider processing turns end.

@@ -103,6 +103,7 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
             prepared["omp_completion_event_log"]
         ),
         "CCB_OMP_DISPATCH_EVENTS": str(prepared["omp_dispatch_event_log"]),
+        "CCB_OMP_COMPOSER_SOCKET": str(prepared["omp_draft_guard_socket"]),
     }
     for key in (
         "omp_completion_extension",

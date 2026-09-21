@@ -14,6 +14,7 @@ from provider_execution.common_runtime.terminal import interrupt_and_clear_runti
 
 from ..protocol import wrap_claude_prompt, wrap_claude_turn_prompt
 from provider_hooks.artifacts import completion_dir_from_session_data
+from provider_execution.draft_guard import initial_guard_state
 
 
 def load_session(load_project_session_fn, work_dir: Path, *, agent_name: str):
@@ -187,6 +188,7 @@ def start_active_submission(
         reply="",
         diagnostics={"provider": adapter.provider, "mode": "active", "workspace_path": str(prepared.work_dir)},
         runtime_state={
+            **initial_guard_state('claude', prepared.backend, dict(getattr(prepared.session, 'data', {}) or {})),
             "mode": "active",
             "reader": reader,
             "state": state,

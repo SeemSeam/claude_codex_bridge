@@ -61,6 +61,25 @@ class TmuxBackend(
     def _tmux_base(self) -> list[str]:
         return _tmux_base_impl(self._socket_name, socket_path=self._socket_path)
 
+    def capture_composer(self, pane_id: str) -> dict:
+        """Visible screen with attributes and exact pane identity, not scrollback."""
+        if not re.fullmatch(r'%\d+', pane_id):
+            raise ValueError('composer capture requires an exact pane id')
+        fmt = '#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_in_mode}|#{cursor_x}|#{cursor_y}|#{pane_width}|#{pane_height}'
+        def metadata():
+            value = self._tmux_run(['display-message', '-p', '-t', pane_id, fmt],
+                                   check=True, capture=True, timeout=1).stdout.strip().split('|')
+            if len(value) != 8 or value[0] != pane_id:
+                raise ValueError('pane binding changed')
+            return value
+        before = metadata()
+        text = self._tmux_run(['capture-pane', '-p', '-e', '-t', pane_id],
+                              check=True, capture=True, timeout=1).stdout
+        after = metadata()
+        return {'text': text, 'cursor_x': int(after[4]), 'cursor_y': int(after[5]),
+                'binding': f'{self._socket_path or self._socket_name}:{after[0]}:{after[1]}',
+                'blocked': before != after or after[2] != '0' or after[3] != '0'}
+
     def _tmux_run(
         self,
         args: list[str],

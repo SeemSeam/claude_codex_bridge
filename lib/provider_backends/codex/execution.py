@@ -55,6 +55,14 @@ class CodexProviderAdapter:
         )
 
     def poll(self, submission: ProviderSubmission, *, now: str) -> ProviderPollResult | None:
+        from .execution_runtime.start import dispatch_guarded_prompt
+        from provider_execution.draft_guard import send_unknown_result
+        if submission.runtime_state.get('draft_guard_enabled') and not submission.runtime_state.get('prompt_sent', True):
+            submission = dispatch_guarded_prompt(submission, now=now)
+            return send_unknown_result(submission, now=now) or ProviderPollResult(submission=submission)
+        unknown = send_unknown_result(submission, now=now)
+        if unknown is not None:
+            return unknown
         original_submission = submission
         submission = _refresh_reader_for_current_session_binding(submission)
         submission = _record_delivery_progress(submission, now=now)

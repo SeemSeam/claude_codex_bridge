@@ -4515,6 +4515,8 @@ def test_dispatcher_uses_late_visible_text_from_same_claude_message_fixture(
 ) -> None:
     from provider_backends.claude.comm_runtime.parsing import structured_event
     from provider_execution import claude as claude_adapter_module
+    # This fixture supplies a non-tmux backend and no on-disk pane binding.
+    monkeypatch.setattr('provider_execution.draft_guard.resolve_job_target', lambda *args: None)
 
     project_root = tmp_path / 'repo-claude-late-final'
     ctx = _bootstrap_test_project(project_root)
@@ -4650,6 +4652,8 @@ def test_dispatcher_delivers_failed_reply_to_sender_when_claude_hits_anchored_ap
     tmp_path: Path,
 ) -> None:
     from provider_execution import claude as claude_adapter_module
+    # This fixture supplies a non-tmux backend and no on-disk pane binding.
+    monkeypatch.setattr('provider_execution.draft_guard.resolve_job_target', lambda *args: None)
 
     project_root = tmp_path / 'repo-claude-anchored-api-error'
     ctx = _bootstrap_test_project(project_root)

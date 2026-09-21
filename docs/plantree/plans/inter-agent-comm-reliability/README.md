@@ -2,11 +2,51 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-09-19
+Last updated: 2026-09-21
 
-## Current Planning Slice
+## Current Input-Guard Slice
 
-Mode: `execute-ready` / `status-update`; owner-approved source fix and evidence.
+The owner requested a local v8.7.0 source commit and bilingual README coverage
+on 2026-09-21. Preparation is isolated on `release/v8.7.0`; no public publication
+or shared-runtime promotion is included. Existing technical readiness findings
+below remain open and are disclosed in the release notes.
+
+See [v8.7.0 local validation](evidence/release-870-validation-20260921.md)
+for the full-suite failure audit, successful reruns and packaging checks.
+
+Mode: `ready-check` / local source preparation. The v8.7.0 source contains a guard candidate and
+reported isolated/installed evidence, but this plan does not treat either as a
+release or enablement approval. The required corrections are in the
+[input-draft guard topic](topics/input-draft-delivery-guard.md).
+
+- [Reported installed real-project qualification](evidence/installed-draft-guard-20260920.md):
+  real Codex/OMP/Claude jobs, FIFO, modal exit, narrow-window and human-turn
+  checks; fixed historical-text/draft keyword false vetoes and Claude busy
+  detection. Final keyword-containing 180-second runs pass on all three;
+  469 regressions pass. Codex remote-session failure after daemon
+  termination requires explicit recovery; this is not an automatic-recovery pass.
+
+- [Candidate implementation and experiments](evidence/input-draft-guard-v1-20260920.md):
+  Codex, Claude and OMP guarded tmux paths implemented in the working tree;
+  456 related tests pass. All three passed real 180-second draft wait/clear/send
+  experiments in disposable native CLIs. No live install, commit or release.
+
+- [Deep Codex/Claude composer probe](evidence/codex-claude-composer-deep-probe-20260920.md):
+  24 idle clear/readback cases passed; Claude real-UI suggestions distinguished
+  from accepted drafts in three themes using local mock responses. Owner excludes
+  the literal Codex-placeholder collision. Integrated scope is documented below.
+- [Initial composer probe](evidence/composer-native-probe-20260920.md): OMP native
+  multiline read/clear confirmed; earlier Codex/Claude observations are superseded
+  by the deep probe within its explicitly tested scope.
+
+- [Input draft delivery guard](topics/input-draft-delivery-guard.md): retains
+  FIFO/turn-end gates, pre-claim fixed 180-second wait and final sender checks
+  for all three providers in the candidate. Codex now has a deferred unsent path;
+  Claude/OMP reuse theirs. However Codex/Claude deadline clearing is still `Ctrl-C`,
+  and generic `draft_guard_send_unknown` terminalization expands provider semantics.
+  Neither is approved for enablement. OMP requires the new extension and default
+  Status Band layout. Unsupported transports/old OMP mounts remain unprotected;
+  unknown observations on enabled paths hold the head.
 
 Owner-approved direction under implementation and review:
 ordinary ask requests and back results share one chronological FIFO per

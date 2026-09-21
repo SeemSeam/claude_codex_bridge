@@ -2,7 +2,7 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 ## Current Slice: Unified FIFO And Empty-Result Notices
 
@@ -123,6 +123,15 @@ history is retained below.
 
 ### Next
 
+0. Prepare the owner-requested local v8.7.0 source commit; public publication
+   remains separate. Ready-check the [input draft protection candidate](topics/input-draft-delivery-guard.md).
+   Its reported installed real-project evidence covers Codex/Claude/OMP and
+   469 tests, but it is not rollout approval. Block enablement until Codex and
+   Claude replace `Ctrl-C` deadline clearing with a qualified input-only clear,
+   and until ambiguous terminal-write handling uses approved provider-specific
+   semantics rather than generic `draft_guard_send_unknown` terminalization.
+   OMP's extension trust/lifecycle review is also required. Shared installation
+   promotion remains separate.
 1. Real Claude held-delivery qualification remains open. Earlier isolated
    authentication failures do not apply to the successful Codex/OMP installed
    campaign. Use authorized managed state without changing external auth.
@@ -138,8 +147,9 @@ history is retained below.
 - Priority scheduling, return-result preference, native queue-key substitution,
   automatic semantic recovery, and native Windows transport changes.
 
-Next target: real-provider qualification and doc updates. No
-commits, pushes, or releases are authorized by this planning update.
+Next target: resolve the documented candidate blockers through a separate
+implementation authorization, then independently qualify the corrected paths.
+This planning update does not authorize runtime edits, commits, pushes or releases.
 
 ## Status Summary
 
