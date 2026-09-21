@@ -16,6 +16,10 @@ authority for the feature.
 
 ## File Map
 
+- [v8.7.1 preparation](evidence/release-871-validation-20260921.md): platform
+  test scope, package checks and GitHub version-display discrepancy audit.
+- [System-default file opening](topics/rich-system-file-open.md): shared safe/rich
+  mouse and Enter behavior, installed configuration and native Yazi checks.
 - [roadmap.md](roadmap.md): current implementation sequence and gates.
 - [open-questions.md](open-questions.md): unresolved questions only.
 - [topics/config-and-topology-contract.md](topics/config-and-topology-contract.md):

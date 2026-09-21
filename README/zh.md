@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.0-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.1-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -50,6 +50,15 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
+
+## 8.7.1 新功能：Rich 文件使用系统默认应用打开
+
+点击文件或按 Enter，使用系统默认应用打开；目录仍在文件面板内进入。
+safe 和 rich 两套配置行为一致。macOS 使用 `open`；Linux 优先使用
+`gio open`，没有 GIO 时使用 `xdg-open`；WSL 通过 `wslu` 提供的
+`wslview` 调用 Windows 默认应用，需要开启 Windows 互操作，缺少桥接工具
+时会明确报错。升级 CCB 后运行 `ccb update rich`，再重新打开文件面板。
+验证范围和限制见 [8.7.1 说明](../docs/releases/v8.7.1.md)。
 
 <a id="message-queues"></a>
 
@@ -245,9 +254,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.7.0 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.7.1 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.0 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.0/ccb-mobile-v8.7.0.apk)
+- [下载 CCB Mobile v8.7.1 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.1/ccb-mobile-v8.7.1.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -336,6 +345,16 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.7.1</b> - Rich 文件使用系统默认应用打开</summary>
+
+- macOS、Linux、WSL 点击文件或按 Enter，使用系统默认应用打开；目录仍在 Yazi 内进入。
+- safe/rich 配置统一，保留完整文件名，缺少 WSL 桥接工具时明确报错。
+- [完整中英文说明及验证范围](../docs/releases/v8.7.1.md)。
+- 先前变更：[v8.7.0 输入保护](../docs/releases/v8.7.0.md)、[v8.6.19 排队与查询提示](../docs/releases/v8.6.19.md)。
+
+</details>
+
+<details>
 <summary><b>v8.6.13</b> - 可靠的可见 OMP ask 与聚焦的角色选择</summary>
 
 - OMP ask 现在会在可见受管 pane 中运行，并使用 OMP 原生 completion 证据；包含工具调用的 turn 会保持活跃，直到出现最终 assistant 结果。

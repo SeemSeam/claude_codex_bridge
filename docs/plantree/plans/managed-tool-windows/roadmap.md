@@ -4,6 +4,8 @@ Date: 2026-05-30
 
 ## Done
 
+- Unified safe/rich system-default file opening and mouse/Enter folder navigation
+  (2026-09-21); [implementation and verification](topics/rich-system-file-open.md).
 - Confirmed current explicit `[windows]` topology is agent-only: every window
   value must contain provider-declared agent leaves and `WindowSpec` requires at
   least one `agent_name`.

@@ -1060,6 +1060,7 @@ def _paths() -> dict[str, Path]:
         'image_preview': bin_dir / 'ccb-image-preview',
         'pdf_preview': bin_dir / 'ccb-pdf-preview',
         'video_preview': bin_dir / 'ccb-video-preview',
+        'file_opener': bin_dir / 'ccb-file-open',
         'wrapper_link': bin_link_dir / 'ccb-workbench',
         'yazi_link': bin_link_dir / 'ccb-yazi',
         'yazi_rich_link': bin_link_dir / 'ccb-yazi-rich',
@@ -1397,6 +1398,8 @@ fi
 
 def _write_yazi_config(paths: dict[str, Path], *, rich: bool) -> None:
     profile = paths['yazi_rich_profile'] if rich else paths['yazi_safe_profile']
+    _write_file_opener(paths['file_opener'])
+    open_command = json.dumps(_shell_quote(str(paths['file_opener'])) + ' %s')
     md = _shell_double_quote(str(paths['md_preview']))
     image = _shell_double_quote(str(paths['image_preview']))
     pdf = _shell_double_quote(str(paths['pdf_preview']))
@@ -1416,6 +1419,16 @@ def _write_yazi_config(paths: dict[str, Path], *, rich: bool) -> None:
         )
     lines.extend(
         [
+            '[opener]',
+            'system = [',
+            f'  {{ run = {open_command}, desc = "System default", for = "unix" }},',
+            ']',
+            '',
+            '[open]',
+            'prepend_rules = [',
+            '  { url = "local://*", use = "system" },',
+            ']',
+            '',
             '[preview]',
             'wrap = "yes"',
             'tab_size = 2',
@@ -1485,6 +1498,70 @@ def _write_yazi_config(paths: dict[str, Path], *, rich: bool) -> None:
         )
     lines.append('')
     (profile / 'yazi.toml').write_text('\n'.join(lines), encoding='utf-8')
+    (profile / 'keymap.toml').write_text('''# CCB managed Yazi keymap.
+[mgr]
+prepend_keymap = [
+  { on = "<Enter>", run = "plugin ccb-open", desc = "Enter folder or open with system default" },
+]
+''', encoding='utf-8')
+    plugin = profile / 'plugins' / 'ccb-open.yazi'
+    plugin.mkdir(parents=True, exist_ok=True)
+    (plugin / 'main.lua').write_text('''--- @sync entry
+return {
+  entry = function()
+    local hovered = cx.active.current.hovered
+    if not hovered then return end
+    if hovered.cha.is_dir then
+      ya.emit("enter", {})
+    else
+      ya.emit("open", {})
+    end
+  end,
+}
+''', encoding='utf-8')
+    (profile / 'init.lua').write_text('''-- CCB managed Yazi mouse behavior.
+function Entity:click(event, up)
+  if up or event.is_middle then return end
+  ya.emit("reveal", { self._file.url })
+  if self._file.cha.is_dir then
+    ya.emit("cd", { self._file.url })
+  else
+    -- Use the clicked URL, not a previous hover or unrelated selection.
+    ya.emit("open", { self._file.url })
+  end
+end
+''', encoding='utf-8')
+
+
+def _write_file_opener(target: Path) -> None:
+    _write_executable(target, '''#!/bin/sh
+# CCB managed desktop opener. Never evaluate a filename as shell code.
+set -eu
+system=$(uname -s)
+case "$system" in
+  Darwin) exec open "$@" ;;
+  Linux)
+    release=$(uname -r)
+    case "$release" in
+      *[Mm]icrosoft*|*WSL*) wsl=1 ;;
+      *) wsl=0 ;;
+    esac
+    if [ -n "${WSL_INTEROP:-}${WSL_DISTRO_NAME:-}" ]; then wsl=1; fi
+    if [ "$wsl" = 1 ]; then
+      if ! command -v wslview >/dev/null 2>&1; then
+        printf '%s\\n' 'CCB: Windows default opening from WSL requires wslview (wslu) and enabled WSL interop.' >&2
+        exit 127
+      fi
+      for path do wslview "$path"; done
+    elif command -v gio >/dev/null 2>&1; then
+      for path do gio open "$path"; done
+    else
+      for path do xdg-open "$path"; done
+    fi
+    ;;
+  *) printf 'CCB: unsupported desktop opener platform: %s\\n' "$system" >&2; exit 1 ;;
+esac
+''')
 
 
 def _write_piper_plugin(target: Path) -> None:
@@ -2531,8 +2608,15 @@ def _config_component(paths: dict[str, Path]) -> dict[str, object]:
         paths['image_preview'],
         paths['pdf_preview'],
         paths['video_preview'],
+        paths['file_opener'],
         paths['yazi_safe_profile'] / 'yazi.toml',
         paths['yazi_rich_profile'] / 'yazi.toml',
+        paths['yazi_safe_profile'] / 'keymap.toml',
+        paths['yazi_rich_profile'] / 'keymap.toml',
+        paths['yazi_safe_profile'] / 'init.lua',
+        paths['yazi_rich_profile'] / 'init.lua',
+        paths['yazi_safe_profile'] / 'plugins' / 'ccb-open.yazi' / 'main.lua',
+        paths['yazi_rich_profile'] / 'plugins' / 'ccb-open.yazi' / 'main.lua',
         paths['yazi_safe_profile'] / 'plugins' / 'piper.yazi' / 'main.lua',
         paths['yazi_rich_profile'] / 'plugins' / 'piper.yazi' / 'main.lua',
         paths['wezterm_config'],

@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.7.1 (2026-09-21)
+
+- Rich files open with the system default application on click or Enter; folders stay in Yazi.
+- Unified safe/rich profiles with macOS `open`, Linux GIO/xdg-open and WSL `wslview` routing.
+- Preserve special-character filenames and multiple selections; report missing WSL interop tooling.
+- Added README badge/download version consistency checks to catch stale public-facing metadata before publication.
+- English and Chinese notes: [v8.7.1](docs/releases/v8.7.1.md).
+
 ## v8.7.0 (2026-09-21)
 
 - Added human/agent input-draft protection on top of chronological agent/agent ask/back queues.

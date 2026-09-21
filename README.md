@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.0-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.1-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,16 @@
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
+
+## New in 8.7.1: Open Rich Files with Your Default App
+
+Click a file or press Enter to open it with the system default application;
+folders stay inside the file browser. Both safe and rich profiles use the same
+behavior. macOS uses `open`; Linux prefers `gio open`, then `xdg-open` when GIO
+is absent; WSL uses `wslview` from `wslu` to open with the Windows default app.
+WSL requires enabled Windows interop and reports a missing bridge explicitly.
+After upgrading CCB, run `ccb update rich` and reopen the file-browser pane.
+See the [8.7.1 notes](docs/releases/v8.7.1.md) for validation and limitations.
 
 <a id="message-queues"></a>
 
@@ -283,9 +293,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.0 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.1 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.0 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.0/ccb-mobile-v8.7.0.apk)
+- [Download CCB Mobile v8.7.1 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.1/ccb-mobile-v8.7.1.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -374,6 +384,16 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.1</b> - Rich system-default file opening</summary>
+
+- Click or Enter opens files with system defaults on macOS, Linux and WSL; folders stay inside Yazi.
+- Shares safe/rich configuration, preserves filenames and provides explicit WSL bridge errors.
+- [Full bilingual notes and validation scope](docs/releases/v8.7.1.md).
+- Prior changes: [v8.7.0 input protection](docs/releases/v8.7.0.md) and [v8.6.19 queues and inspection guidance](docs/releases/v8.6.19.md).
+
+</details>
+
+<details>
 <summary><b>v8.6.13</b> - Reliable visible OMP asks and focused role selection</summary>
 
 - Run OMP asks in the visible managed pane and use OMP's native completion evidence, so tool-using turns remain active until the final assistant result.
