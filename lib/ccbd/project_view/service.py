@@ -2172,7 +2172,10 @@ def _reply_deliveries_by_source_job_id(
 
 def _is_business_comms_job(job) -> bool:
     if _is_reply_delivery_job(job):
-        return False
+        # Pending deliveries are the failure mode where a reply sits queued in
+        # the asker's mailbox forever: surface them as their own comms row so
+        # the stall is visible instead of silently hidden behind the source job.
+        return getattr(job, 'status', None) in _COMMS_PENDING_STATUSES
     message_type = str(getattr(job.request, 'message_type', '') or '').strip().lower()
     return message_type in {'ask', ''}
 
@@ -2341,14 +2344,20 @@ def _comm_record(
         generated_at=generated_at,
     )
     running_recover_hint = execution_projection.running_recover_hint
-    business_status, status_label = _comm_business_status(
-        job,
-        reply_delivery=reply_delivery,
-        configured_agents=configured_agents,
-    )
+    if _is_reply_delivery_job(job):
+        business_status, status_label = 'delivering', 'back'
+    else:
+        business_status, status_label = _comm_business_status(
+            job,
+            reply_delivery=reply_delivery,
+            configured_agents=configured_agents,
+        )
     if running_recover_hint and getattr(job, 'status', None) is JobStatus.RUNNING:
         business_status, status_label = 'blocked', 'stuck'
     reply_status = reply_delivery.status.value if reply_delivery is not None else None
+    source_job_id = None
+    if _is_reply_delivery_job(job):
+        source_job_id = _reply_delivery_source_job_id(dispatcher, job, comms_lookup=comms_lookup)
     updated_at = _comm_sort_key(job, reply_delivery)
     recoverability = comms_recoverability_for_job(
         dispatcher,
@@ -2371,6 +2380,7 @@ def _comm_record(
         'body_preview': _body_preview(job.request.body),
         'reply_status': reply_status,
         'reply_delivery_job_id': reply_delivery.job_id if reply_delivery is not None else None,
+        **({'reply_delivery_source_job_id': source_job_id} if source_job_id else {}),
         'chain': bool(getattr(job.request, 'reply_to', None)),
         'short_reason': _short_reason(job),
         **execution_projection.phase_record,
