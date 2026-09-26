@@ -45,6 +45,16 @@ def test_native_composer_captures(capture):
     assert result.state == expected
 
 
+def test_codex_empty_placeholder_with_terminal_right_padding():
+    # Both rust-v0.146.0 and rust-v0.156.1 upstream empty.snap render
+    # right padding. Tmux can retain it on styled/background-filled rows.
+    screen = {'text': '\n› Ask Codex to do anything' + ' ' * 74 + '\n\n  ? for shortcuts    100% context left  ',
+              'cursor_x': 2, 'cursor_y': 1}
+    assert inspect_screen('codex', screen, binding='pane').state == 'empty'
+    screen['text'] = screen['text'].replace('anything', 'anything plus user draft')
+    assert inspect_screen('codex', screen, binding='pane').state == 'nonempty'
+
+
 class Target:
     def __init__(self, *, clears=True):
         self.state = 'nonempty'

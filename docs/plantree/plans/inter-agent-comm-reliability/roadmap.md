@@ -6,6 +6,17 @@ Last updated: 2026-09-20
 
 ## Current Slice: Unified FIFO And Empty-Result Notices
 
+2026-09-26 maintenance: [v8.7.1 ask-stall repair](evidence/ask-stall-871-20260926.md)
+reproduces Bun stale editor-socket recovery failure and adds queue wait reasons.
+Source changes and focused tests are isolated from the shared installation.
+Fresh-project Codex ask, OMP same-socket crash recovery and real 180-second
+draft/FIFO delivery checks passed; OMP responses are blocked by provider 402.
+Codex-to-Codex testing additionally reproduced duplicate resume arguments after
+a crash; recognizing CCB's generated hook-trust flag fixes the accumulation.
+Same-session auto-recovery and queued child delivery passed; 567 regressions pass.
+Next: review/promote the isolated patch; verify the reporter's remaining
+healthy-pane delivery stall with its exact composer/queue evidence.
+
 Status: Implemented in the working tree; the watchdog overlap found in
 [independent review](evidence/agent1-independent-review-20260919.md) is fixed by
 [reusing existing provider turn completion](evidence/provider-turn-end-only-20260919.md),

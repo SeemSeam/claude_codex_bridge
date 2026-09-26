@@ -121,6 +121,24 @@ def test_build_resume_start_cmd_managed_remote_path_untouched_by_fork_fix() -> N
     assert 'resume new-id' not in rewritten
 
 
+def test_generated_hook_trust_resume_binding_is_idempotent() -> None:
+    base = ('export CODEX_HOME=/tmp/test-home; codex -c disable_paste_burst=true '
+            '--ask-for-approval never --sandbox danger-full-access '
+            '--dangerously-bypass-hook-trust')
+    expected = base + ' resume session-1'
+    command = base
+    for _ in range(5):
+        command = build_resume_start_cmd(command, 'session-1')
+        assert command == expected
+    assert strip_resume_start_cmd(command) == base
+
+
+def test_generated_hook_trust_repairs_previously_duplicated_resume_suffix() -> None:
+    base = 'codex --dangerously-bypass-hook-trust'
+    polluted = base + ' resume old-session' * 5
+    assert build_resume_start_cmd(polluted, 'new-session') == base + ' resume new-session'
+
+
 @pytest.mark.parametrize(
     ('args', 'expected'),
     [

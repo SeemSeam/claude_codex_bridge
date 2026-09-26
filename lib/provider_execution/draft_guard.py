@@ -108,6 +108,8 @@ class DraftTarget:
             if state not in {'empty', 'nonempty'}:
                 state = 'unknown'
             return Observation(state, binding, str(data.get('reason') or state))
+        except (ConnectionRefusedError, FileNotFoundError):
+            return Observation('unknown', self.generation, 'composer_bridge_unavailable')
         except Exception:
             return Observation('unknown', self.generation, 'composer_unavailable')
 

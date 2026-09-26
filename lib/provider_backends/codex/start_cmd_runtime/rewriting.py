@@ -90,6 +90,7 @@ def _continuation_subcommand_index(tokens: list[str], codex_index: int) -> int |
                      '-i', '--image', '--add-dir', '--enable', '--disable',
                      '--local-provider', '--remote'}
     flags = {'--oss', '--full-auto', '--dangerously-bypass-approvals-and-sandbox',
+             '--dangerously-bypass-hook-trust',
              '--search', '--no-alt-screen', '-h', '--help', '-V', '--version'}
     index = codex_index + 1
     while index < len(tokens):
