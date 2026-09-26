@@ -14,8 +14,13 @@ draft/FIFO delivery checks passed; OMP responses are blocked by provider 402.
 Codex-to-Codex testing additionally reproduced duplicate resume arguments after
 a crash; recognizing CCB's generated hook-trust flag fixes the accumulation.
 Same-session auto-recovery and queued child delivery passed; 567 regressions pass.
-Next: review/promote the isolated patch; verify the reporter's remaining
-healthy-pane delivery stall with its exact composer/queue evidence.
+Promotion: PRs #357–#359 merged; v8.7.2 tagged at `91fb0a4d2`. Full Linux/macOS
+regressions and real macOS/WSL gates passed, including the candidate rerun.
+Actual old-package upgrade and npm-installed Codex-to-Codex recovery passed;
+see [release qualification](evidence/release-872-verification-20260926.md).
+Public GitHub assets/checksums, npm 8.7.2 latest and a fresh registry install
+are verified. Next: collect the reporter's remaining healthy-pane
+delivery-stall evidence. Issue #356 stays open.
 
 Status: Implemented in the working tree; the watchdog overlap found in
 [independent review](evidence/agent1-independent-review-20260919.md) is fixed by
