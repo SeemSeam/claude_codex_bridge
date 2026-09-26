@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.1-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.2-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,12 @@
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
+
+## New in 8.7.2: Recovery and Queued Delivery Fixes
+
+Fix Codex recovery commands with duplicate resume arguments, abandoned OMP editor
+sockets, and padded Codex empty-input detection. Queue details now show input-guard
+waiting reasons. See [upgrade guidance and remaining limitations](docs/releases/v8.7.2.md).
 
 ## New in 8.7.1: Open Rich Files with Your Default App
 
@@ -293,9 +299,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.1 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.2 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.1 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.1/ccb-mobile-v8.7.1.apk)
+- [Download CCB Mobile v8.7.2 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.2/ccb-mobile-v8.7.2.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -384,6 +390,13 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.2</b> - Recovery and queued delivery fixes</summary>
+
+[Full bilingual notes](docs/releases/v8.7.2.md).
+
+</details>
+
+<details>
 <summary><b>v8.7.1</b> - Rich system-default file opening</summary>
 
 - Click or Enter opens files with system defaults on macOS, Linux and WSL; folders stay inside Yazi.

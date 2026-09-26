@@ -12,9 +12,9 @@ notifications, local/Tailnet gateway access, and file transfer.
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.1 is published as an Android APK:
+CCB Mobile v8.7.2 is published as an Android APK:
 
-- [Download ccb-mobile-v8.7.1.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.1/ccb-mobile-v8.7.1.apk)
+- [Download ccb-mobile-v8.7.2.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.2/ccb-mobile-v8.7.2.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 

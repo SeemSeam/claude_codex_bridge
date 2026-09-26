@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.1-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.2-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -50,6 +50,12 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
+
+## 8.7.2 修复：会话恢复与排队投递
+
+修复 Codex 恢复命令重复追加参数、OMP 废弃编辑器 socket 无法恢复、Codex
+空输入提示填充空格误判，并显示输入保护的具体等待原因。
+见 [升级说明与剩余限制](../docs/releases/v8.7.2.md)。
 
 ## 8.7.1 新功能：Rich 文件使用系统默认应用打开
 
@@ -254,9 +260,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.7.1 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.7.2 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.1 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.1/ccb-mobile-v8.7.1.apk)
+- [下载 CCB Mobile v8.7.2 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.2/ccb-mobile-v8.7.2.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -345,6 +351,13 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.7.2</b> - 会话恢复与排队投递修复</summary>
+
+[完整中英文说明](../docs/releases/v8.7.2.md)。
+
+</details>
+
+<details>
 <summary><b>v8.7.1</b> - Rich 文件使用系统默认应用打开</summary>
 
 - macOS、Linux、WSL 点击文件或按 Enter，使用系统默认应用打开；目录仍在 Yazi 内进入。
