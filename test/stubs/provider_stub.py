@@ -1925,10 +1925,13 @@ def main(argv: list[str]) -> int:
             time.sleep(0.05)
             continue
         line = line.rstrip("\n")
-        if not line and not current_lines:
+        if not line and not current_req:
             # The real sender may activate a paste with Enter after this fast
             # stub has already completed the request. Terminal echo moves the
             # cursor off the composer; native TUIs repaint it on empty Enter.
+            # Optional language/reply guidance can remain after completion;
+            # it is not a new request and must not suppress the idle repaint.
+            current_lines = []
             _print_guarded_idle_composer(provider)
             continue
 
