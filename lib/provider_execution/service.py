@@ -54,19 +54,33 @@ class ExecutionService(ExecutionServiceStateMixin):
 
     def draft_allows_start(self, job, *, runtime_context) -> bool:
         from .draft_guard import DraftGuard, resolve_job_target
-        try:
-            target = resolve_job_target(job, runtime_context)
-        except Exception:
-            guard = self._draft_guards.get(job.agent_name)
-            if guard is not None:
-                guard[1].reset('binding_unavailable')
-            return False
-        if target is None:
-            return True
         previous = self._draft_guards.get(job.agent_name)
         guard = previous[1] if previous and previous[0] == job.job_id else DraftGuard()
         self._draft_guards[job.agent_name] = (job.job_id, guard)
-        return guard.allows(target)
+        try:
+            target = resolve_job_target(job, runtime_context)
+        except Exception:
+            guard.reset('binding_unavailable')
+            return False
+        if target is None:
+            self._draft_guards.pop(job.agent_name, None)
+            return True
+        allowed = guard.allows(target)
+        if allowed:
+            self._draft_guards.pop(job.agent_name, None)
+        return allowed
+
+    def draft_wait_snapshot(self, agent_name: str, job_id: str) -> dict:
+        """Cached pre-claim evidence only: observers must never inspect/clear input."""
+        from .draft_guard import WAIT_SECONDS
+        record = self._draft_guards.get(agent_name)
+        if record is None or record[0] != job_id:
+            return {}
+        guard = record[1]
+        return {'job_id': job_id, 'reason': guard.reason,
+                'wait_seconds': WAIT_SECONDS,
+                'elapsed_seconds': max(0.0, guard.clock() - guard.since) if guard.since is not None else None,
+                'clear_attempted': guard.clear_attempted}
 
     def start(self, job: JobRecord, *, runtime_context: ProviderRuntimeContext | None = None) -> ProviderSubmission | None:
         start_token = object()

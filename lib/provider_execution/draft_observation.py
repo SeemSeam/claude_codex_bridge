@@ -82,7 +82,9 @@ def inspect_screen(provider: str, screen: dict, *, binding: str) -> Observation:
         if _editor_mode_in_footer(lines[footer:]):
             return result('unknown', 'unsupported_editor_mode')
         content = lines[top][2:]
-        if content == 'Ask Codex to do anything' and cursor_y == top and cursor_x == 2:
+        # Styled terminal rows may retain right-hand padding. This is still
+        # the fixed placeholder at its initial cursor, not a typed draft.
+        if content.rstrip(' ') == 'Ask Codex to do anything' and cursor_y == top and cursor_x == 2:
             if all(not line.strip() for line in lines[top+1:footer]):
                 return result('empty', 'codex_placeholder')
         if any(line.strip() for line in [content, *lines[top+1:footer]]) or cursor_y != top or cursor_x > 2:

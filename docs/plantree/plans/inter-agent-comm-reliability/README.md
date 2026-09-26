@@ -2,7 +2,23 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-09-21
+Last updated: 2026-09-26
+
+## v8.7.1 delivery-stall repair
+
+[Incident and source fix](evidence/ask-stall-871-20260926.md): Bun reports
+ENOENT for an abandoned OMP editor socket, preventing bridge recovery and
+holding pre-claim delivery indefinitely. The isolated fix handles that error
+with unchanged ownership checks and exposes cached draft-guard reasons in
+`ccb queue`. Additional Codex-to-Codex crash testing reproduced #356's exit-2
+resume error locally: an unrecognized CCB-generated hook-trust flag caused
+repeated `resume <id>` suffixes. The parser fix passed real same-session crash
+recovery and queued child delivery, plus 567 regressions. This does not establish
+every healthy-pane composer stall in the reporter's environment has the same cause.
+Fresh-project verification: Codex completed a real ask; OMP recovered its stale
+socket after a crash and preserved FIFO through a real 180-second draft wait.
+OMP model completion remains unverified because the configured service returned
+402 (insufficient balance); delivery was independently confirmed.
 
 ## Current Input-Guard Slice
 

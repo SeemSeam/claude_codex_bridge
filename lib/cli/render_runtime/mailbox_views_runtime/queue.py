@@ -35,7 +35,8 @@ def render_queue(payload: Mapping[str, object]) -> tuple[str, ...]:
                 f'phase={agent.get("execution_phase") or agent.get("mailbox_state")} '
                 f'mailbox_state={agent["mailbox_state"]} '
                 f'depth={agent["queue_depth"]} pending_replies={agent["pending_reply_count"]} '
-                f'summary_status={agent.get("summary_status")}'
+                f'summary_status={agent.get("summary_status")} '
+                f'delivery_wait={(agent.get("delivery_wait") or {}).get("reason")}'
             )
         return tuple(lines)
 
@@ -58,6 +59,13 @@ def render_queue(payload: Mapping[str, object]) -> tuple[str, ...]:
             f'last_inbound_finished_at: {agent.get("last_inbound_finished_at")}',
         ]
     )
+    wait = agent.get('delivery_wait')
+    if isinstance(wait, Mapping):
+        lines.append(f'delivery_wait: job={wait.get("job_id")} reason={wait.get("reason")} '
+                     f'elapsed_seconds={wait.get("elapsed_seconds")} '
+                     f'wait_seconds={wait.get("wait_seconds")} clear_attempted={wait.get("clear_attempted")}')
+        lines.append('delivery_wait_notice: 180s applies only to observed nonempty idle input; '
+                     'unknown/busy does not authorize clearing or sending')
     if agent.get('summary_error') is not None:
         lines.append(f'summary_error: {agent.get("summary_error")}')
     if agent.get('summary_status') == 'missing':

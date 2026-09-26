@@ -135,6 +135,14 @@ class DispatcherFacadeMixin:
         agent['runtime_state'] = runtime.state.value if runtime is not None else 'stopped'
         agent['runtime_health'] = runtime.health if runtime is not None else 'stopped'
         agent.update(self._queue_execution_phase(agent))
+        # Pre-claim waits have no ProviderSubmission, so active snapshots alone
+        # cannot explain a healthy idle agent with a blocked mailbox.
+        queued = self._state.queued_items_for('agent', agent.get('agent_name', ''))
+        snapshot = getattr(self._execution_service, 'draft_wait_snapshot', None)
+        if queued and callable(snapshot):
+            wait = snapshot(agent.get('agent_name', ''), queued[0])
+            if wait:
+                agent['delivery_wait'] = wait
         return agent
 
     def _queue_execution_phase(self, agent: dict) -> dict[str, object]:

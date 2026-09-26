@@ -41,11 +41,18 @@ BRIDGE = r'''
         const probe = createConnection(editorPath);
         probe.setTimeout(500, () => { probe.destroy(); resolve(false); });
         probe.once("connect", () => { probe.destroy(); resolve(false); });
-        probe.once("error", (error: any) => resolve(error.code === "ECONNREFUSED"));
+        // Bun 1.3 reports ENOENT for an existing abandoned Unix socket,
+        // where Node reports ECONNREFUSED. Recheck inode/owner below before
+        // unlinking; neither error permits replacing a live or changed path.
+        probe.once("error", (error: any) => {
+          probe.destroy();
+          resolve(error.code === "ECONNREFUSED" || error.code === "ENOENT");
+        });
       });
       if (!stale) return;
       const after = lstatSync(editorPath);
-      if (after.ino !== before.ino || after.dev !== before.dev) return;
+      if (!after.isSocket() || after.uid !== before.uid ||
+          after.ino !== before.ino || after.dev !== before.dev) return;
       unlinkSync(editorPath);
     } catch (error: any) {
       if (error.code !== "ENOENT") return;
