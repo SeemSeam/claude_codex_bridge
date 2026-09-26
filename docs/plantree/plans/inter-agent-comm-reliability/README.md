@@ -4,7 +4,16 @@ Date: 2026-06-14
 
 Last updated: 2026-09-26
 
-## v8.7.1 delivery-stall repair
+## v8.7.1 delivery-stall repair / v8.7.2 qualification
+
+[v8.7.2 qualification](evidence/release-872-verification-20260926.md): repair
+and separated release metadata merged through PRs #357–#359. The candidate
+passed full Linux/macOS suites and real macOS/WSL communication, recovery and
+stress gates. An actual v8.7.1 corrupted command was upgraded through the npm
+candidate without clearing the session; queued Codex-to-Codex crash recovery
+passed. Tag v8.7.2 points to `91fb0a4d2`; public assets, checksums, npm latest
+and a fresh registry installation are verified. The reporter's remaining
+healthy-pane stall is still open.
 
 [Incident and source fix](evidence/ask-stall-871-20260926.md): Bun reports
 ENOENT for an abandoned OMP editor socket, preventing bridge recovery and
