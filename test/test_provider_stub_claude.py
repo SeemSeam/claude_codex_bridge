@@ -111,7 +111,7 @@ def test_claude_stub_repaints_after_late_enter_and_language_tail(tmp_path: Path)
         await_composer()
         # This arrives after the stub's native turn completion, like the real
         # sender's delayed Enter. An unanchored guidance tail is not a draft.
-        process.stdin.write(b"Reply in English.\n\n")
+        process.stdin.write(b"Reply in English.\n")
         process.stdin.flush()
         await_composer()
         process.stdin.write(b"CCB_REQ_ID: job_next\n\nsecond request\n\n")
