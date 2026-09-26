@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.2 (2026-09-26)
+
+- Fix Codex recovery commands accumulating duplicate resume arguments (#356).
+- Recover abandoned OMP editor sockets under Bun and expose input-guard queue reasons.
+- Recognize right-padded Codex empty placeholders while retaining unknown-input protection and FIFO.
+- English and Chinese notes, upgrade guidance and remaining issue scope: [v8.7.2](docs/releases/v8.7.2.md).
+
 ## v8.7.1 (2026-09-21)
 
 - Rich files open with the system default application on click or Enter; folders stay in Yazi.
