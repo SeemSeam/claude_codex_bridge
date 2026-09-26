@@ -1925,14 +1925,17 @@ def main(argv: list[str]) -> int:
             time.sleep(0.05)
             continue
         line = line.rstrip("\n")
-        if not line and not current_lines:
-            # The real sender may activate a paste with Enter after this fast
-            # stub has already completed the request. Terminal echo moves the
-            # cursor off the composer; native TUIs repaint it on empty Enter.
+        current_lines, current_req = _sync_prompt_buffer_request(line, current_lines, current_req)
+        if provider in {"codex", "claude"} and not current_req and not DONE_RE.match(line):
+            # Exact-turn completion can precede optional guidance. The sender
+            # strips trailing newlines, so its delayed Enter may finish a
+            # nonempty guidance line. It is not a new anchored request; repaint
+            # after terminal echo, just as a native idle TUI would.
+            current_lines = []
             _print_guarded_idle_composer(provider)
             continue
-
-        current_lines, current_req = _sync_prompt_buffer_request(line, current_lines, current_req)
+        if not line and not current_lines:
+            continue
 
         current_lines.append(line)
 

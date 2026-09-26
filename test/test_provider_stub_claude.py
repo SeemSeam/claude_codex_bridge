@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import runpy
+import select
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -73,3 +78,48 @@ def test_claude_stub_starts_sequential_request_after_unconsumed_prompt_tail() ->
         ("job_first", "CCB_REQ_ID: job_first\n\nfirst request"),
         ("job_second", "CCB_REQ_ID: job_second\n\nsecond request"),
     ]
+
+
+def test_claude_stub_repaints_after_late_enter_and_language_tail(tmp_path: Path) -> None:
+    import pytest
+
+    pty = pytest.importorskip("pty")
+    master, slave = pty.openpty()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CCB_")}
+    env.update(CLAUDE_SESSION_PATH=str(tmp_path / "session.jsonl"), STUB_DELAY="0")
+    process = subprocess.Popen(
+        [sys.executable, str(STUB_PATH), "--provider", "claude"],
+        stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE,
+        cwd=tmp_path, env=env,
+    )
+    os.close(slave)
+
+    def await_composer() -> None:
+        received = b""
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                received += os.read(master, 65536)
+                if b"\x1b[1A\x1b[3G" in received:
+                    return
+        raise AssertionError(f"idle composer not repainted: {received!r}")
+
+    try:
+        await_composer()
+        process.stdin.write(b"CCB_REQ_ID: job_late\n\nfirst request\n\n")
+        process.stdin.flush()
+        await_composer()
+        # This arrives after the stub's native turn completion, like the real
+        # sender's delayed Enter. An unanchored guidance tail is not a draft.
+        process.stdin.write(b"Reply in English.\n")
+        process.stdin.flush()
+        await_composer()
+        process.stdin.write(b"CCB_REQ_ID: job_next\n\nsecond request\n\n")
+        process.stdin.flush()
+        await_composer()
+        records = [json.loads(line) for line in (tmp_path / "session.jsonl").read_text().splitlines()]
+        assert len([r for r in records if r.get("type") == "assistant"]) == 2
+    finally:
+        process.terminate()
+        process.communicate(timeout=5)
+        os.close(master)
