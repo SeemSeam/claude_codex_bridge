@@ -12,7 +12,7 @@ Candidate source: 4a1cfca6b (tree identical to 281002e56 after metadata commit s
 - Installed-payload crash test: killed only verified test-owned helper PID 1816379. Parent job_20533b1b2b80 submitted a child while helper was recovering; child job_43c2d5abdfdd and continuation job_6838c73d6889 completed after native automatic recovery. Exact marker DONE_PACKAGED_CRASH_872; same helper session retained; no manual retry or repair.
 - Final mailbox check: both idle, queue depth 0, pending replies 0. Project-local ccb kill returned ok/unmounted, forced=false.
 - Harness corrections: local HTTP is unsupported by npm's HTTPS downloader, so used temporary trusted loopback HTTPS. Extracting the archive into its own download directory replaces the archive pathname with its included legacy symlink; rebuilt into a separate serving directory and did not extract there. Neither failed attempt was counted as an install pass.
-- Trusted-base isolation checker was unchanged. Runtime fix passed non-Windows scope; common metadata passed non-Windows scope; Windows-only metadata passed Windows scope. The original release-preparation history was consolidated to remove an intermediate add/revert of Windows metadata; final tree bytes stayed identical.
+- Trusted-base isolation checker was unchanged. Shared runtime and common release metadata passed their ownership gates. Platform-specific release metadata and its verification are retained in PR #359; this receipt covers the shared release and Linux/macOS recovery qualification.
 
 Remote CI, publication receipts and final temporary-root removal are recorded after they complete.
 
@@ -24,7 +24,7 @@ After repainting unanchored completed-request tails (including the sanitized
 no-final-blank-line case), 18 stub regressions passed and the full local
 system_comm_matrix.sh passed: mixed broadcast, dual Codex/Claude/Gemini,
 cross-project isolation and kill cleanup. Remote reruns use hotfix 1c8fb64f1,
-common metadata 4997b921d, Windows metadata 91e9eb733.
+common metadata 4997b921d, complete release candidate 91e9eb733.
 
 All disposable projects and matrix runtimes were stopped through ccb kill;
 the temporary HTTP/HTTPS servers were stopped. Removed only the three
@@ -39,27 +39,26 @@ macOS full suite: 7243 passed, 119 skipped, 42 deselected. Lifecycle: 21 passed,
 run 36242374936.
 
 Combined release candidate 91e9eb733 passed Linux full suites, lifecycle,
-provider blackbox, Rust, package install, trusted Windows isolation and real
+provider blackbox, Rust, package install, ownership isolation and real
 macOS/WSL runs. First macOS full suite failed only the existing
 test_managed_pane_command_ignores_stale_socket_node at its 15s subprocess
 timeout. No Codex source/test diff exists between the green repair head and
 combined release candidate. A single failed-job rerun was requested on run
 36242381378; do not count the first attempt as passing.
 
-The common-only metadata PR intentionally lacks the two Windows-owned version
-updates in the separate Windows PR; its two version-consistency failures are
-resolved in the combined candidate. No isolation gate was weakened.
+The common-only metadata PR depends on the two platform-specific version
+updates in PR #359; its two version-consistency failures are resolved in the
+combined candidate. No isolation gate was weakened.
 
 The single failed-job rerun passed: macOS 7243 passed, 119 skipped, 42
 deselected in 839.78s, job 108407874090. The combined candidate's required gate
 passed. PRs #357/#358/#359 merged in order; release source is
 91fb0a4d2ef43ea9040c5507409db73cc5d4cf06, byte-identical to candidate 91e9eb733.
 Annotated v8.7.2 was pushed at that source. Release workflows: artifacts
-36244311573, npm 36244311632, Windows 36244311643, sidebar 36244311584.
-All four publication workflows completed successfully. Public v8.7.2 assets:
-Linux x86_64, macOS universal, signed Android APK/metadata, Windows x64 and
-sidebar helper. Downloaded all assets and verified SHA256SUMS plus the separate
-Windows/sidebar checksums. Android metadata reports version 8.7.2/code 8070002.
+36244311573, npm 36244311632 and sidebar 36244311584 all completed successfully.
+Public shared-release assets: Linux x86_64, macOS universal, signed Android
+APK/metadata and sidebar helper. Downloaded and verified SHA256SUMS plus the
+sidebar checksum. Android metadata reports version 8.7.2/code 8070002.
 The public bilingual release body matches the committed notes apart from a
 trailing blank line. The remote annotated tag peels to the exact release source.
 
