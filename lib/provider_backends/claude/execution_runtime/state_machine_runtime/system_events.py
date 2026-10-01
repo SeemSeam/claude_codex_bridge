@@ -66,13 +66,37 @@ def handle_prompt_lifecycle_event(
     handle_user_event(submission, poll, text=text, now=now)
 
 
+_PASTED_CONTENT_OUTER = re.compile(
+    r'\s*<pasted_content id="([A-Za-z0-9]+)">((?:(?!</?pasted_content\b).)*)'
+    r'</pasted_content id="\1">\s*',
+    flags=re.DOTALL,
+)
+
+
+def unwrap_outer_pasted_content(text: str) -> str:
+    """Unwrap a single complete Claude pasted_content envelope when present.
+
+    Claude Code may store an injected top-level user prompt inside
+    ``<pasted_content id="...">...</pasted_content id="...">``. Request-anchor
+    detection still requires the ``CCB_REQ_ID`` line at the start of the
+    effective prompt text, so only a whole-message outer wrapper is removed.
+    Nested, sibling, mismatched, or partial wrappers are left unchanged.
+    """
+    raw = str(text or "")
+    wrapped = _PASTED_CONTENT_OUTER.fullmatch(raw)
+    if wrapped is None:
+        return raw
+    return wrapped.group(2)
+
+
 def has_outer_request_anchor(text: str, *, request_anchor: str) -> bool:
     if not request_anchor:
         return False
     from ...protocol import REQ_ID_PREFIX
 
+    text = unwrap_outer_pasted_content(text)
     pattern = rf"^\s*{re.escape(REQ_ID_PREFIX)}\s*{re.escape(request_anchor)}(?=\s|$)"
-    return re.search(pattern, str(text or ""), flags=re.IGNORECASE) is not None
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
 
 
 def is_top_level_user_prompt(event: dict[str, object] | None) -> bool:
