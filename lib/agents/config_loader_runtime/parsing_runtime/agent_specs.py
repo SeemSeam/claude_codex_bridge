@@ -102,6 +102,7 @@ def build_agent_spec(agent_name: str, raw: dict[str, Any]) -> AgentSpec:
                 if raw.get('provider_command_template') is not None
                 else None
             ),
+            remote_workspace=raw.get('remote_workspace'),
             runtime_mode=normalize_runtime_mode(
                 expect_string(
                     raw.get('runtime_mode', RuntimeMode.PANE_BACKED.value),

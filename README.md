@@ -385,6 +385,11 @@ Supported managed Agents receive the built-in `ask`, `ccb-clear`, `ccb-compact`,
 
 `.ccb/ccb_memory.md` is the project-wide shared memory document. Use it for team collaboration rules, project constraints, long-lived context, and agent handoff conventions. Stable cross-agent information belongs there instead of being copied into several provider-private memory files.
 
+For an experimental Linux/WSL2 controller with a Claude worker on another Linux
+host, see [SSH remote workspaces](docs/remote-workspaces.md). This opt-in path
+adds explicit workspace synchronization before completion and keeps provider
+authentication on the worker host.
+
 <a id="contact"></a>
 
 ## Contact

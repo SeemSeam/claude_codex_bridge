@@ -57,6 +57,7 @@ class AgentSpec:
     workspace_path: str | None = None
     workspace_group: str | None = None
     provider_command_template: str | None = None
+    remote_workspace: str | None = None
     model: str | None = None
     thinking: str | None = None
     startup_args: tuple[str, ...] = field(default_factory=tuple)
@@ -86,6 +87,14 @@ class AgentSpec:
         workspace_path = self._normalize_optional_string(self.workspace_path, field_name='workspace_path')
         workspace_group = self._normalize_workspace_group()
         provider_command_template = self._normalize_provider_command_template()
+        remote = self._normalize_optional_string(self.remote_workspace, field_name='remote_workspace')
+        if remote is not None:
+            import re
+            if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', remote):
+                raise AgentValidationError('remote_workspace must be a profile name')
+            if workspace_mode is not WorkspaceMode.GIT_WORKTREE or workspace_group is not None:
+                raise AgentValidationError('remote_workspace requires a dedicated git-worktree')
+        object.__setattr__(self, 'remote_workspace', remote)
         self._validate_workspace_overrides(
             workspace_mode=workspace_mode,
             workspace_root=workspace_root,
@@ -277,6 +286,7 @@ class AgentSpec:
             'workspace_path': self.workspace_path,
             'workspace_group': self.workspace_group,
             'provider_command_template': self.provider_command_template,
+            'remote_workspace': self.remote_workspace,
             'runtime_mode': self.runtime_mode.value,
             'restore_default': self.restore_default.value,
             'permission_default': self.permission_default.value,

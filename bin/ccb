@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Keep nested CCB calls on this checkout; preserve the managed caller identity.
+set -eu
+source_file="${BASH_SOURCE[0]}"
+while [[ -L "$source_file" ]]; do
+  source_dir="$(cd -P "$(dirname "$source_file")" && pwd)"
+  source_file="$(readlink "$source_file")"
+  [[ "$source_file" != /* ]] && source_file="$source_dir/$source_file"
+done
+source_dir="$(cd -P "$(dirname "$source_file")" && pwd)"
+exec "$source_dir/_ccb-python" "$source_dir/../ccb.py" "$@"

@@ -73,7 +73,13 @@ Before every ask, decide:
   explicit debugging requests, not normal ask workflow tools.
 - Do not manually append output-policy text; stable reply policy comes from managed CCB memory, and `ask` adds only requested compact/silent mode metadata.
 
-Use no flags or insert selected flags before `"$TARGET"`:
+When `CCB_PINNED_CLI` is set by the controller, invoke `"$CCB_PINNED_CLI" ask`
+with the same flags and input below instead of resolving `ask` or `ccb` from
+PATH. Use that absolute entrypoint for other CCB operations too. Login shells
+may otherwise select a different installed version. Do not use the outer
+controller startup wrapper: it would clear the managed caller identity.
+
+Otherwise, use no flags or insert selected flags before `"$TARGET"`:
 
 ```bash
 command ask "$TARGET" <<'EOF'

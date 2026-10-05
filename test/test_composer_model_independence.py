@@ -72,3 +72,36 @@ def test_codex_special_editor_mode_remains_unknown(mode):
     screen = {'text': f'› Ask Codex to do anything\n\n  ? for shortcuts  {mode}',
               'cursor_x': 2, 'cursor_y': 0}
     assert inspect_screen('codex', screen, binding='pane').state == 'unknown'
+
+
+@pytest.mark.parametrize('label', LABELS)
+def test_codex_0158_two_row_footer(label):
+    footer = f'  \x1b[38;5;223m{label} default\x1b[39m · \x1b[38;5;151m~/project\x1b[39m\n  ? for shortcuts'
+    screen = {'text': '› Ask Codex to do anything\n\n'+footer, 'cursor_x': 2, 'cursor_y': 0}
+    assert inspect_screen('codex', screen, binding='pane').state == 'empty'
+    screen['text'] = '› Ask Codex to do anything\n  actual draft\n\n'+footer
+    assert inspect_screen('codex', screen, binding='pane').state == 'nonempty'
+    screen['text'] += '\n  unexpected menu'
+    assert inspect_screen('codex', screen, binding='pane').state == 'unknown'
+
+
+def test_unstyled_two_row_imitation_is_not_a_footer():
+    screen = {'text': '› Ask Codex to do anything\n\n  arbitrary · draft\n  ? for shortcuts',
+              'cursor_x': 2, 'cursor_y': 0}
+    assert inspect_screen('codex', screen, binding='pane').state == 'unknown'
+
+
+@pytest.mark.parametrize('warning', ['⚠ 1 warning · f2 to view', '⚠ 2 warnings · f2 to view'])
+def test_codex_0159_warning_footer_preserves_draft_and_busy_guards(warning):
+    footer = ('  \x1b[38;5;223mlocal/model default\x1b[39m · \x1b[38;5;151m~/project\x1b[39m\n'
+              '  ? for shortcuts                  ' + warning)
+    screen = {'text': '› Ask Codex to do anything\n\n' + footer, 'cursor_x': 2, 'cursor_y': 0}
+    assert inspect_screen('codex', screen, binding='pane').state == 'empty'
+    screen['text'] = '› actual draft\n\n' + footer
+    assert inspect_screen('codex', screen, binding='pane').state == 'nonempty'
+    screen['text'] = '• Working (1s • esc to interrupt)\n› Ask Codex to do anything\n\n' + footer
+    screen['cursor_y'] = 1
+    assert inspect_screen('codex', screen, binding='pane').reason == 'provider_busy'
+    screen['text'] = '› Ask Codex to do anything\n\n' + footer + '\n  unexpected menu'
+    screen['cursor_y'] = 0
+    assert inspect_screen('codex', screen, binding='pane').state == 'unknown'

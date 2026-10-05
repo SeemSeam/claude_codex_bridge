@@ -69,6 +69,7 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
         *,
         runtime_service=None,
         execution_service=None,
+        workspace_synchronizer=None,
         auto_reply_delivery_on_complete: bool = False,
         require_actionable_runtime_binding_for_execution: bool = False,
         completion_tracker: CompletionTrackerService | None = None,
@@ -113,6 +114,11 @@ class JobDispatcher(DispatcherRuntimeStateMixin, DispatcherFacadeMixin):
             timing_sink=timing_sink,
             last_restore_entries=(),
             last_restore_generated_at=None,
+        )
+        from remote_workspace import create_workspace_synchronizer
+        self._workspace_synchronizer = (
+            workspace_synchronizer if workspace_synchronizer is not None
+            else create_workspace_synchronizer(layout, config)
         )
         self._agent_lifecycle_bridge = agent_lifecycle_bridge
         self._rebuild_state()

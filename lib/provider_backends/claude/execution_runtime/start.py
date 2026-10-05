@@ -28,14 +28,68 @@ def load_session(load_project_session_fn, work_dir: Path, *, agent_name: str):
 
 
 def provider_preferred_session_path(*, session, context: ProviderRuntimeContext) -> Path | None:
+    if context is not None and getattr(context, 'remote_session_path', None):
+        return Path(context.remote_session_path)
     return preferred_session_path(str(getattr(session, "claude_session_path", "") or ""), context.session_ref)
 
 
 def configure_resume_reader(reader, state: dict[str, object], context: ProviderRuntimeContext) -> None:
-    preferred_session = preferred_session_path(str(state.get("session_path") or ""), context.session_ref)
+    pinned = getattr(context, 'remote_session_path', None)
+    preferred_session = Path(pinned) if pinned else preferred_session_path(str(state.get("session_path") or ""), context.session_ref)
+    if pinned:
+        reader.root = preferred_session.parents[1]
+        reader.work_dir = Path(context.workspace_path)
     if preferred_session is not None:
         reader.set_preferred_session(preferred_session)
-    _allow_reader_session_rotation(reader)
+    if not pinned:
+        _allow_reader_session_rotation(reader)
+    elif (not state.get('anchor_seen') and state.get('prompt_sent')
+          and not state.get('matching_paste_recovery_attempted')):
+        _recover_exact_pasted_prompt(state, preferred_session)
+
+
+def _recover_exact_pasted_prompt(state, path):
+    """On upgrade, reread a missed exact prompt without sending any input."""
+    import json
+    import os
+    import stat
+    from .state_machine_runtime.system_events import is_top_level_user_prompt, unwrap_matching_paste
+    from ..comm_runtime.parsing import structured_event
+    expected = str(state.get('prompt_text') or '')
+    if not expected:
+        return
+    matches = []
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return
+    with os.fdopen(fd, 'rb') as source:
+        before = os.fstat(source.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > 128 * 1024 * 1024:
+            return
+        while source.tell() < 128 * 1024 * 1024:
+            offset = source.tell()
+            line = source.readline(2 * 1024 * 1024 + 1)
+            if not line:
+                break
+            if len(line) > 2 * 1024 * 1024 or not line.endswith(b'\n'):
+                return
+            try:
+                event = structured_event(json.loads(line))
+            except (ValueError, UnicodeError):
+                continue
+            if not event or event.get('role') != 'user' or not is_top_level_user_prompt(event):
+                continue
+            text = str(event.get('text') or '')
+            if text != expected and unwrap_matching_paste(text, expected) == expected:
+                matches.append(offset)
+        after = os.fstat(source.fileno())
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            return
+    state['matching_paste_recovery_attempted'] = True
+    if len(matches) == 1:
+        state['state'] = {'session_path': path, 'offset': matches[0], 'carry': b''}
+        state['matching_paste_recovery_offset'] = matches[0]
 
 
 def completion_dir_for_session(session) -> str:
@@ -160,10 +214,17 @@ def start_active_submission(
 
     reader = reader_factory(prepared.session)
     preferred_session = provider_preferred_session_path(session=prepared.session, context=context)
+    if getattr(context, 'remote_session_path', None):
+        reader.root = preferred_session.parents[1]
+        reader.work_dir = Path(context.workspace_path)
     if preferred_session is not None:
         reader.set_preferred_session(preferred_session)
+        if (getattr(context, 'remote_session_path', None)
+                and reader.current_session_path() != preferred_session):
+            raise RuntimeError('remote transcript binding is not ready; no task was sent')
     state = reader.capture_state()
-    _allow_reader_session_rotation(reader)
+    if not getattr(context, 'remote_session_path', None):
+        _allow_reader_session_rotation(reader)
     request_anchor = request_anchor_fn(job.job_id)
     completion_dir = completion_dir_for_session(prepared.session)
     no_wrap = no_wrap_requested(job)
@@ -186,7 +247,9 @@ def start_active_submission(
         ready_at=now,
         source_kind=CompletionSourceKind.SESSION_EVENT_LOG,
         reply="",
-        diagnostics={"provider": adapter.provider, "mode": "active", "workspace_path": str(prepared.work_dir)},
+        diagnostics={"provider": adapter.provider, "mode": "active", "workspace_path": str(prepared.work_dir),
+                     "reader_root": str(getattr(reader, "root", "")),
+                     "reader_work_dir": str(getattr(reader, "work_dir", ""))},
         runtime_state={
             **initial_guard_state('claude', prepared.backend, dict(getattr(prepared.session, 'data', {}) or {})),
             "mode": "active",

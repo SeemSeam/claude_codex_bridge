@@ -19,6 +19,9 @@ def complete_job(dispatcher, job_id: str, decision: CompletionDecision):
         if current.status in dispatcher._terminal_event_by_status:
             return current
 
+        # The barrier precedes persistence, mailbox completion, callback creation,
+        # and clearing the active agent slot. No successful result can overtake it.
+        decision = dispatcher._workspace_synchronizer.before_complete(current, decision)
         finished_at = decision.finished_at or dispatcher._clock()
         decision = enforce_frontdesk_boundary(dispatcher, current, decision, finished_at=finished_at)
         terminal, decision, prior_snapshot = persist_terminal_completion(

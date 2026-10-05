@@ -57,8 +57,10 @@ def start_running_job(
     submission = None
     if dispatcher._execution_service is not None and should_start_execution(dispatcher, running, runtime_context):
         try:
+            synchronized = dispatcher._workspace_synchronizer.before_dispatch(running, runtime_context)
+            runtime_context = dispatcher._workspace_synchronizer.bind_context(running, runtime_context)
             submission = dispatcher._execution_service.start(
-                running,
+                synchronized,
                 runtime_context=runtime_context,
             )
         except Exception as exc:

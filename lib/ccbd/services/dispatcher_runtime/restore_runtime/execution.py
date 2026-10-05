@@ -117,7 +117,15 @@ def _restore_current_job(dispatcher, *, target_kind: TargetKind, job_id: str):
         return repaired, entry
     runtime = dispatcher._registry.get(current.agent_name) if target_kind is TargetKind.AGENT else None
     runtime_context = build_job_runtime_context(current, runtime)
-    restored = dispatcher._execution_service.restore(current, runtime_context=runtime_context)
+    try:
+        execution_job = dispatcher._workspace_synchronizer.for_resume(current, runtime_context)
+        runtime_context = dispatcher._workspace_synchronizer.bind_context(current, runtime_context)
+    except Exception as exc:
+        from types import SimpleNamespace
+        restored = SimpleNamespace(status='abandoned', reason=f'workspace_sync_restore_blocked: {exc}',
+                                   resume_capable=False, pending_items_count=0)
+        return _failed_restore_decision(dispatcher, current, restored), _restore_entry(current, restored)
+    restored = dispatcher._execution_service.restore(execution_job, runtime_context=runtime_context)
     entry = _restore_entry(current, restored)
     if restored.status == 'terminal_pending' and restored.decision is not None:
         return _complete_terminal_pending(dispatcher, current, restored), entry

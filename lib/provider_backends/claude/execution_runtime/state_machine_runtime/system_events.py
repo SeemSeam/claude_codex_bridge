@@ -24,6 +24,7 @@ def handle_user_event(
     text: str,
     now: str,
 ) -> None:
+    text = unwrap_matching_paste(text, str(submission.runtime_state.get('prompt_text') or ''))
     if not has_outer_request_anchor(text, request_anchor=poll.request_anchor):
         return
     poll.prompt_activated = True
@@ -50,6 +51,7 @@ def handle_prompt_lifecycle_event(
 ) -> None:
     phase = str(event.get("prompt_phase") or "").strip().lower()
     text = str(event.get("text") or "")
+    text = unwrap_matching_paste(text, str(submission.runtime_state.get('prompt_text') or ''))
     if phase == "enqueued":
         if has_outer_request_anchor(text, request_anchor=poll.request_anchor):
             poll.prompt_enqueued = True
@@ -73,6 +75,22 @@ def has_outer_request_anchor(text: str, *, request_anchor: str) -> bool:
 
     pattern = rf"^\s*{re.escape(REQ_ID_PREFIX)}\s*{re.escape(request_anchor)}(?=\s|$)"
     return re.search(pattern, str(text or ""), flags=re.IGNORECASE) is not None
+
+
+def unwrap_matching_paste(text: str, expected: str) -> str:
+    """Claude may wrap a bracketed paste; require the entire sent prompt.
+
+    A quoted marker, a tool result, extra surrounding prose or a different
+    request body must never turn into a completion authority anchor.
+    """
+    if not expected.strip():
+        return text
+    match = re.fullmatch(
+        r'\s*<pasted_content id="(?P<id>[A-Za-z0-9_-]{1,64})">\s*'
+        r'(?P<body>.*?)\s*</pasted_content(?: id="(?P=id)")?>\s*', text, re.DOTALL)
+    if match and match['body'].strip() == expected.strip():
+        return expected
+    return text
 
 
 def is_top_level_user_prompt(event: dict[str, object] | None) -> bool:

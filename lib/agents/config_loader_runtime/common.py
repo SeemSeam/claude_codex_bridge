@@ -53,6 +53,7 @@ ALLOWED_AGENT_KEYS = {
     'workspace_path',
     'workspace_group',
     'provider_command_template',
+    'remote_workspace',
     'runtime_mode',
     'restore',
     'permission',

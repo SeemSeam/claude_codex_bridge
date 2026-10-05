@@ -1101,6 +1101,8 @@ def _runner_env() -> dict[str, str]:
     }
     for key in (
         'CCB_SOURCE_ALLOWED_ROOTS',
+        'CCB_REMOTE_WORKSPACES_FILE',
+        'CCB_PROVIDER_SOURCE_HOME',
         'CCB_TEST_ROOTS',
         'CCB_TEST_ENTRYPOINT',
         'CCB_SKIP_STARTUP_UPDATE_CHECK',

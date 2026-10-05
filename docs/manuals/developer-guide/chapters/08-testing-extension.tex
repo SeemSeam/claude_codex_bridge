@@ -104,6 +104,12 @@ CCB_SOURCE_HOME=/home/bfly/yunwei/test_ccb2/source_home
 
 \section{扩展配置}
 
+实验性远端工作区接口的协议与边界见 \src{docs/remote-workspaces.md}。
+\src{test/test_remote_workspace_config.py} 验证跨平台配置和本地任务不加载
+Linux 传输模块；其余 \src{test/test_remote_*.py} 在 Linux 上验证同步屏障、
+恢复、断连重接与部署回滚。传输测试采用本地 endpoint 和故障注入，不能替代
+真实 SSH、Claude 登录及长期弱网验收。
+
 新增配置字段时需要更新：
 
 \begin{itemize}

@@ -35,6 +35,8 @@ def update_optional_agent_fields(payload: dict[str, object], spec) -> None:
         payload['workspace_path'] = spec.workspace_path
     if spec.workspace_group is not None:
         payload['workspace_group'] = spec.workspace_group
+    if spec.remote_workspace is not None:
+        payload['remote_workspace'] = spec.remote_workspace
     if spec.provider_command_template is not None:
         payload['provider_command_template'] = spec.provider_command_template
     if spec.model is not None:

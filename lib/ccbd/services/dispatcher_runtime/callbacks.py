@@ -297,6 +297,14 @@ def _repair_callback_edges_locked(dispatcher) -> tuple[CallbackEdgeRecord, ...]:
             continue
         reply = _latest_child_reply(dispatcher, latest)
         child_job = _job_for_reply(dispatcher, reply) or get_job(dispatcher, latest.child_job_id)
+        if (
+            reply is None
+            and child_job is not None
+            and getattr(dispatcher._config.agents.get(child_job.agent_name), 'remote_workspace', None)
+        ):
+            from remote_workspace.callback_recovery import restore_missing_reply
+
+            reply = restore_missing_reply(dispatcher, child_job)
         decision = _decision_from_reply(reply, child_job=child_job, fallback_finished_at=latest.updated_at)
         if reply is None or child_job is None or decision is None:
             continue

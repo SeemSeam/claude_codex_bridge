@@ -18,6 +18,9 @@ _MANAGED_PROVIDER_MARKERS = (
 
 
 def current_provider_source_home() -> Path:
+    explicit_provider = _env_path('CCB_PROVIDER_SOURCE_HOME')
+    if explicit_provider is not None:
+        return explicit_provider
     explicit = _env_path('CCB_SOURCE_HOME')
     if explicit is not None:
         return explicit

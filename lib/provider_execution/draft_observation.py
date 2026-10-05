@@ -75,7 +75,7 @@ def inspect_screen(provider: str, screen: dict, *, binding: str) -> Observation:
             return result('unknown', 'provider_busy')
         # Default main composer has a status footer below the cursor. Selection
         # menus use the same arrow; their confirmation footer is not accepted.
-        footer = _codex_footer(lines, styled, cursor_y)
+        footer = _codex_footer(lines, styled, cursor_y, screen['text'].splitlines())
         if footer is None:
             return result('unknown', 'composer_layout_unknown')
         if _editor_mode_in_footer(lines[footer:]):
@@ -121,10 +121,20 @@ def inspect_screen(provider: str, screen: dict, *, binding: str) -> Observation:
     return result('nonempty', 'claude_draft')
 
 
-def _codex_footer(lines, styled, cursor_y: int) -> int | None:
+def _codex_footer(lines, styled, cursor_y: int, raw_lines=()) -> int | None:
     # The status bar is the last nonblank row, separated from the editor by
     # a blank row. Its configurable labels (including model names) are opaque.
     footer = next((i for i in range(len(lines)-1, cursor_y, -1) if lines[i].strip()), None)
+    # Codex 0.158+ may render the shortcut hint below its colored status bar.
+    # 0.159.3 can append a warning count and F2 viewer hint on the same row.
+    # Qualify that precise two-row layout, independent of the model label;
+    # arbitrary text below a footer still leaves the composer unknown.
+    if (footer is not None and footer > cursor_y+2
+            and re.fullmatch(r'  \? for shortcuts(?:\s+⚠ \d+ warnings? · f2 to view)?\s*', lines[footer])
+            and lines[footer-1].startswith('  ') and ' · ' in lines[footer-1]
+            and not lines[footer-2].strip() and len(raw_lines) > footer-1
+            and re.search(r'\x1b\[38;(?:5;\d+|2;\d+;\d+;\d+)m', raw_lines[footer-1])):
+        return footer-1
     if footer is None or footer <= cursor_y+1 or lines[footer-1].strip():
         return None
     row = lines[footer]

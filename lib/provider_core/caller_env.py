@@ -80,6 +80,10 @@ def caller_context_env(*, actor: str, runtime_dir: Path, launch_session_id: str)
     if project_root is not None:
         env['CCB_CALLER_PROJECT_ROOT'] = str(project_root)
         env['CCB_CALLER_PROJECT_ID'] = compute_project_id(project_root)
+        if os.environ.get('CCB_REMOTE_WORKSPACES_FILE'):
+            # Login shells may rewrite PATH. Expose an explicit entrypoint for
+            # workflows that opt into the independent remote-workspace build.
+            env['CCB_PINNED_CLI'] = str(Path(__file__).resolve().parents[2] / 'bin' / 'ccb')
         source_test_bin = project_root / '.ccb' / 'bin'
         source_test_ccb = source_test_bin / 'ccb'
         if os.environ.get('CCB_TEST_ENTRYPOINT') == '1' and source_test_ccb.is_file():

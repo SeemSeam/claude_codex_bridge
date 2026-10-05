@@ -101,6 +101,7 @@ def _agent_spec_from_record(record: dict) -> AgentSpec:
         workspace_path=record.get('workspace_path'),
         workspace_group=record.get('workspace_group'),
         provider_command_template=record.get('provider_command_template'),
+        remote_workspace=record.get('remote_workspace'),
         runtime_mode=RuntimeMode(record['runtime_mode']),
         restore_default=RestoreMode(record['restore_default']),
         permission_default=PermissionMode(record['permission_default']),

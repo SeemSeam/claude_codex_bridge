@@ -89,6 +89,8 @@ class ClaudeProviderAdapter:
             'reply_delivery_require_ready': submission.runtime_state.get('reply_delivery_require_ready'),
             'ready_wait_started_at': submission.runtime_state.get('ready_wait_started_at'),
             'ready_timeout_s': submission.runtime_state.get('ready_timeout_s'),
+            'matching_paste_recovery_attempted': submission.runtime_state.get('matching_paste_recovery_attempted'),
+            'matching_paste_recovery_offset': submission.runtime_state.get('matching_paste_recovery_offset'),
         }
 
     def resume(

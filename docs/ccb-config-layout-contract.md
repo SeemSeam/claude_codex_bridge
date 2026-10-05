@@ -649,6 +649,23 @@ user-level defaults, and CCB-owned layout aliases keep their existing behavior.
 - `workspace_mode = "copy"` is the only mode that may create an explicit
   directory copy of the project tree.
 
+#### Experimental remote workspaces
+
+- `agents.<name>.remote_workspace` optionally selects a controller-owned profile
+  by name (`[a-zA-Z0-9_-]{1,64}`). It requires a dedicated `git-worktree` and
+  cannot be combined with `workspace_group`.
+- The project cannot supply the host, SSH configuration or remote path in this
+  field. `CCB_REMOTE_WORKSPACES_FILE` points to a trusted file outside the project
+  that binds the profile to the exact project, agent and worktree.
+- This version supports Linux/WSL2 controllers and Linux Claude pane-backed
+  workers. Its provider wrapper still requires normal project-command approval.
+- Synchronization runs before dispatch and before successful completion becomes
+  visible to callbacks, review or integration. Failed or ambiguous synchronization
+  blocks new work for that profile until explicit recovery.
+- With no remote profiles, local dispatch does not import the optional Linux
+  transport. See [Remote workspaces](remote-workspaces.md) for setup, limits,
+  transaction receipts and recovery.
+
 ### 4.8 Loop Capacity Role Profiles
 
 Rich or hybrid `ccb.config` may define loop capacity policy under `[loop]`.

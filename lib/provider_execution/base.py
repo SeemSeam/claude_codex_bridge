@@ -23,6 +23,7 @@ class ProviderRuntimeContext:
     runtime_pid: int | None = None
     runtime_health: str | None = None
     runtime_binding_source: str | None = None
+    remote_session_path: str | None = None
 
 
 @dataclass(frozen=True)

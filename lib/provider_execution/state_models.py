@@ -70,6 +70,7 @@ def _runtime_context_to_record(value: ProviderRuntimeContext | None) -> dict[str
         'session_ref': value.session_ref,
         'runtime_pid': value.runtime_pid,
         'runtime_health': value.runtime_health,
+        'remote_session_path': value.remote_session_path,
     }
 
 
@@ -84,6 +85,7 @@ def _runtime_context_from_record(record: dict[str, Any] | None) -> ProviderRunti
         session_ref=record.get('session_ref'),
         runtime_pid=record.get('runtime_pid'),
         runtime_health=record.get('runtime_health'),
+        remote_session_path=record.get('remote_session_path'),
     )
 
 

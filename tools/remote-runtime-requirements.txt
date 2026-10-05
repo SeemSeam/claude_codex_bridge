@@ -1,0 +1,4 @@
+# Reuse the release's authoritative runtime dependencies.
+-r ../deploy/mobile-relay/requirements.txt
+tomli>=2.0.0; python_version < "3.11"
+watchdog>=2.1.0
