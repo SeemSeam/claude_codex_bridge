@@ -30,8 +30,6 @@ def test_native_ghost_not_model_or_separator_authorizes_empty(footer):
 
 
 @pytest.mark.parametrize('content,x,y', [
-    ('Ask Codex to do anything', 2, 0),
-    ('\x1b[2mAsk Codex\x1b[0m to do anything', 2, 0),
     ('\x1b[2mAsk Codex to do anything\x1b[0m\n  user draft', 2, 0),
     ('\x1b[2mAsk Codex to do anything\x1b[0m', 3, 0),
     ('\x1b[2mAsk Codex to do anything\x1b[0m', 2, 1),
@@ -39,6 +37,14 @@ def test_native_ghost_not_model_or_separator_authorizes_empty(footer):
 ])
 def test_opaque_footer_does_not_authorize_draft_or_wrong_cursor(content, x, y):
     assert inspect_screen('codex', screen(content=content, x=x, y=y), binding='pane').state == 'unknown'
+
+
+@pytest.mark.parametrize('footer', ['unrelated model · /tmp/project', 'gpt-6-astra', 'GPT-6-Astra', 'o3', 'draft · text', '未来模型'])
+def test_nondim_native_placeholder_releases_empty_regardless_of_footer_label(footer):
+    # Newer Codex builds stop dimming the placeholder text and may reword it.
+    # A known placeholder at the initial cursor with an empty composer region
+    # below is empty evidence on its own; the footer label stays opaque.
+    assert inspect_screen('codex', screen(footer=footer), binding='pane').state == 'empty'
 
 
 @pytest.mark.parametrize('footer', ['Context 0% left', 'Context 42% left', 'Context 100% left'])
