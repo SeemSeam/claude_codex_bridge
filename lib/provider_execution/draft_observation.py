@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 _SGR = re.compile(r'\x1b\[([0-9;]*)m')
 _ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
-_BORDER = re.compile(r'^─{8,}\s*$')
+_BORDER = re.compile(r'^─{8,}(?:\s\S.*\s─+\s*)?$')
 
 
 @dataclass(frozen=True)
