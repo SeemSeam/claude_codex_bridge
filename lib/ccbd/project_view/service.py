@@ -66,7 +66,7 @@ from .sequence import ProjectViewSequenceCache
 PROJECT_VIEW_SCHEMA_VERSION = 1
 PROJECT_VIEW_TTL_MS = 1000
 PROJECT_VIEW_IDLE_TTL_MS = 5000
-PROJECT_VIEW_COMMS_LIMIT = 8
+PROJECT_VIEW_COMMS_LIMIT = 20
 CODEX_ACTIVE_NO_PROGRESS_FREE_AFTER_S = 60.0
 CLAUDE_ACTIVE_NO_PROGRESS_FREE_AFTER_S = 60.0
 ORPHANED_ACTIVE_INBOUND_OBSERVATION_S = 30.0
@@ -2351,6 +2351,7 @@ def _comm_record(
             job,
             reply_delivery=reply_delivery,
             configured_agents=configured_agents,
+            dispatcher=dispatcher,
         )
     if running_recover_hint and getattr(job, 'status', None) is JobStatus.RUNNING:
         business_status, status_label = 'blocked', 'stuck'
@@ -2447,7 +2448,9 @@ def _execution_phase_projection(
         provider_state=provider_evidence.state,
         provider_identity_current=provider_evidence.identity_current,
         orphan_suspected=False,
-        reply_expected=_expects_reply_delivery(job, configured_agents),
+        reply_expected=_expects_reply_delivery(
+            job, configured_agents, dispatcher=context.deps.dispatcher
+        ),
         reply_delivery=reply_delivery,
         reply_delivery_source_job_id=structured_source_job_id,
     )
@@ -2624,7 +2627,7 @@ def _comm_attachments(job) -> list[dict[str, object]]:
     return attachments
 
 
-def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[str]) -> tuple[str, str]:
+def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[str], dispatcher=None) -> tuple[str, str]:
     if job.status in _COMMS_PENDING_STATUSES:
         return 'sending', 'send'
     if job.status is JobStatus.RUNNING:
@@ -2632,7 +2635,7 @@ def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[s
     if job.status is JobStatus.COMPLETED:
         if bool(getattr(job.request, 'silence_on_success', False)):
             return 'completed', 'done'
-        if _expects_reply_delivery(job, configured_agents):
+        if _expects_reply_delivery(job, configured_agents, dispatcher=dispatcher):
             if reply_delivery is None or reply_delivery.status in _COMMS_PENDING_STATUSES or reply_delivery.status is JobStatus.RUNNING:
                 return 'delivering', 'back'
             if reply_delivery.status is JobStatus.COMPLETED:
@@ -2648,10 +2651,34 @@ def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[s
     return job.status.value, job.status.value
 
 
-def _expects_reply_delivery(job, configured_agents: frozenset[str]) -> bool:
+def _expects_reply_delivery(job, configured_agents: frozenset[str], *, dispatcher=None) -> bool:
     sender = str(getattr(job.request, 'from_actor', '') or '').strip()
     target = str(getattr(job, 'target_name', '') or '').strip()
-    return sender in configured_agents and sender != target
+    if sender not in configured_agents or sender == target:
+        return False
+    if job.status is JobStatus.COMPLETED and bool(getattr(job.request, 'silence_on_success', False)):
+        # Silenced successes keep no delivery obligation; otherwise the row
+        # would sit at reply_queued forever with no delivery job to clear it.
+        return False
+    if dispatcher is not None and _job_is_callback_child(dispatcher, job):
+        # Chain children feed their reply to the parent through the callback
+        # continuation protocol and never notify the caller directly.
+        return False
+    return True
+
+
+def _job_is_callback_child(dispatcher, job) -> bool:
+    bureau = getattr(dispatcher, '_message_bureau', None)
+    if bureau is None:
+        return False
+    job_id = str(getattr(job, 'job_id', '') or '').strip()
+    if job_id and bureau.callback_edge_for_child_job(job_id) is not None:
+        return True
+    attempt = _call_store(bureau._attempt_store, 'get_latest_by_job_id', job_id)
+    message_id = str(getattr(attempt, 'message_id', '') or '').strip()
+    if message_id:
+        return bureau.callback_edge_for_child_message(message_id) is not None
+    return False
 
 
 def _body_preview(value: object) -> str:
