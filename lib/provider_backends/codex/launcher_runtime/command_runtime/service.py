@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 from pathlib import Path
@@ -52,6 +53,14 @@ def build_start_cmd(
         workspace_path=_path_or_none(launch_context.get('workspace_path')),
     )
     provider_start_parts = provider_start_parts_fn('codex')
+    env_map = _env_map(
+        runtime_dir,
+        launch_session_id,
+        spec=spec,
+        profile=profile,
+        codex_home_overrides=codex_home_overrides,
+    )
+    caller_config_args = _caller_shell_config_args(env_map)
     codex_args = _codex_args(
         command,
         spec,
@@ -62,13 +71,7 @@ def build_start_cmd(
         load_linked_continuation_session_id_fn=load_linked_continuation_session_id_fn,
         supports_session_fork_fn=supports_session_fork_fn,
         launch_context=launch_context,
-    )
-    env_map = _env_map(
-        runtime_dir,
-        launch_session_id,
-        spec=spec,
-        profile=profile,
-        codex_home_overrides=codex_home_overrides,
+        caller_config_args=caller_config_args,
     )
     # herdr backend 适配：CODEX_TERMINAL 按实际后端设置
     backend_impl = str(prepared_state.get('ccb_backend_impl', '')).strip()
@@ -97,6 +100,11 @@ def build_start_cmd(
     )
     if managed_enabled:
         cmd, managed_state = build_managed_app_server_command_fn(codex_args, runtime_dir=runtime_dir)
+        # Remote tools execute in the server, whose command does not inherit
+        # the UI's CLI overrides. Apply the same narrow identity projection.
+        managed_state['codex_app_server_command'] = [
+            *managed_state['codex_app_server_command'], *caller_config_args,
+        ]
         launch_context.update(managed_state)
         launch_context['codex_app_server_env'] = dict(env_map)
         launch_context['codex_app_server_unset_env'] = [
@@ -111,6 +119,27 @@ def build_start_cmd(
     if prefix_parts:
         return f"{'; '.join(prefix_parts)}; {cmd}"
     return cmd
+
+
+def _caller_shell_config_args(env_map: dict[str, str]) -> list[str]:
+    """Keep CCB routing identity under restrictive Codex shell policies.
+
+    Launch-only leaf overrides preserve inherit/include_only/exclude and all
+    unrelated user set entries without writing external provider config.
+    Never project the full provider environment (which may contain secrets).
+    """
+    args: list[str] = []
+    for key in (
+        'CCB_CALLER_ACTOR',
+        'CCB_CALLER_RUNTIME_DIR',
+        'CCB_SESSION_ID',
+        'CCB_CALLER_PROJECT_ROOT',
+        'CCB_CALLER_PROJECT_ID',
+        'CODEX_RUNTIME_DIR',
+    ):
+        if key in env_map:
+            args.extend(['-c', f'shell_environment_policy.set.{key}={json.dumps(str(env_map[key]), ensure_ascii=False)}'])
+    return args
 
 
 def build_codex_shell_prefix(*, profile, provider_api_env_keys_fn: Callable[[str], list[str]]) -> list[str]:
@@ -217,6 +246,7 @@ def _codex_args(
     load_linked_continuation_session_id_fn=None,
     supports_session_fork_fn=None,
     launch_context: dict[str, object] | None = None,
+    caller_config_args: list[str] | None = None,
 ) -> list[str]:
     codex_args = list(provider_start_parts)
     codex_args.extend(['-c', 'disable_paste_burst=true'])
@@ -233,6 +263,9 @@ def _codex_args(
             ]
         )
     codex_args.extend(spec.startup_args)
+    # Current launch identity wins over inherited/stale startup values, and
+    # options must precede the terminal resume/fork subcommand.
+    codex_args.extend(caller_config_args or [])
     if should_restore_provider_history(spec.restore_default, cli_restore=command.restore):
         session_id = load_resume_session_id_fn(
             spec,

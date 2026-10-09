@@ -155,6 +155,71 @@ def _stable_claude_cli_capabilities(monkeypatch) -> None:
 pytestmark = pytest.mark.usefixtures('stub_claude_private_keychain')
 
 
+@pytest.mark.parametrize('mode', ['local', 'resume', 'fork', 'remote', 'remote-resume'])
+@pytest.mark.parametrize('actor', ['agent1', 'agent2'])
+def test_codex_tools_keep_current_caller_identity(tmp_path: Path, mode: str, actor: str) -> None:
+    from provider_backends.codex.launcher_runtime.command_runtime.managed_app_server import (
+        build_managed_app_server_command,
+    )
+
+    project = tmp_path / 'shared repo "quoted" 中文'
+    runtime = project / '.ccb' / 'agents' / actor / 'provider-runtime' / 'codex'
+    runtime.mkdir(parents=True)
+    prepared = {'project_root': project, 'workspace_path': project}
+    cmd = codex_command_service.build_start_cmd(
+        ParsedStartCommand(project=None, agent_names=(actor,), restore=True, auto_permission=False),
+        _spec(actor, startup_args=('-c', 'shell_environment_policy.set.CCB_CALLER_ACTOR="stale"')),
+        runtime,
+        f'ccb-{actor}-new-session',
+        prepared_state=prepared,
+        load_resolved_provider_profile_fn=lambda _: None,
+        prepare_codex_home_overrides_fn=lambda *args, **kwargs: {},
+        provider_start_parts_fn=lambda _: ['codex'],
+        load_resume_session_id_fn=lambda *args, **kwargs: 'native-session' if mode in {'resume', 'remote-resume'} else None,
+        load_linked_continuation_session_id_fn=lambda *args, **kwargs: 'linked-session' if mode == 'fork' else None,
+        supports_session_fork_fn=lambda _: True,
+        build_codex_shell_prefix_fn=lambda **kwargs: [],
+        supports_managed_app_server_fn=lambda _: mode.startswith('remote') or mode == 'fork',
+        build_managed_app_server_command_fn=build_managed_app_server_command,
+    )
+    # Parse actual shell quoting, then TOML string encoding (including paths).
+    lexer = shlex.shlex(cmd, posix=True, punctuation_chars=';')
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+    overrides = [tokens[i + 1] for i, token in enumerate(tokens[:-1]) if token == '-c']
+    values = {}
+    for value in overrides:
+        if value.startswith('shell_environment_policy.set.'):
+            values.update(tomllib.loads(value)['shell_environment_policy']['set'])
+    assert values['CCB_CALLER_ACTOR'] == actor
+    assert values['CCB_CALLER_RUNTIME_DIR'] == str(runtime)
+    assert values['CODEX_RUNTIME_DIR'] == str(runtime)
+    assert values['CCB_SESSION_ID'] == f'ccb-{actor}-new-session'
+    assert values['CCB_CALLER_PROJECT_ROOT'] == str(project)
+    assert values['CCB_CALLER_PROJECT_ID'] == compute_project_id(project)
+    if mode.startswith('remote'):
+        server = prepared['codex_app_server_command']
+        server_values = {}
+        for i, token in enumerate(server[:-1]):
+            if token == '-c':
+                server_values.update(tomllib.loads(server[i + 1])['shell_environment_policy']['set'])
+        assert server_values == values
+        assert prepared['codex_app_server_enabled'] is True
+    else:
+        assert prepared['codex_app_server_enabled'] is False
+        if mode in {'resume', 'fork'}:
+            assert tokens[-2:] == [mode, 'native-session' if mode == 'resume' else 'linked-session']
+
+
+def test_codex_tool_identity_projection_does_not_expand_environment() -> None:
+    args = codex_command_service._caller_shell_config_args({
+        'CCB_CALLER_ACTOR': 'agent1', 'PATH': '/private/bin',
+        'OPENAI_API_KEY': 'synthetic-key', 'CCB_REQ_ID': 'previous-job',
+        'OTHER_VALUE': 'user-setting',
+    })
+    assert args == ['-c', 'shell_environment_policy.set.CCB_CALLER_ACTOR="agent1"']
+
+
 def _clipboard_bind_call(key: str) -> tuple[str, tuple[str, ...]]:
     return (
         'bind-key',
@@ -3313,7 +3378,8 @@ def test_codex_launcher_provider_command_template_wraps_original_resume_command(
 
     assert '{command}' not in cmd
     assert cmd.startswith('export ')
-    assert '; sandbox=1 codex -c disable_paste_burst=true resume agent1-session-id omx --madmax' in cmd
+    assert '; sandbox=1 codex -c disable_paste_burst=true ' in cmd
+    assert cmd.endswith(' resume agent1-session-id omx --madmax')
     assert 'sandbox=1 export ' not in cmd
 
 

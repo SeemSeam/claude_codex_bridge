@@ -2,7 +2,15 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-09-26
+Last updated: 2026-10-10
+
+## Codex ask caller identity
+
+2026-10-10: [caller identity repair](evidence/codex-ask-caller-identity-20261010.md)
+preserves the current CCB identity through restrictive Codex tool-shell
+inheritance on both local and managed app-server launches. Related regressions,
+native tool probes and two real Codex-to-Demo return roundtrips pass. Local
+source commit is authorized; release and existing-agent activation are separate.
 
 ## v8.7.1 delivery-stall repair / v8.7.2 qualification
 

@@ -2,9 +2,14 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-09-20
+Last updated: 2026-10-10
 
 ## Current Slice: Unified FIFO And Empty-Result Notices
+
+2026-10-10: [Codex caller identity repair](evidence/codex-ask-caller-identity-20261010.md)
+passes related regressions, restrictive native tool-shell probes and two real
+Codex-to-Demo return roundtrips. Local source commit is owner-authorized;
+existing Agent restart/update and release qualification remain separate.
 
 2026-10-07: [fullscreen footer/busy-text repair](evidence/codex-multiline-footer-20261007.md)
 passes 585 related regressions and real managed queue roundtrips on the
