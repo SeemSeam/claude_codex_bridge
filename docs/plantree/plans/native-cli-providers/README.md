@@ -47,7 +47,10 @@ override the shipped contracts.
 
 ## File Map
 
-- [Pi snapshot startup repair](topics/pi-snapshot-startup.md): active isolated
+- [v8.7.10 release verification](evidence/release-8710-verification-20261010.md):
+  exact source identity, hosted gates, artifact and real Pi qualification.
+
+- [Pi snapshot startup repair](topics/pi-snapshot-startup.md): landed
   cache, dependency graph, cleanup and timeout regression repair.
 
 - [v8.7.5 publication receipt](evidence/v8.7.5-release-20260930.md):
