@@ -1,7 +1,7 @@
 # Pi package snapshot startup repair
 
 Date: 2026-10-10
-Mode: status-update (implemented and tested in isolated worktree; uncommitted)
+Mode: status-update (released as v8.7.10; public payload and real Pi verified)
 
 ## Scope and acceptance
 
@@ -50,3 +50,5 @@ Native Pi models have an owner-only pre-edit backup alongside models.json.
 [Verification evidence](../evidence/pi-snapshot-startup-20261010.md): 362 tests
 passed; three native Pi sources, real SDK/Zod loading, and two-agent cold/warm
 startup passed. Easyfun HTTP 401 and original macOS EOF qualification remain open.
+
+Release identity and final qualification: [v8.7.10 verification](../evidence/release-8710-verification-20261010.md).
