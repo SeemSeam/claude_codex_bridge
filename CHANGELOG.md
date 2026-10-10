@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.10 (2026-10-10)
+
+- Reuse verified Pi plugin snapshots before copying, share resolved dependency nodes and recover interrupted staging.
+- Add explicit `.ccb-snapshot-exclude` paths and preserve startup timeout overrides across background processes.
+- 修复 Pi 插件重复复制与依赖膨胀，新增显式排除规则、中断清理和启动超时参数传递。
+- [Full bilingual notes](docs/releases/v8.7.10.md).
+
 ## v8.7.9 (2026-10-10)
 
 - Preserve managed Codex caller identity in filtered native tool-shell environments so bare `ask` results return to the calling Agent (PR #376).

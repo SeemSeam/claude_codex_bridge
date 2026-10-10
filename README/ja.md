@@ -6,7 +6,7 @@
 **Codex、Claude、Gemini などの CLI Agent を、見える・制御できる・直接引き継げるワークフローで連携**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.9-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.10-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 CCB 8.6.6 では Flutter 版 CCB Mobile のソースが [`mobile/`](../mobile/) に含まれ、Android APK は GitHub Releases で公開されています。
 
-- [CCB Mobile v8.7.9 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.9/ccb-mobile-v8.7.9.apk)
+- [CCB Mobile v8.7.10 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.10/ccb-mobile-v8.7.10.apk)
 - App ソース：[`mobile/app`](../mobile/app)
 - サーバー gateway ソース：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,15 @@ sidebar のアイデアと示唆を提供してくれた [tmux-agent-sidebar](ht
 ## リリースノート
 
 <details open>
+<summary><b>v8.7.10</b> - Pi plugin snapshot and startup repair</summary>
+
+Reuse verified snapshots, deduplicate shared dependencies, recover interrupted staging and forward startup timeout settings.
+
+[Full bilingual notes](../docs/releases/v8.7.10.md).
+
+</details>
+
+<details>
 <summary><b>v8.7.9</b> - Codex ask caller identity repair</summary>
 
 Preserve Codex caller identity in native tool shells so bare `ask` results return to the correct Agent. Verified with actual Codex/OMP and Claude Sonnet 4.6 roundtrips.
