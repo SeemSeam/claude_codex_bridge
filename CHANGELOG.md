@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.9 (2026-10-10)
+
+- Preserve managed Codex caller identity in filtered native tool-shell environments so bare `ask` results return to the calling Agent (PR #376).
+- 保留 managed Codex 工具 shell 中的调用者身份，使裸 `ask` 结果回投到正确 Agent（PR #376）。
+- Actual Codex/OMP and Claude Sonnet 4.6 roundtrips passed; Pi full service qualification remains blocked by insufficient resources.
+- [Full bilingual notes](docs/releases/v8.7.9.md).
+
 ## v8.7.8 (2026-10-08)
 
 - Complete the Codex fullscreen/interrupt-text delivery repair and restore installed native executable/script entrypoints (PR #372).

@@ -6,7 +6,7 @@
 **Koordiniere Codex, Claude, Gemini und andere CLI-Agenten in sichtbaren, steuerbaren Workflows, die du direkt uebernehmen kannst**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.8-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.9-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Dieser Befehl fuehrt durch Installation und Konfiguration.
 
 CCB 8.6.6 enthaelt den Flutter-Quellcode von CCB Mobile in [`mobile/`](../mobile/) und veroeffentlicht das Android APK ueber GitHub Releases:
 
-- [CCB Mobile v8.7.8 APK herunterladen](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.8/ccb-mobile-v8.7.8.apk)
+- [CCB Mobile v8.7.9 APK herunterladen](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.9/ccb-mobile-v8.7.9.apk)
 - App-Source: [`mobile/app`](../mobile/app)
 - Server-gateway-Source: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,15 @@ Danke an [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fue
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.9</b> - Codex ask caller identity repair</summary>
+
+Preserve Codex caller identity in native tool shells so bare `ask` results return to the correct Agent. Verified with actual Codex/OMP and Claude Sonnet 4.6 roundtrips.
+
+[Full bilingual notes](../docs/releases/v8.7.9.md).
+
+</details>
+
+<details>
 <summary><b>v8.7.8</b> - Delivery and native installation fixes</summary>
 
 Complete the Codex fullscreen delivery update and repair installed native `ccb.exe`/`ccb.cmd` entrypoints. Supersedes the interrupted v8.7.7 publication.
