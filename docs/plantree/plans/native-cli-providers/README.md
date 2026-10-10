@@ -47,6 +47,9 @@ override the shipped contracts.
 
 ## File Map
 
+- [Pi snapshot startup repair](topics/pi-snapshot-startup.md): active isolated
+  cache, dependency graph, cleanup and timeout regression repair.
+
 - [v8.7.5 publication receipt](evidence/v8.7.5-release-20260930.md):
   immutable source/tag identity, public assets, npm installation, CI, and
   retained Pi qualification limit.

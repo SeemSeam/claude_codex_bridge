@@ -5,6 +5,13 @@ Last updated: 2026-09-30
 
 ## Status Summary
 
+- Pi local package startup repair (2026-10-10): implemented and verified in an
+  isolated worktree, not committed/released. Zero-copy warm cache, shared
+  dependency graph, explicit exclusions, orphan staging recovery and timeout
+  propagation passed 362 tests plus real Pi cold/warm startup.
+  [Evidence](evidence/pi-snapshot-startup-20261010.md). Easyfun 401 and macOS
+  empty-response qualification remain open.
+
 - OMP exact conversation resume: implemented and verified locally (2026-09-19;
   236 tests including isolated real OMP history loading; not installed/released).
   [Scope and verification](topics/omp-context-resume.md). User authorized fixing

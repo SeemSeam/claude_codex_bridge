@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-import shutil
-import tempfile
 from urllib.parse import urlparse
 
 from provider_core.one_way_inheritance import copy_regular_file
@@ -273,81 +271,11 @@ def _snapshot_package_tree(
     if manifest is None:
         return _snapshot_tree(source_path, cache_root=cache_root, category=category)
 
-    staging_parent = cache_root / category
-    staging_parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix=f'.{source_path.name}.ccb-package-',
-        dir=staging_parent,
-    ) as temporary:
-        candidate = Path(temporary) / source_path.name
-        _copy_runtime_package(
-            source_path,
-            candidate,
-            dependency_chain=(),
-        )
-        content_digest = tree_content_fingerprint(candidate)
-        if not content_digest:
-            return None
-        target = staging_parent / content_digest / source_path.name
-        if not copy_projected_tree_to_cache(
-            candidate,
-            target,
-            label=_CACHE_PROJECTION_LABEL,
-            marker_source=source_path,
-        ):
-            raise RuntimeError(
-                f'failed to publish verified Pi package snapshot for {source_path}'
-            )
-        return target
+    from .package_snapshot import snapshot_package
 
-
-def _copy_runtime_package(
-    source: Path,
-    target: Path,
-    *,
-    dependency_chain: tuple[Path, ...],
-) -> None:
-    resolved_source = source.resolve(strict=True)
-    _copy_package_payload(resolved_source, target)
-    manifest = _read_json_object(resolved_source / 'package.json')
-    if manifest is None:
-        return
-
-    required, optional = _runtime_dependency_names(manifest)
-    chain = (*dependency_chain, resolved_source)
-    for dependency in (*required, *optional):
-        dependency_source = _resolve_installed_dependency(resolved_source, dependency)
-        if dependency_source is None:
-            if dependency in optional:
-                continue
-            package_name = manifest.get('name')
-            owner = package_name if isinstance(package_name, str) else str(resolved_source)
-            raise _MissingRuntimeDependency(
-                f'Pi package {owner!r} cannot resolve runtime dependency {dependency!r}'
-            )
-        dependency_target = target / 'node_modules' / Path(*_package_name_parts(dependency))
-        dependency_target.parent.mkdir(parents=True, exist_ok=True)
-        if dependency_source in chain:
-            _copy_package_payload(dependency_source, dependency_target)
-            continue
-        _copy_runtime_package(
-            dependency_source,
-            dependency_target,
-            dependency_chain=chain,
-        )
-
-
-def _copy_package_payload(source: Path, target: Path) -> None:
-    if not tree_symlinks_are_self_contained(source, ignored_names=('node_modules',)):
-        manifest = _read_json_object(source / 'package.json')
-        package_name = manifest.get('name') if manifest is not None else None
-        owner = package_name if isinstance(package_name, str) else str(source)
-        raise RuntimeError(f'Pi package {owner!r} contains an unsafe symlink')
-    shutil.copytree(
-        source,
-        target,
-        ignore=shutil.ignore_patterns('node_modules'),
-        symlinks=True,
+    return snapshot_package(
+        source_path, cache_root=cache_root, category=category,
+        label=_CACHE_PROJECTION_LABEL,
     )
 
 

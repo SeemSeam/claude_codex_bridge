@@ -374,3 +374,20 @@ def test_control_plane_restores_source_home_for_nonstandard_managed_home(
 
     assert env['HOME'] == str(account_home)
     assert 'CCB_CALLER_ACTOR' not in env
+
+
+def test_startup_transaction_timeout_survives_both_background_hops():
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    for raw, expected in [('90', 90.0), ('120', 120.0), ('invalid', 30.0), ('', 30.0)]:
+        keeper = control_plane_env(environ={'CCB_STARTUP_TRANSACTION_TIMEOUT_S': raw})
+        daemon = control_plane_env(environ=keeper)
+        assert daemon['CCB_STARTUP_TRANSACTION_TIMEOUT_S'] == raw
+        result = subprocess.check_output(
+            [sys.executable, '-c', 'import json; from ccbd.startup_policy import STARTUP_TRANSACTION_TIMEOUT_S; print(json.dumps(STARTUP_TRANSACTION_TIMEOUT_S))'],
+            env={**daemon, 'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'lib')}, text=True,
+        )
+        assert json.loads(result) == expected
