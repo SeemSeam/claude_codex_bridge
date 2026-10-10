@@ -6,7 +6,7 @@ on:
       tag:
         description: "Windows release tag to build and publish"
         required: true
-        default: "v8.7.9"
+        default: "v8.7.10"
       source_ref:
         description: "Candidate ref to validate without publishing (optional)"
         required: false
