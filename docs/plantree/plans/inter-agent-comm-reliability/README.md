@@ -9,8 +9,10 @@ Last updated: 2026-10-10
 2026-10-10: [caller identity repair](evidence/codex-ask-caller-identity-20261010.md)
 preserves the current CCB identity through restrictive Codex tool-shell
 inheritance on both local and managed app-server launches. Related regressions,
-native tool probes and two real Codex-to-Demo return roundtrips pass. Local
-source commit is authorized; release and existing-agent activation are separate.
+native tool probes and two real Codex-to-Demo return roundtrips pass. The repair
+is published in v8.7.9; [publication verification](evidence/release-879-verification-20261010.md)
+records exact-candidate gates, public package roundtrip, local download limits
+and unresolved macOS CI timing. Existing-agent activation remains separate.
 
 ## v8.7.1 delivery-stall repair / v8.7.2 qualification
 
