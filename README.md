@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/bfly123-claude-codex-bridge-badge.png)](https://mseep.ai/app/bfly123-claude-codex-bridge)
+
 <div align="center">
 
 # CCB - Mobile Has Arrived!
