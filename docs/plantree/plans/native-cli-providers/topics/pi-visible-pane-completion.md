@@ -29,8 +29,11 @@ non-tool stop reasons include failure/incomplete outcomes, existing
   extension writes normalized lifecycle events to the agent runtime completion
   directory; it does not read or mutate credentials, provider configuration,
   or the user's login state.
-- A pane job binds only to its exact prompt digest, `CCB_REQ_ID`, CCB actor,
-  launch session, and live Pi process instance. The reader starts at the
+- A pane job binds to its exact prompt digest or the matching request and
+  one-use `CCB_DISPATCH_ID` header, plus the CCB actor, launch session, and
+  live Pi process instance. The dispatch header survives image-editor input
+  transformations; a request id alone is never sufficient. See
+  [transformed-input binding](pi-transformed-input.md). The reader starts at the
   event-log byte offset captured before prompt delivery, so an earlier
   completion cannot satisfy a new job.
 - `turn_end`, `agent_end`, tool results, retry events, and assistant text are
@@ -49,8 +52,10 @@ non-tool stop reasons include failure/incomplete outcomes, existing
   has no fixed wall-clock cutoff by default; an operator may opt into the
   existing semantic no-progress watchdog with
   `CCB_PI_NO_TERMINAL_TIMEOUT_S`.
-- Cancellation interrupts the active Pi pane input/run without killing the
-  managed pane. Because both pane and headless Pi paths have native
+- Cancellation sends Pi's native Escape interrupt only when lifecycle
+  evidence identifies the exact active request and live instance. Unsent,
+  settled, superseded, and unrelated turns receive no keys; Ctrl-C and editor
+  clearing are avoided. Because both pane and headless Pi paths have native
   cancellation, CCB does not ask the model to probe a cancel-flag file before
   every step; this avoids the extra tool call and uncached token cost.
   Exported pane state omits backend objects and can rebind to the exact current

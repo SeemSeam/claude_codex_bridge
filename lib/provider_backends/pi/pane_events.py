@@ -21,6 +21,7 @@ class PiRuntimeObservation:
     ready: bool = False
     busy: bool = False
     runtime_instance_id: str = ""
+    active_req_id: str = ""
     native_session_id: str = ""
     native_session_path: str = ""
     native_session_observed_at: str = ""
@@ -144,6 +145,7 @@ def inspect_pi_runtime(
     ready = False
     busy = False
     runtime_instance_id = ""
+    active_req_id = ""
     native_session_id = ""
     native_session_path = ""
     native_session_observed_at = ""
@@ -161,6 +163,7 @@ def inspect_pi_runtime(
         if event_type == "extension_ready":
             ready = True
             busy = False
+            active_req_id = ""
             runtime_instance_id = event_instance
             native_session_id = _text(event.get("pi_session_id"))
             native_session_path = _text(event.get("pi_session_path"))
@@ -170,13 +173,18 @@ def inspect_pi_runtime(
             continue
         if event_type == "agent_start":
             busy = True
+            active_req_id = _text(event.get("req_id"))
+        elif event_type == "request_superseded" and _text(event.get("req_id")) == active_req_id:
+            active_req_id = ""
         elif event_type == "agent_settled":
             busy = False
+            active_req_id = ""
 
     return PiRuntimeObservation(
         ready=ready,
         busy=busy,
         runtime_instance_id=runtime_instance_id,
+        active_req_id=active_req_id,
         native_session_id=native_session_id,
         native_session_path=native_session_path,
         native_session_observed_at=native_session_observed_at,
