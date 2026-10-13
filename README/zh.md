@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.10-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -50,6 +50,10 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
+
+## 8.7.11 修复：V2 兼容性与 Pi 完成状态
+
+隔离 V3 工作流对普通 V2 项目的限制，保留图片转换后的 Pi 请求归属，并将取消操作限定到当前活动请求。[版本说明](../docs/releases/v8.7.11.md)。
 
 ## 8.7.10 修复：Pi 插件启动与快照复用
 
@@ -290,9 +294,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.7.10 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.7.11 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.10 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.10/ccb-mobile-v8.7.10.apk)
+- [下载 CCB Mobile v8.7.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -363,7 +367,7 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 - 微信: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=c943ca65" alt="CCB 微信技术群 2" width="240">
+  <img src="../assets/weixin.png?v=583d37f5" alt="CCB 微信技术群 2" width="240">
 </p>
 
 > 微信群二维码有效期为 7 天。如果二维码已过期，请添加微信 `seemseam-com` 获取最新入群邀请。
@@ -381,6 +385,14 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.7.11</b> - V2 工作流兼容性与 Pi 完成修复</summary>
+
+隔离 V3 工作流限制，修复 Pi 图片转换后的请求归属与活动请求取消，并更新微信群二维码。
+
+[Full bilingual notes](../docs/releases/v8.7.11.md).
+</details>
+
+<details>
 <summary><b>v8.7.10</b> - Pi 插件快照与启动修复</summary>
 
 复用已验证快照、共享依赖、回收中断残留并传递启动超时设置。
