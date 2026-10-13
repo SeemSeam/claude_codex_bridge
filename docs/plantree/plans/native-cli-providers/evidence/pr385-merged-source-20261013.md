@@ -54,7 +54,7 @@ completion, nonce reuse/foreign identities, restored completion and scoped
 cancellation ran without skips. Pi/OMP Python compilation also passed.
 
 The trusted-base platform isolation checker from trusted base `636afa2f2` passed against
-merged main with `scope=non-windows`; the fix adds no platform ownership or
+merged main as a shared-provider change; the fix adds no platform ownership or
 reverse-dependency changes. Documentation links and `git diff --check` passed.
 
 ## Integration And Release Status
