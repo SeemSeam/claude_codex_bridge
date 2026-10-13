@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.11 (2026-10-13)
+
+- Isolate V3 workflow policies from ordinary V2 routing, recovery and completion.
+- Include PR #385: fix Pi transformed-input attribution and scope cancellation to the exact active request.
+- 隔离 V3 对 V2 的工作流干扰，包含 Pi 图片转换归属与取消修复，并更新微信群二维码。
+- [Full bilingual notes](docs/releases/v8.7.11.md).
+
 ## v8.7.10 (2026-10-10)
 
 - Reuse verified Pi plugin snapshots before copying, share resolved dependency nodes and recover interrupted staging.

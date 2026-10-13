@@ -6,7 +6,7 @@
 **Codex、Claude、Gemini などの CLI Agent を、見える・制御できる・直接引き継げるワークフローで連携**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.10-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 CCB 8.6.6 では Flutter 版 CCB Mobile のソースが [`mobile/`](../mobile/) に含まれ、Android APK は GitHub Releases で公開されています。
 
-- [CCB Mobile v8.7.10 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.10/ccb-mobile-v8.7.10.apk)
+- [CCB Mobile v8.7.11 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
 - App ソース：[`mobile/app`](../mobile/app)
 - サーバー gateway ソース：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -247,7 +247,7 @@ CCB は [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec) をサ�
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=c943ca65" alt="WeChat group" width="240">
+  <img src="../assets/weixin.png?v=583d37f5" alt="WeChat group" width="240">
 </p>
 
 <a id="community"></a>
@@ -263,6 +263,14 @@ sidebar のアイデアと示唆を提供してくれた [tmux-agent-sidebar](ht
 ## リリースノート
 
 <details open>
+<summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
+
+Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.
+
+[Full bilingual notes](../docs/releases/v8.7.11.md).
+</details>
+
+<details>
 <summary><b>v8.7.10</b> - Pi plugin snapshot and startup repair</summary>
 
 Reuse verified snapshots, deduplicate shared dependencies, recover interrupted staging and forward startup timeout settings.

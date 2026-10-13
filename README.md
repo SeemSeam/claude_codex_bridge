@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.10-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,10 @@
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
+
+## New in 8.7.11: V2 Compatibility and Pi Completion Repair
+
+Keep V3 workflow policies out of ordinary V2 projects, preserve Pi request attribution after image-input transformation, and scope cancellation to the active request. [Notes](docs/releases/v8.7.11.md).
 
 ## New in 8.7.10: Faster Pi Plugin Startup
 
@@ -333,9 +337,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.10 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.11 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.10 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.10/ccb-mobile-v8.7.10.apk)
+- [Download CCB Mobile v8.7.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -406,7 +410,7 @@ Supported managed Agents receive the built-in `ask`, `ccb-clear`, `ccb-compact`,
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="assets/weixin.png?v=c943ca65" alt="CCB WeChat group 2" width="240">
+  <img src="assets/weixin.png?v=583d37f5" alt="CCB WeChat group 2" width="240">
 </p>
 
 > WeChat group QR codes are valid for seven days. If this one has expired, add `seemseam-com` to request the latest invitation.
@@ -424,6 +428,14 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
+
+Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.
+
+[Full bilingual notes](docs/releases/v8.7.11.md).
+</details>
+
+<details>
 <summary><b>v8.7.10</b> - Pi plugin snapshot and startup repair</summary>
 
 Reuse verified snapshots, deduplicate shared dependencies, recover interrupted staging and forward startup timeout settings.

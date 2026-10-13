@@ -6,7 +6,7 @@
 **Coordonne Codex, Claude, Gemini et d'autres agents CLI dans des workflows visibles, contrôlables et reprenables directement**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.10-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Cette commande guide l'installation et la configuration.
 
 CCB 8.6.6 inclut le code source Flutter de CCB Mobile dans [`mobile/`](../mobile/) et publie l'APK Android via GitHub Releases :
 
-- [Télécharger l'APK CCB Mobile v8.7.10](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.10/ccb-mobile-v8.7.10.apk)
+- [Télécharger l'APK CCB Mobile v8.7.11](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
 - Source de l'app : [`mobile/app`](../mobile/app)
 - Source du gateway serveur : [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -247,7 +247,7 @@ Pour la configuration courante du projet, utilisez le panneau **⚙ Paramètres*
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=c943ca65" alt="Groupe WeChat" width="240">
+  <img src="../assets/weixin.png?v=583d37f5" alt="Groupe WeChat" width="240">
 </p>
 
 <a id="community"></a>
@@ -263,6 +263,14 @@ Merci à [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) pou
 ## Notes de version
 
 <details open>
+<summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
+
+Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.
+
+[Full bilingual notes](../docs/releases/v8.7.11.md).
+</details>
+
+<details>
 <summary><b>v8.7.10</b> - Pi plugin snapshot and startup repair</summary>
 
 Reuse verified snapshots, deduplicate shared dependencies, recover interrupted staging and forward startup timeout settings.
