@@ -5,6 +5,12 @@ Status: In progress - Planner readless provider enforcement repair required
 Branch: `main`
 Current code candidate: `62753d63791f8b644ee6f5f5433fe57070fb2c84`
 
+## V2 compatibility repair — 2026-10-13
+
+Source and installed-tree tests pass for explicit workflow gating; live daemon
+activation awaits a user-controlled restart after the active turn. See
+[evidence/v2-workflow-isolation-20261013.md](evidence/v2-workflow-isolation-20261013.md).
+
 ## Current Phase
 
 The current-main source/fake baseline remains accepted at `2c936a48`, with

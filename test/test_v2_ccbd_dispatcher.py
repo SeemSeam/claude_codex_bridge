@@ -7,6 +7,7 @@ from pathlib import Path
 
 import ccbd.services.dispatcher_runtime.frontdesk_direct_handoff as direct_handoff
 import pytest
+from agents.models_runtime.config_runtime.workflow import WorkflowConfig, WorkflowRuntimePolicy
 from agents.models import (
     AgentRuntime,
     AgentSpec,
@@ -141,7 +142,7 @@ def _frontdesk_config() -> ProjectConfig:
         permission_default=PermissionMode.MANUAL,
         queue_policy=QueuePolicy.SERIAL_PER_AGENT,
     )
-    return ProjectConfig(version=2, default_agents=('frontdesk',), agents={'frontdesk': spec})
+    return ProjectConfig(version=3, default_agents=('frontdesk',), agents={'frontdesk': spec}, workflow=_workflow())
 
 
 def _frontdesk_planner_config() -> ProjectConfig:
@@ -158,7 +159,7 @@ def _frontdesk_planner_config() -> ProjectConfig:
             permission_default=PermissionMode.MANUAL,
             queue_policy=QueuePolicy.SERIAL_PER_AGENT,
         )
-    return ProjectConfig(version=2, default_agents=('frontdesk', 'planner'), agents=specs)
+    return ProjectConfig(version=3, default_agents=('frontdesk', 'planner'), agents=specs, workflow=_workflow())
 
 
 def _frontdesk_intake_reply() -> str:
@@ -1287,13 +1288,17 @@ def test_dispatcher_frontdesk_rejects_symlink_authority_paths(
     assert list(outside.iterdir()) == []
 
 
+@pytest.mark.parametrize("workflow_enabled", [False, True])
 def test_dispatcher_frontdesk_implementation_reply_fails_boundary_guard(
-    tmp_path: Path,
+    tmp_path: Path, workflow_enabled: bool,
 ) -> None:
     project_root = tmp_path / 'repo-frontdesk-boundary'
     ctx = _bootstrap_test_project(project_root)
     layout = PathLayout(project_root)
     config = _frontdesk_config()
+    if not workflow_enabled:
+        from dataclasses import replace
+        config = replace(config, version=2, workflow=None)
     registry = AgentRegistry(layout, config)
     registry.upsert(_runtime('frontdesk', project_id=ctx.project_id, layout=layout, pid=101))
     dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-18T00:00:00Z')
@@ -1330,6 +1335,10 @@ def test_dispatcher_frontdesk_implementation_reply_fails_boundary_guard(
         ),
     )
 
+    if not workflow_enabled:
+        assert terminal.status is JobStatus.COMPLETED
+        assert not (project_root / ".ccb/runtime/frontdesk-boundary").exists()
+        return
     assert terminal.status is JobStatus.FAILED
     decision = dispatcher.get_snapshot(job_id).latest_decision
     assert decision.status is CompletionStatus.FAILED
@@ -2895,3 +2904,53 @@ def test_dispatcher_single_target_submit_without_restore_state_starts_via_tick_h
     assert runtime is not None
     assert runtime.state is AgentState.BUSY
     assert runtime.health == 'healthy'
+
+
+def _workflow():
+    return WorkflowConfig(
+        mode='agentic-loop', profile='agentic_loop_v1', entry_role='frontdesk',
+        resident={}, dynamic={},
+        runtime=WorkflowRuntimePolicy(max_workgroups=1, max_parallel_workgroups=1, max_active_dynamic_agents=4),
+    )
+
+
+@pytest.mark.parametrize('with_planner', [False, True])
+@pytest.mark.parametrize('sender', ['frontdesk', 'task_detailer', 'ccb_task_detailer'])
+@pytest.mark.parametrize('silence', [False, True])
+def test_v2_role_names_do_not_enable_workflow(tmp_path, sender, silence, with_planner):
+    from dataclasses import replace
+    from ccbd.services.dispatcher_runtime.detailer_replan_handoff import recover_detailer_replan_handoffs
+
+    tmp_path = tmp_path / "project"
+    ctx = _bootstrap_test_project(tmp_path)
+    layout = PathLayout(tmp_path)
+    base = _frontdesk_planner_config()
+    executor = replace(base.agents['planner'], name='executor')
+    # Include a Planner name too: agent names never constitute workflow opt-in.
+    specs = {**base.agents, 'executor': executor}
+    if not with_planner:
+        del specs['planner']
+    specs[sender] = replace(executor, name=sender)
+    config = ProjectConfig(version=2, default_agents=tuple(specs), agents=specs)
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('executor', project_id=ctx.project_id, layout=layout, pid=102))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-03-18T00:00:00Z')
+    receipt = dispatcher.submit(MessageEnvelope(
+        project_id=ctx.project_id, to_agent='executor', from_actor=sender,
+        body='Run the ordinary V2 worker task.', task_id='ordinary-v2-task', reply_to=None,
+        silence_on_success=silence, message_type='ask', delivery_scope=DeliveryScope.SINGLE,
+    ))
+    assert len(receipt.jobs) == 1
+    assert dispatcher.get(receipt.jobs[0].job_id).request.body == 'Run the ordinary V2 worker task.'
+    # Corrupt old V3 journals must not even be read or create recovery errors.
+    root = tmp_path / '.ccb/runtime/loops/activations'
+    root.mkdir(parents=True, exist_ok=True)
+    journal = root / 'old.direct-handoff.transaction.json'
+    journal.write_text('not JSON')
+    detailer_root = tmp_path / '.ccb/runtime/detailer-replan'
+    detailer_root.mkdir(parents=True, exist_ok=True)
+    (detailer_root / 'old.json').write_text('not JSON')
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*'))
+    assert recover_frontdesk_direct_handoffs(dispatcher) == ()
+    assert recover_detailer_replan_handoffs(dispatcher) == ()
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*')) == before

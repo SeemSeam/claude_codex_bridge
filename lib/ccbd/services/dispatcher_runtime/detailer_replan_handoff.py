@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .workflow_policy import agentic_loop_enabled
+
 from dataclasses import dataclass
 import hashlib
 import inspect
@@ -114,6 +116,8 @@ def recover_detailer_replan_handoffs(
     *,
     authority_check=None,
 ) -> tuple[str, ...]:
+    if not agentic_loop_enabled(dispatcher):
+        return ()
     recovered: list[str] = []
     root = _intent_root(dispatcher)
     if not root.is_dir():

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .workflow_policy import agentic_loop_enabled
+
 import hashlib
 import json
 from pathlib import Path
@@ -37,6 +39,8 @@ def enforce_frontdesk_boundary(
     *,
     finished_at: str,
 ) -> CompletionDecision:
+    if not agentic_loop_enabled(dispatcher):
+        return decision
     if current.agent_name != 'frontdesk':
         return decision
     if str(getattr(current.request, 'message_type', '') or '') != 'ask':

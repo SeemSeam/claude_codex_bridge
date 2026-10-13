@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from agents.models_runtime.config_runtime.workflow import WorkflowConfig, WorkflowRuntimePolicy
 from agents.models import (
     AgentRuntime,
     AgentSpec,
@@ -101,7 +102,7 @@ def _config() -> ProjectConfig:
         )
         for name in ('task_detailer', 'planner')
     }
-    return ProjectConfig(version=2, default_agents=tuple(specs), agents=specs)
+    return ProjectConfig(version=3, default_agents=tuple(specs), agents=specs, workflow=_workflow())
 
 
 def _runtime(name: str, *, project_id: str, layout: PathLayout, pid: int) -> AgentRuntime:
@@ -973,3 +974,11 @@ detail-packet.manifest.json:
 '''
 
     assert _parse_task_detailer_reply(reply)['status'] == 'blocked'
+
+
+def _workflow():
+    return WorkflowConfig(
+        mode='agentic-loop', profile='agentic_loop_v1', entry_role='frontdesk',
+        resident={}, dynamic={},
+        runtime=WorkflowRuntimePolicy(max_workgroups=1, max_parallel_workgroups=1, max_active_dynamic_agents=4),
+    )

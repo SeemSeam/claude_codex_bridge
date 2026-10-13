@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .workflow_policy import agentic_loop_enabled
+
 from ccbd.api_models import MessageEnvelope, SubmitReceipt
 from message_bureau import AttemptState, MessageStore
 
@@ -44,14 +46,14 @@ def submit_jobs(dispatcher, request: MessageEnvelope) -> SubmitReceipt:
         )
         return receipt
 
-    if is_frontdesk_submission(request):
+    if agentic_loop_enabled(dispatcher) and is_frontdesk_submission(request):
         return submit_frontdesk_direct_handoff(
             dispatcher,
             request,
             accepted_at=accepted_at,
             submit=submit,
         )
-    if is_task_detailer_submission(request):
+    if agentic_loop_enabled(dispatcher) and is_task_detailer_submission(request):
         return submit_detailer_replan_handoff(
             dispatcher,
             request,
