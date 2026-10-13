@@ -1,9 +1,15 @@
 # Native CLI Providers Implementation Status
 
 Date: 2026-07-21
-Last updated: 2026-09-30
+Last updated: 2026-10-13
 
 ## Current Phase
+
+2026-10-13 local integration: PR #385 is merged in `55d3303bf` and passed
+Pi/OMP extension, binding, cancellation, restore, launch, execution-service
+and dispatcher regressions. The fix is queued for the next release;
+authenticated Pi image-input qualification remains open.
+[Merged-source evidence](evidence/pr385-merged-source-20261013.md).
 
 2026-09-30 published release: stable `v8.7.5` ships the OMP/Pi repair so
 `/model` and other

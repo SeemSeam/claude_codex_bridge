@@ -1,9 +1,13 @@
 # Native CLI Providers Roadmap
 
 Date: 2026-06-13
-Last updated: 2026-09-30
+Last updated: 2026-10-13
 
 ## Status Summary
+
+- PR #385 merged-source verification (2026-10-13): Pi transformed-input
+  binding and exact-active cancellation are merged and verified locally,
+  pending the next release. [Evidence and limits](evidence/pr385-merged-source-20261013.md).
 
 - Pi local package startup repair (2026-10-10): implemented and verified in an
   isolated worktree, not committed/released. Zero-copy warm cache, shared

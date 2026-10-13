@@ -47,6 +47,10 @@ override the shipped contracts.
 
 ## File Map
 
+- [PR #385 merged-source verification](evidence/pr385-merged-source-20261013.md):
+  Pi transformed-input binding and scoped cancellation pass local regressions;
+  queued for the next release.
+
 - [Pi snapshot startup repair](topics/pi-snapshot-startup.md): active isolated
   cache, dependency graph, cleanup and timeout regression repair.
 
