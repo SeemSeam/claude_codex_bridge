@@ -750,7 +750,7 @@ def test_pi_visible_prompt_preserves_compact_reply_mode_without_static_guidance(
     assert backend.sent[0][1].count("CCB_REPLY_MODE: compact") == 1
     assert "CCB reply guidance:" not in backend.sent[0][1]
     assert backend.sent[0][1].startswith(
-        "CCB_REQ_ID: job_pi_visible_1\n\n"
+        "CCB_REQ_ID: job_pi_visible_1\nCCB_DISPATCH_ID: "
     )
 
 
@@ -758,16 +758,71 @@ def test_pi_cancel_interrupts_but_does_not_kill_managed_pane(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    adapter, submission, backend, _, _ = _start_ready(monkeypatch, tmp_path)
+    adapter, submission, backend, events, _ = _start_ready(monkeypatch, tmp_path)
+    _append(events, _event("agent_start", req_id=submission.job_id))
 
     adapter.cancel(submission)
 
-    assert backend.keys == [
-        ("%9", "C-c"),
-        ("%9", "Escape"),
-        ("%9", "C-u"),
-    ]
+    assert backend.keys == [("%9", "Escape")]
     assert backend.alive is True
+
+
+@pytest.mark.parametrize("turn", ("idle", "human", "other_job", "new_instance", "superseded", "partial", "unsent"))
+def test_pi_cancel_leaves_unrelated_or_unconfirmed_turns_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    turn: str,
+) -> None:
+    adapter, submission, backend, events, _ = _start_ready(monkeypatch, tmp_path)
+    if turn in {"human", "other_job"}:
+        _append(events, _event("agent_start", req_id="" if turn == "human" else "job_other"))
+    elif turn == "new_instance":
+        _append(events, _event("extension_ready", runtime_instance_id="new"),
+                _event("agent_start", req_id=submission.job_id, runtime_instance_id="new"))
+    elif turn == "superseded":
+        _append(events, _event("agent_start", req_id=submission.job_id),
+                _event("request_superseded", req_id=submission.job_id))
+    elif turn == "partial":
+        _append(events, _event("agent_start", req_id=submission.job_id))
+        with events.open("a", encoding="utf-8") as stream:
+            stream.write('{"schema_version":1')
+    elif turn == "unsent":
+        _append(events, _event("agent_start", req_id=submission.job_id))
+        submission = replace(submission, runtime_state={**submission.runtime_state, "prompt_sent": False})
+
+    adapter.cancel(submission)
+
+    assert backend.keys == []
+    assert backend.alive is True
+
+
+def test_pi_cancel_stale_unbound_job_preserves_next_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    adapter, stale, backend, events, _ = _start_ready(monkeypatch, tmp_path)
+    _append(events, _event("agent_start"),
+            _event("agent_settled", assistant=_assistant("unbound final reply")))
+
+    def send_key(pane_id: str, key: str) -> None:
+        backend.keys.append((pane_id, key))
+        if key == "C-c":
+            backend.alive = False
+
+    backend.send_key = send_key
+    adapter.cancel(stale)
+    next_job = _job(job_id="job_next")
+    next_submission = adapter.start(next_job, context=_context(tmp_path), now=NOW)
+    _append(events, _event("request_start", req_id=next_job.job_id, dispatch_matched=True),
+            _event("agent_settled", req_id=next_job.job_id, assistant=_assistant("NEXT_OK")))
+    result = adapter.poll(next_submission, now="2026-07-29T00:00:05Z")
+
+    assert backend.keys == []
+    assert backend.alive is True
+    assert len(backend.sent) == 2
+    assert result is not None and result.decision is not None
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert result.decision.reply == "NEXT_OK"
 
 
 def test_pi_export_and_resume_rebind_exact_live_extension_instance(

@@ -391,6 +391,12 @@ function requestAnchor(prompt: string): string {
   return match ? match[1] : "";
 }
 
+function dispatchAnchor(prompt: string): string {
+  const secondLine = String(prompt || "").split(/\r?\n/, 2)[1] || "";
+  const match = /^CCB_DISPATCH_ID:\s*([a-f0-9]{32})\s*$/.exec(secondLine.trim());
+  return match ? match[1] : "";
+}
+
 function matchingDispatch(prompt: string): Record<string, unknown> | null {
   if (!dispatchPath) return null;
   let raw = "";
@@ -400,6 +406,8 @@ function matchingDispatch(prompt: string): Record<string, unknown> | null {
     return null;
   }
   const digest = promptHash(prompt);
+  const anchorReqId = requestAnchor(prompt);
+  const anchorDispatchId = dispatchAnchor(prompt);
   const records: Record<string, unknown>[] = [];
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -419,7 +427,10 @@ function matchingDispatch(prompt: string): Record<string, unknown> | null {
       String(record.actor || "") === actor &&
       String(record.launch_session_id || "") === launchSessionId &&
       String(record.runtime_instance_id || "") === runtimeInstanceId &&
-      String(record.prompt_sha256 || "") === digest &&
+      (
+        String(record.prompt_sha256 || "") === digest ||
+        (anchorReqId === reqId && anchorDispatchId === dispatchId)
+      ) &&
       reqId &&
       dispatchId &&
       !consumedDispatches.has(dispatchId)
@@ -569,7 +580,19 @@ export default function ccbPiCompletion(pi: any): void {
       );
       return;
     }
-    bindDispatchedInput(prompt, "before_agent_start");
+    if (!bindDispatchedInput(prompt, "before_agent_start")) {
+      const anchorReqId = requestAnchor(prompt);
+      if (anchorReqId) {
+        // A transformed legacy prompt must fail explicitly instead of
+        // producing an unbound turn that leaves CCB running indefinitely.
+        appendEvent("request_start", {
+          req_id: "",
+          anchor_req_id: anchorReqId,
+          dispatch_matched: false,
+          input_source: "before_agent_start",
+        });
+      }
+    }
   });
 
   pi.on("session_switch", async (event: any) => {

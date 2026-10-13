@@ -30,8 +30,13 @@ from provider_execution.common import (
     no_wrap_requested,
     send_prompt_to_runtime_target,
 )
+from provider_execution.draft_guard import (
+    allow_submission_send,
+    guarded_send,
+    initial_guard_state,
+    send_unknown_result,
+)
 from terminal_runtime import get_backend_for_session
-from provider_execution.draft_guard import initial_guard_state, allow_submission_send, guarded_send, send_unknown_result
 
 from provider_backends.native_cli_support.prompt import (
     clean_native_reply,
@@ -150,10 +155,12 @@ class PiPaneExecutionAdapter:
 
         request_anchor = request_anchor_for_job(job.job_id)
         no_wrap = no_wrap_requested(getattr(job, "provider_options", None))
+        dispatch_id = uuid.uuid4().hex if self.provider == "pi" and not no_wrap else ""
         prompt = _pane_prompt(
             job.request.body or "",
             request_anchor=request_anchor,
             no_wrap=no_wrap,
+            dispatch_id=dispatch_id,
         )
         reply_delivery = (
             _text(getattr(job.request, "message_type", "")).lower()
@@ -184,6 +191,7 @@ class PiPaneExecutionAdapter:
             "dispatch_path": str(dispatch_path),
             "event_offset": 0,
             "request_anchor": request_anchor,
+            "dispatch_id": dispatch_id,
             "started_at": now,
             "ready_wait_started_at": now,
             "prompt_sent": False,
@@ -499,9 +507,34 @@ class PiPaneExecutionAdapter:
     def cancel(self, submission: ProviderSubmission) -> None:
         if _text(submission.runtime_state.get("mode")) != self.pane_mode:
             return
-        backend = submission.runtime_state.get("backend")
-        pane_id = _text(submission.runtime_state.get("pane_id"))
+        state = submission.runtime_state
+        backend = state.get("backend")
+        pane_id = _text(state.get("pane_id"))
         if backend is not None and pane_id:
+            if self.provider == "pi":
+                if not state.get("prompt_sent"):
+                    return
+                observation = inspect_pi_runtime(
+                    Path(_text(state.get("event_path"))),
+                    actor=_text(state.get("actor")),
+                    launch_session_id=_text(state.get("launch_session_id")),
+                )
+                if (
+                    observation.protocol_error
+                    or observation.trailing_partial
+                    or not observation.ready
+                    or not observation.busy
+                    or observation.runtime_instance_id != _text(state.get("runtime_instance_id"))
+                    or observation.active_req_id != _text(state.get("request_anchor"))
+                ):
+                    return
+                # Pi's native interrupt is Escape. Ctrl-C clears the editor
+                # and can exit Pi on a second press; never send it to an idle
+                # pane or a different turn while cancelling a stale CCB job.
+                send_key = getattr(backend, "send_key", None)
+                if callable(send_key):
+                    send_key(pane_id, "Escape")
+                return
             interrupt_and_clear_runtime_target(backend, pane_id)
 
     def export_runtime_state(
@@ -586,6 +619,7 @@ class PiPaneExecutionAdapter:
                 job,
                 request_anchor=_text(state.get("request_anchor")),
                 no_wrap=bool(state.get("no_wrap")),
+                dispatch_id=_text(state.get("dispatch_id")),
             )
         state["backend"] = backend
         state["pane_id"] = str(pane_or_error)
@@ -789,7 +823,7 @@ def _append_dispatch(
     record = {
         "schema_version": 1,
         "type": "dispatch",
-        "dispatch_id": uuid.uuid4().hex,
+        "dispatch_id": _text(state.get("dispatch_id")) or uuid.uuid4().hex,
         "actor": _text(state.get("actor")),
         "launch_session_id": _text(state.get("launch_session_id")),
         "runtime_instance_id": _text(state.get("runtime_instance_id")),
@@ -1057,11 +1091,13 @@ def _prompt_for_job(
     *,
     request_anchor: str,
     no_wrap: bool,
+    dispatch_id: str = "",
 ) -> str:
     return _pane_prompt(
         job.request.body or "",
         request_anchor=request_anchor,
         no_wrap=no_wrap,
+        dispatch_id=dispatch_id,
     )
 
 
@@ -1070,10 +1106,15 @@ def _pane_prompt(
     *,
     request_anchor: str,
     no_wrap: bool,
+    dispatch_id: str = "",
 ) -> str:
     if no_wrap:
         return body
-    return wrap_native_prompt(body, request_anchor)
+    prompt = wrap_native_prompt(body, request_anchor)
+    if dispatch_id:
+        header, remainder = prompt.split("\n", 1)
+        return f"{header}\nCCB_DISPATCH_ID: {dispatch_id}\n{remainder}"
+    return prompt
 
 
 def _load_session(work_dir: Path, *, agent_name: str):
