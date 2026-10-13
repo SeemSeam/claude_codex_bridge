@@ -53,8 +53,8 @@ real Codex/Pi/OMP continuity cases. Bun dispatch replay, transformed image
 completion, nonce reuse/foreign identities, restored completion and scoped
 cancellation ran without skips. Pi/OMP Python compilation also passed.
 
-The Windows isolation checker from trusted base `636afa2f2` passed against
-merged main with `scope=non-windows`; the fix adds no Windows ownership or
+The trusted-base platform isolation checker from trusted base `636afa2f2` passed against
+merged main with `scope=non-windows`; the fix adds no platform ownership or
 reverse-dependency changes. Documentation links and `git diff --check` passed.
 
 ## Integration And Release Status
