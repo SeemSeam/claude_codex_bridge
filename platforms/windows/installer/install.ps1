@@ -21,6 +21,7 @@ try { [Console]::InputEncoding = $script:utf8NoBom } catch {}
 try { chcp 65001 | Out-Null } catch {}
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'config_io.ps1')
 $script:extractedReleaseRoot = $null
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
@@ -874,7 +875,19 @@ function Confirm-HerdrReady {
 }
 
 function Install-Native {
+  # Reject malformed user configuration before changing the installation.
+  $null = Read-CCBSettings -Path (Join-Path $env:USERPROFILE '.claude\settings.json')
   Confirm-BackendEnv
+  if ($SourceArchive -and (Test-Path -LiteralPath (Join-Path $InstallPrefix 'WINDOWS_MANIFEST.json'))) {
+    # Archive upgrades use the transactional Windows lane, not in-place copies.
+    if (-not $ExpectedSha256) { throw 'Archive upgrades require -ExpectedSha256.' }
+    $maintenancePython = Find-Python
+    $maintenanceInfo = Get-PythonVersionInfo -PythonCmd $maintenancePython
+    & $maintenanceInfo.Executable (Join-Path $PSScriptRoot '..\tools\manage_install.py') update `
+      --install-root $InstallPrefix --archive $SourceArchive --sha256 $ExpectedSha256
+    if ($LASTEXITCODE -ne 0) { throw 'Windows transactional update failed; see the maintenance diagnostic.' }
+    return
+  }
   Confirm-HerdrReady
 
   Show-WindowsX64ReleaseSurfaceProjection
@@ -1353,15 +1366,7 @@ function Install-ClaudeConfig {
     "Bash(ccb ask *)", "Bash(ccb clear *)", "Bash(ccb ping *)", "Bash(ccb pend *)"
   )
 
-  if (Test-Path $settingsJson) {
-    try {
-      $settings = Get-Content -Raw $settingsJson | ConvertFrom-Json
-    } catch {
-      $settings = @{}
-    }
-  } else {
-    $settings = @{}
-  }
+  $settings = Read-CCBSettings -Path $settingsJson
 
   if (-not $settings.permissions) {
     $settings | Add-Member -NotePropertyName "permissions" -NotePropertyValue @{} -Force
@@ -1381,7 +1386,7 @@ function Install-ClaudeConfig {
 
   if ($updated) {
     $settings.permissions.allow = $currentAllow.ToArray()
-    $settings | ConvertTo-Json -Depth 10 | Out-File -Encoding UTF8 -FilePath $settingsJson
+    Write-CCBSettings -Path $settingsJson -Value $settings
     Write-Host "Updated settings.json with permissions"
   }
 
@@ -1416,6 +1421,8 @@ function Remove-CCBMemoryInjections {
 }
 
 function Uninstall-Native {
+  $settingsFile = Join-Path $env:USERPROFILE '.claude\settings.json'
+  $settings = Read-CCBSettings -Path $settingsFile
   $binDir = Join-Path $InstallPrefix "bin"
 
   # 1. Remove project directory
@@ -1477,17 +1484,16 @@ function Uninstall-Native {
       "Bash(ask:*)", "Bash(ping:*)", "Bash(ccb-ping:*)", "Bash(pend:*)"
     )
     try {
-      $settings = Get-Content $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
       if ($settings.permissions -and $settings.permissions.allow) {
         $originalCount = $settings.permissions.allow.Count
         $settings.permissions.allow = @($settings.permissions.allow | Where-Object { $_ -notin $permsToRemove })
         if ($settings.permissions.allow.Count -ne $originalCount) {
-          $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsFile -Encoding UTF8
+          Write-CCBSettings -Path $settingsFile -Value $settings
           Write-Host "Removed CCB permissions from settings.json"
         }
       }
     } catch {
-      Write-Host "WARN: Could not clean settings.json: $_"
+      throw "Could not safely clean settings.json: $_"
     }
   }
 

@@ -17,6 +17,9 @@ def main():
     if not allowed:
         print(reason, file=sys.stderr)
         return 1
+    if argv[:1] == ['windows-terminal-check']:
+        from platforms.windows.terminal_health import main as check_terminal
+        return check_terminal(argv[1:])
     if not ccb._herdr_ok and not ccb._is_safe_introspection(argv):
         print('[CCB] Herdr is not ready; install and configure Herdr before starting.', file=sys.stderr)
         return 1

@@ -24,6 +24,10 @@ def _native_phase2(argv, *, cwd=None, stdout=None, stderr=None):
     if command.kind not in {'herdr-open', 'start'}:
         return phase2.maybe_handle_phase2(argv, cwd=cwd, stdout=out, stderr=err)
     try:
+        if (not getattr(command, 'no_attach', False) and not _env_truthy('CCB_NO_ATTACH')
+                and _stream_is_tty(sys.stdin) and _stream_is_tty(out)):
+            from platforms.windows.terminal_health import check_before_attach
+            check_before_attach(err)
         context = phase2._build_context(command, cwd=cwd, out=out)
         phase2.ensure_bootstrap_project_config(context.project.project_root)
         return _native_dispatch(context, command, out)

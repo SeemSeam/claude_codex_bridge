@@ -14,3 +14,7 @@ for `ccb`, `ask`, `autonew`, and `ctx-transfer`, plus the Python runtime source
 tree. Python 3.10+, WezTerm, Git Bash, and Herdr remain explicit prerequisites
 for this support tier; it is not presented as a fully self-contained installer
 or as stable Windows support.
+
+See [native maintenance](docs/maintenance.md) for protected configuration writes,
+terminal compatibility checks, verified updates, rollback and interrupted-update
+recovery using the Windows-owned tools.
