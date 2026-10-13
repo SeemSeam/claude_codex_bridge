@@ -5,6 +5,13 @@ Last updated: 2026-10-13
 
 ## Current Phase
 
+2026-10-13 release: stable v8.7.11 publishes the V2 workflow isolation repair
+and PR385. All exact-source gates and public asset checks pass. Local normal
+npm downloads hit host network timeouts; the verified public payload passes
+bootstrap and dispatcher tests.
+[Release evidence](evidence/release-8711-verification-20261013.md).
+
+
 2026-10-13 local integration: PR #385 is merged in `55d3303bf` and passed
 Pi/OMP extension, binding, cancellation, restore, launch, execution-service
 and dispatcher regressions. The fix is queued for the next release;

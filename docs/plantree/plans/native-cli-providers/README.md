@@ -47,6 +47,10 @@ override the shipped contracts.
 
 ## File Map
 
+- [v8.7.11 release verification](evidence/release-8711-verification-20261013.md):
+  V2 compatibility, PR385, refreshed QR, public asset and npm payload evidence.
+
+
 - [PR #385 merged-source verification](evidence/pr385-merged-source-20261013.md):
   Pi transformed-input binding and scoped cancellation pass local regressions;
   queued for the next release.
