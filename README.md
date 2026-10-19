@@ -56,6 +56,97 @@
 
 Keep V3 workflow policies out of ordinary V2 projects, preserve Pi request attribution after image-input transformation, and scope cancellation to the active request. [Notes](docs/releases/v8.7.11.md).
 
+## New in 8.7.10: Faster Pi Plugin Startup
+
+Reuse verified plugin snapshots, share resolved dependencies, recover interrupted builds and honor startup timeout overrides. Verified with real Pi plugin loading and two-agent cold/warm startup. [Notes](docs/releases/v8.7.10.md).
+
+## New in 8.7.7: Codex Fullscreen Delivery Fixes
+
+Fix accepted jobs waiting behind native Codex fullscreen status/shortcut rows and ordinary replies mentioning `esc to interrupt`, while preserving human drafts, busy/menu guards and FIFO. [Notes](docs/releases/v8.7.7.md).
+
+## New in 8.7.6: Claude/Codex Delivery Reliability
+
+Recognize native Claude pasted envelopes and empty Codex composers with newer status bars; preserve draft protection. [Notes](docs/releases/v8.7.6.md).
+
+## New in 8.7.5: Safe OMP/Pi Model Selection
+
+Opening `/model` or another control-only selector no longer supersedes an
+active OMP/Pi ask. CCB now waits for a real provider turn boundary before
+classifying different user input as replacement work. See the
+[verification and upgrade guidance](docs/releases/v8.7.5.md).
+
+## New in 8.7.4: Conversation Continuity First
+
+Claude and Codex preserve usable local history across account/key/gateway
+changes. Pi follows manual session switches; OMP accepts its newer history
+header format. See [verified scope and upgrade guidance](docs/releases/v8.7.4.md).
+
+## New in 8.7.3: Model-Independent Input Protection
+
+Codex composer detection no longer matches model names. Claude suggestion,
+accepted-draft and ordered return-delivery regressions accompany real continuous
+communication verification. Experimental Claude native plugins remain disabled.
+Install/update onboarding no longer recommends the six V3 preview roles;
+explicit installation and updates for installed roles remain available.
+See [upgrade guidance and layout limitations](docs/releases/v8.7.3.md).
+
+## New in 8.7.2: Recovery and Queued Delivery Fixes
+
+Fix Codex recovery commands with duplicate resume arguments, abandoned OMP editor
+sockets, and padded Codex empty-input detection. Queue details now show input-guard
+waiting reasons. See [upgrade guidance and remaining limitations](docs/releases/v8.7.2.md).
+
+## New in 8.7.1: Open Rich Files with Your Default App
+
+Click a file or press Enter to open it with the system default application;
+folders stay inside the file browser. Both safe and rich profiles use the same
+behavior. macOS uses `open`; Linux prefers `gio open`, then `xdg-open` when GIO
+is absent; WSL uses `wslview` from `wslu` to open with the Windows default app.
+WSL requires enabled Windows interop and reports a missing bridge explicitly.
+After upgrading CCB, run `ccb update rich` and reopen the file-browser pane.
+See the [8.7.1 notes](docs/releases/v8.7.1.md) for validation and limitations.
+
+<a id="message-queues"></a>
+
+## New in 8.7.0: Humans and Agents Share the Queue
+
+### Human / agent queue mode
+
+Incoming agent messages wait while you compose a draft, avoiding interruption
+or accidental submission of your text together with a returned result. CCB first
+waits for the target agent's current turn to end, then checks the input box for
+the message at the front of the queue.
+
+- Empty input: deliver the next eligible message in queue order.
+- Nonempty input: wait up to **180 seconds**. Clearing or submitting your draft
+  releases the message once the agent is idle again.
+- Still nonempty after 180 seconds: clear the draft once, confirm the box is
+  empty, then deliver. Continuing to type does **not** reset this timer; this
+  mode does not preserve a draft indefinitely.
+- Busy, modal or unrecognized input state: keep waiting without clearing or
+  sending. Closing the modal or restoring the normal input surface allows
+  checks to continue.
+
+### Agent / agent queue mode
+
+Requests (`ask`) and returned results (`back`) share one chronological FIFO
+queue per target agent. Each message waits until the target finishes processing
+the previous one, including returned results. Later replies cannot interrupt
+an earlier reply's processing turn; different agents can still work in parallel.
+
+**We recommend testing these queue modes with Claude, Codex and OMP in managed
+tmux panes.** Input protection for other providers will follow; their existing
+delivery behavior is unchanged and should not be assumed to protect drafts.
+OMP currently requires its default Status Band input layout and the new managed
+extension. After upgrading, restart the project when idle to load the new daemon
+and provider extensions.
+
+This is a first version for testing. Codex/Claude deadline clearing uses `Ctrl-C`;
+a simultaneous user action can still cause interruption. The final screen-check,
+paste and Enter sequence is not atomic against typing at that exact instant.
+See the [8.7.0 notes](docs/releases/v8.7.0.md) for tested
+scope, upgrade guidance and the Codex remote-session recovery limitation.
+
 <a id="how-to-install"></a>
 
 ## How to Install
@@ -347,7 +438,9 @@ Isolate V3 workflow policies, repair Pi transformed-input attribution and active
 <details>
 <summary><b>v8.7.10</b> - Pi plugin snapshot and startup repair</summary>
 
-Reuse verified plugin snapshots, share resolved dependencies, recover interrupted builds and honor startup timeout overrides. Verified with real Pi plugin loading and two-agent cold/warm startup. [Notes](docs/releases/v8.7.10.md).
+Reuse verified snapshots, deduplicate shared dependencies, recover interrupted staging and forward startup timeout settings.
+
+[Full bilingual notes](docs/releases/v8.7.10.md).
 
 </details>
 
@@ -372,111 +465,56 @@ Complete the Codex fullscreen delivery update and repair installed native `ccb.e
 <details>
 <summary><b>v8.7.7</b> - Codex fullscreen delivery fixes</summary>
 
-Fix accepted jobs waiting behind native Codex fullscreen status/shortcut rows and ordinary replies mentioning `esc to interrupt`, while preserving human drafts, busy/menu guards and FIFO. [Notes](docs/releases/v8.7.7.md).
+Fix accepted jobs waiting behind native Codex fullscreen status/shortcut rows and ordinary replies mentioning `esc to interrupt`, while preserving human drafts, busy/menu guards and FIFO.
+
+[Full bilingual notes](docs/releases/v8.7.7.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.6</b> - Claude/Codex delivery reliability</summary>
 
-Recognize native Claude pasted envelopes and empty Codex composers with newer status bars; preserve draft protection. [Notes](docs/releases/v8.7.6.md).
+Recognize native Claude pasted envelopes and empty Codex composers with newer status bars; preserve draft protection.
+
+[Full bilingual notes](docs/releases/v8.7.6.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.5</b> - Safe OMP/Pi model selection</summary>
 
-Opening `/model` or another control-only selector no longer supersedes an
-active OMP/Pi ask. CCB now waits for a real provider turn boundary before
-classifying different user input as replacement work. See the
-[verification and upgrade guidance](docs/releases/v8.7.5.md).
+[Full bilingual notes](docs/releases/v8.7.5.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.4</b> - Conversation continuity first</summary>
 
-Claude and Codex preserve usable local history across account/key/gateway
-changes. Pi follows manual session switches; OMP accepts its newer history
-header format. See [verified scope and upgrade guidance](docs/releases/v8.7.4.md).
+[Full bilingual notes](docs/releases/v8.7.4.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.3</b> - Model-independent input protection</summary>
 
-Codex composer detection no longer matches model names. Claude suggestion,
-accepted-draft and ordered return-delivery regressions accompany real continuous
-communication verification. Experimental Claude native plugins remain disabled.
-Install/update onboarding no longer recommends the six V3 preview roles;
-explicit installation and updates for installed roles remain available.
-See [upgrade guidance and layout limitations](docs/releases/v8.7.3.md).
+[Full bilingual notes](docs/releases/v8.7.3.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.2</b> - Recovery and queued delivery fixes</summary>
 
-Fix Codex recovery commands with duplicate resume arguments, abandoned OMP editor
-sockets, and padded Codex empty-input detection. Queue details now show input-guard
-waiting reasons. See [upgrade guidance and remaining limitations](docs/releases/v8.7.2.md).
+[Full bilingual notes](docs/releases/v8.7.2.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.1</b> - Rich system-default file opening</summary>
 
-Click a file or press Enter to open it with the system default application;
-folders stay inside the file browser. Both safe and rich profiles use the same
-behavior. macOS uses `open`; Linux prefers `gio open`, then `xdg-open` when GIO
-is absent; WSL uses `wslview` from `wslu` to open with the Windows default app.
-WSL requires enabled Windows interop and reports a missing bridge explicitly.
-After upgrading CCB, run `ccb update rich` and reopen the file-browser pane.
-See the [8.7.1 notes](docs/releases/v8.7.1.md) for validation and limitations.
-
-</details>
-
-<details>
-<summary><b>v8.7.0</b> - Humans and agents share the queue</summary>
-
-<a id="message-queues"></a>
-
-### Human / agent queue mode
-
-Incoming agent messages wait while you compose a draft, avoiding interruption
-or accidental submission of your text together with a returned result. CCB first
-waits for the target agent's current turn to end, then checks the input box for
-the message at the front of the queue.
-
-- Empty input: deliver the next eligible message in queue order.
-- Nonempty input: wait up to **180 seconds**. Clearing or submitting your draft
-  releases the message once the agent is idle again.
-- Still nonempty after 180 seconds: clear the draft once, confirm the box is
-  empty, then deliver. Continuing to type does **not** reset this timer; this
-  mode does not preserve a draft indefinitely.
-- Busy, modal or unrecognized input state: keep waiting without clearing or
-  sending. Closing the modal or restoring the normal input surface allows
-  checks to continue.
-
-### Agent / agent queue mode
-
-Requests (`ask`) and returned results (`back`) share one chronological FIFO
-queue per target agent. Each message waits until the target finishes processing
-the previous one, including returned results. Later replies cannot interrupt
-an earlier reply's processing turn; different agents can still work in parallel.
-
-**We recommend testing these queue modes with Claude, Codex and OMP in managed
-tmux panes.** Input protection for other providers will follow; their existing
-delivery behavior is unchanged and should not be assumed to protect drafts.
-OMP currently requires its default Status Band input layout and the new managed
-extension. After upgrading, restart the project when idle to load the new daemon
-and provider extensions.
-
-This is a first version for testing. Codex/Claude deadline clearing uses `Ctrl-C`;
-a simultaneous user action can still cause interruption. The final screen-check,
-paste and Enter sequence is not atomic against typing at that exact instant.
-See the [8.7.0 notes](docs/releases/v8.7.0.md) for tested
-scope, upgrade guidance and the Codex remote-session recovery limitation.
+- Click or Enter opens files with system defaults on macOS, Linux and WSL; folders stay inside Yazi.
+- Shares safe/rich configuration, preserves filenames and provides explicit WSL bridge errors.
+- [Full bilingual notes and validation scope](docs/releases/v8.7.1.md).
+- Prior changes: [v8.7.0 input protection](docs/releases/v8.7.0.md) and [v8.6.19 queues and inspection guidance](docs/releases/v8.6.19.md).
 
 </details>
 
