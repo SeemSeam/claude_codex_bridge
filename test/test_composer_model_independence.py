@@ -51,8 +51,13 @@ def test_omp_uses_native_editor_state_not_model(monkeypatch, label, state):
 
 @pytest.mark.parametrize('footer', ['gpt-6-astra', 'GPT-6-Astra', 'o3', 'draft · text'])
 def test_model_text_alone_does_not_establish_codex_footer(footer):
+    # A known placeholder at the initial cursor is empty evidence on its own
+    # (newer builds no longer dim it), so the footer label cannot change the
+    # verdict either way; a bare human draft line still fails closed.
     screen = {'text': f'› Ask Codex to do anything\n\n  {footer}', 'cursor_x': 2, 'cursor_y': 0}
-    assert inspect_screen('codex', screen, binding='pane').state == 'unknown'
+    assert inspect_screen('codex', screen, binding='pane').state == 'empty'
+    draft = {'text': f'› human draft\n\n  {footer}', 'cursor_x': 2, 'cursor_y': 0}
+    assert inspect_screen('codex', draft, binding='pane').state == 'unknown'
 
 
 def test_codex_draft_below_footer_like_text_is_not_ignored():
