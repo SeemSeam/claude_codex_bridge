@@ -55,84 +55,6 @@
 
 隔离 V3 工作流对普通 V2 项目的限制，保留图片转换后的 Pi 请求归属，并将取消操作限定到当前活动请求。[版本说明](../docs/releases/v8.7.11.md)。
 
-## 8.7.10 修复：Pi 插件启动与快照复用
-
-复用已验证的插件快照、共享依赖、回收中断残留，并使启动超时设置生效。已通过真实 Pi 插件加载及双 Agent 冷启动、缓存复用启动测试。[版本说明](../docs/releases/v8.7.10.md)。
-
-## 8.7.7 修复：Codex 双行底栏与队列投递
-
-修复 Codex 原生双行底栏与回复正文中的 `esc to interrupt` 导致消息持续排队的问题，保留人工草稿、忙碌/菜单保护和 FIFO 顺序。 [Notes](../docs/releases/v8.7.7.md).
-
-## 8.7.6 修复：Claude/Codex 投递稳定性
-
-Claude 原生粘贴包装识别与 Codex 空输入状态栏兼容修复；保留草稿保护。 [Notes](../docs/releases/v8.7.6.md).
-
-## 8.7.5 修复：OMP/Pi 切换模型不再导致 ask 空返回
-
-打开 `/model` 或其他仅控制界面的选择器时，不再把当前 OMP/Pi ask
-误判为已被新任务替换。CCB 只在真正进入新的 provider 回合时才执行
-supersede。见 [验证结果与升级说明](../docs/releases/v8.7.5.md)。
-
-## 8.7.4 修复：优先恢复对话上下文
-
-Claude、Codex 在账号、key 或中转变化后优先保留可用本地历史；Pi 跟随手动
-会话切换，OMP 兼容新版历史文件头。见 [验证范围与升级说明](../docs/releases/v8.7.4.md)。
-
-## 8.7.3 修复：不依赖模型名称的输入保护
-
-Codex 输入框识别不再匹配模型名称，补充 Claude 建议文字、接受后的草稿和
-有序返回投递回归测试，并完成真实连续通信验证。Claude 原生插件仍只用于实验。
-安装/更新引导不再推荐那六个 V3 预览角色，仍保留显式安装和已安装角色更新。
-见 [升级说明与布局限制](../docs/releases/v8.7.3.md)。
-
-## 8.7.2 修复：会话恢复与排队投递
-
-修复 Codex 恢复命令重复追加参数、OMP 废弃编辑器 socket 无法恢复、Codex
-空输入提示填充空格误判，并显示输入保护的具体等待原因。
-见 [升级说明与剩余限制](../docs/releases/v8.7.2.md)。
-
-## 8.7.1 新功能：Rich 文件使用系统默认应用打开
-
-点击文件或按 Enter，使用系统默认应用打开；目录仍在文件面板内进入。
-safe 和 rich 两套配置行为一致。macOS 使用 `open`；Linux 优先使用
-`gio open`，没有 GIO 时使用 `xdg-open`；WSL 通过 `wslu` 提供的
-`wslview` 调用 Windows 默认应用，需要开启 Windows 互操作，缺少桥接工具
-时会明确报错。升级 CCB 后运行 `ccb update rich`，再重新打开文件面板。
-验证范围和限制见 [8.7.1 说明](../docs/releases/v8.7.1.md)。
-
-<a id="message-queues"></a>
-
-## 8.7.0 新功能：人与 Agent 有序排队
-
-### 人 / Agent 排队模式
-
-当你正在编辑草稿时，Agent 消息会先等待，避免直接打断输入，或把你的草稿
-和返回消息一起发送。CCB 先等待目标 Agent 的当前回合结束，再为队首消息
-检查输入框。
-
-- 输入框为空：按原有队列顺序投递下一条可执行消息。
-- 输入框非空：最多等待 **180 秒**。期间你清空或提交草稿后，待 Agent 空闲
-  即可继续投递。
-- 满 180 秒仍非空：清空草稿一次，确认输入框为空后再投递。继续键入**不会
-  重置计时**，这个模式不会无限期保留草稿。
-- 正在执行、弹窗打开或无法判断输入状态：继续等待，不清空、不发送。
-  关闭弹窗或恢复正常输入界面后，会继续检查。
-
-### Agent / Agent 排队模式
-
-任务请求（`ask`）与结果返回（`back`）在每个目标 Agent 上共用按时间先后
-排列的 FIFO 队列。前一条消息处理完整个回合后，才投递下一条，包括返回
-消息的处理回合；后到的结果不会打断正在处理的结果。不同 Agent 仍可并行工作。
-
-**推荐大家先在受管 tmux 环境下的 Claude、Codex 和 OMP 上测试使用。**
-其他 provider 的输入保护将在后续更新中适配；目前保留原有投递行为，不能
-视为已经具备草稿保护。OMP 当前需要默认 Status Band 输入布局和新版受管
-扩展。升级后请在空闲时重启项目，加载新 daemon 和 provider 扩展。
-
-这是首版测试功能。Codex/Claude 到期清空使用 `Ctrl-C`，与人工操作同时发生时
-仍可能造成中断；最终抓屏、粘贴、Enter 与人工输入还不能做到原子互斥。
-已测范围、升级方法和 Codex 远程会话恢复限制见 [8.7.0 说明](../docs/releases/v8.7.0.md)。
-
 <a id="how-to-install"></a>
 
 ## 如何安装
@@ -395,9 +317,7 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <details>
 <summary><b>v8.7.10</b> - Pi 插件快照与启动修复</summary>
 
-复用已验证快照、共享依赖、回收中断残留并传递启动超时设置。
-
-[Full bilingual notes](../docs/releases/v8.7.10.md).
+复用已验证的插件快照、共享依赖、回收中断残留，并使启动超时设置生效。已通过真实 Pi 插件加载及双 Agent 冷启动、缓存复用启动测试。[版本说明](../docs/releases/v8.7.10.md)。
 
 </details>
 
@@ -422,56 +342,98 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <details>
 <summary><b>v8.7.7</b> - Codex 双行底栏与队列投递修复</summary>
 
-修复 Codex 原生双行底栏与回复正文中的 `esc to interrupt` 导致消息持续排队的问题，保留人工草稿、忙碌/菜单保护和 FIFO 顺序。
-
-[Full bilingual notes](../docs/releases/v8.7.7.md).
+修复 Codex 原生双行底栏与回复正文中的 `esc to interrupt` 导致消息持续排队的问题，保留人工草稿、忙碌/菜单保护和 FIFO 顺序。 [Notes](../docs/releases/v8.7.7.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.6</b> - Claude/Codex 投递稳定性</summary>
 
-Claude 原生粘贴包装识别与 Codex 空输入状态栏兼容修复；保留草稿保护。
-
-[Full bilingual notes](../docs/releases/v8.7.6.md).
+Claude 原生粘贴包装识别与 Codex 空输入状态栏兼容修复；保留草稿保护。 [Notes](../docs/releases/v8.7.6.md).
 
 </details>
 
 <details>
 <summary><b>v8.7.5</b> - OMP/Pi 安全切换模型</summary>
 
-[完整中英文说明](../docs/releases/v8.7.5.md)。
+打开 `/model` 或其他仅控制界面的选择器时，不再把当前 OMP/Pi ask
+误判为已被新任务替换。CCB 只在真正进入新的 provider 回合时才执行
+supersede。见 [验证结果与升级说明](../docs/releases/v8.7.5.md)。
 
 </details>
 
 <details>
 <summary><b>v8.7.4</b> - 优先恢复对话上下文</summary>
 
-[完整中英文说明](../docs/releases/v8.7.4.md).
+Claude、Codex 在账号、key 或中转变化后优先保留可用本地历史；Pi 跟随手动
+会话切换，OMP 兼容新版历史文件头。见 [验证范围与升级说明](../docs/releases/v8.7.4.md)。
 
 </details>
 
 <details>
 <summary><b>v8.7.3</b> - 不依赖模型名称的输入保护</summary>
 
-[完整中英文说明](../docs/releases/v8.7.3.md)。
+Codex 输入框识别不再匹配模型名称，补充 Claude 建议文字、接受后的草稿和
+有序返回投递回归测试，并完成真实连续通信验证。Claude 原生插件仍只用于实验。
+安装/更新引导不再推荐那六个 V3 预览角色，仍保留显式安装和已安装角色更新。
+见 [升级说明与布局限制](../docs/releases/v8.7.3.md)。
 
 </details>
 
 <details>
 <summary><b>v8.7.2</b> - 会话恢复与排队投递修复</summary>
 
-[完整中英文说明](../docs/releases/v8.7.2.md)。
+修复 Codex 恢复命令重复追加参数、OMP 废弃编辑器 socket 无法恢复、Codex
+空输入提示填充空格误判，并显示输入保护的具体等待原因。
+见 [升级说明与剩余限制](../docs/releases/v8.7.2.md)。
 
 </details>
 
 <details>
 <summary><b>v8.7.1</b> - Rich 文件使用系统默认应用打开</summary>
 
-- macOS、Linux、WSL 点击文件或按 Enter，使用系统默认应用打开；目录仍在 Yazi 内进入。
-- safe/rich 配置统一，保留完整文件名，缺少 WSL 桥接工具时明确报错。
-- [完整中英文说明及验证范围](../docs/releases/v8.7.1.md)。
-- 先前变更：[v8.7.0 输入保护](../docs/releases/v8.7.0.md)、[v8.6.19 排队与查询提示](../docs/releases/v8.6.19.md)。
+点击文件或按 Enter，使用系统默认应用打开；目录仍在文件面板内进入。
+safe 和 rich 两套配置行为一致。macOS 使用 `open`；Linux 优先使用
+`gio open`，没有 GIO 时使用 `xdg-open`；WSL 通过 `wslu` 提供的
+`wslview` 调用 Windows 默认应用，需要开启 Windows 互操作，缺少桥接工具
+时会明确报错。升级 CCB 后运行 `ccb update rich`，再重新打开文件面板。
+验证范围和限制见 [8.7.1 说明](../docs/releases/v8.7.1.md)。
+
+</details>
+
+<details>
+<summary><b>v8.7.0</b> - 人与 Agent 有序排队</summary>
+
+<a id="message-queues"></a>
+
+### 人 / Agent 排队模式
+
+当你正在编辑草稿时，Agent 消息会先等待，避免直接打断输入，或把你的草稿
+和返回消息一起发送。CCB 先等待目标 Agent 的当前回合结束，再为队首消息
+检查输入框。
+
+- 输入框为空：按原有队列顺序投递下一条可执行消息。
+- 输入框非空：最多等待 **180 秒**。期间你清空或提交草稿后，待 Agent 空闲
+  即可继续投递。
+- 满 180 秒仍非空：清空草稿一次，确认输入框为空后再投递。继续键入**不会
+  重置计时**，这个模式不会无限期保留草稿。
+- 正在执行、弹窗打开或无法判断输入状态：继续等待，不清空、不发送。
+  关闭弹窗或恢复正常输入界面后，会继续检查。
+
+### Agent / Agent 排队模式
+
+任务请求（`ask`）与结果返回（`back`）在每个目标 Agent 上共用按时间先后
+排列的 FIFO 队列。前一条消息处理完整个回合后，才投递下一条，包括返回
+消息的处理回合；后到的结果不会打断正在处理的结果。不同 Agent 仍可并行工作。
+
+**推荐大家先在受管 tmux 环境下的 Claude、Codex 和 OMP 上测试使用。**
+其他 provider 的输入保护将在后续更新中适配；目前保留原有投递行为，不能
+视为已经具备草稿保护。OMP 当前需要默认 Status Band 输入布局和新版受管
+扩展。升级后请在空闲时重启项目，加载新 daemon 和 provider 扩展。
+
+这是首版测试功能。Codex/Claude 到期清空使用 `Ctrl-C`，与人工操作同时发生时
+仍可能造成中断；最终抓屏、粘贴、Enter 与人工输入还不能做到原子互斥。
+已测范围、升级方法和 Codex 远程会话恢复限制见 [8.7.0 说明](../docs/releases/v8.7.0.md)。
 
 </details>
 

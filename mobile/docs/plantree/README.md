@@ -28,5 +28,8 @@ the CCB monorepo.
 
 ## How To Read
 
+New planning scope (2026-09-18): [simplified Web client](plans/mobile-tmux-control/topics/web-lite-client.md)
+adds a browser companion to the stable APK. Analysis only; browser validation and implementation are pending.
+
 Start with the active plan root, then read roadmap, decisions, and the
 specific topic file for the current task.

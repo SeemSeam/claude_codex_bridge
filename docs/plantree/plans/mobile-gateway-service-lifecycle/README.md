@@ -14,6 +14,8 @@ Cloudflare Tunnel, or another route provider remains a separate route layer.
 
 ## File Map
 
+- [topics/project-authorization.md](topics/project-authorization.md): Issue #393
+  reproduction, project/host authorization boundary, and pending policy decision.
 - [roadmap.md](roadmap.md): implementation phases and release gate.
 - [topics/unique-background-service.md](topics/unique-background-service.md):
   observed issue, target lifecycle contract, state files, replacement flow,

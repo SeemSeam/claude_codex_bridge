@@ -2,6 +2,15 @@
 
 Date: 2026-06-18
 
+## Simplified Web Companion — Planning
+
+2026-09-18: user requested analysis and a development plan for a simplified browser
+client based on the stable APK/backend. Scope, source evidence, alternatives,
+P0–P3 gates, compatibility and open choices are in
+[Web client plan](topics/web-lite-client.md). Next: freeze the proposed text-chat
+scope and validate browser Relay interoperability before formal implementation.
+No Web implementation, production deployment or browser acceptance is claimed.
+
 ## Settings Background Presets — Locally Verified
 
 2026-09-17: implement three offline backgrounds on the existing custom-image
