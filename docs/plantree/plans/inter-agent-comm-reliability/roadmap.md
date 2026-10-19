@@ -6,6 +6,9 @@ Last updated: 2026-10-10
 
 ## PR #395 local repair — Done
 
+v8.7.12 is published. [Publication verification](evidence/release-8712-verification-20261019.md)
+records passed candidate/platform gates, registry identity and installed-source checks.
+
 2026-10-19: integrated PR #395 and repaired its pending watchdog and Claude
 border-padding regression. [Evidence](evidence/pr395-local-repair-20261019.md)
 records 634 passed / 28 skipped, trusted-base isolation checks, and the local

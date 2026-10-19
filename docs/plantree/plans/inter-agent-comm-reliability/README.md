@@ -6,6 +6,9 @@ Last updated: 2026-10-10
 
 ## PR #395 local integration and repair
 
+Published as v8.7.12: [publication verification](evidence/release-8712-verification-20261019.md)
+records exact-candidate gates, public artifacts and fresh npm installation.
+
 2026-10-19: [pending delivery and composer repair](evidence/pr395-local-repair-20261019.md)
 retains the original pending job while releasing only proven orphaned leases,
 preserves uncertain execution and live lease ownership, and restores Claude
