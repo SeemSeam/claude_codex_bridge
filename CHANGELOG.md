@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.7.12 (2026-10-19)
+
+- Recover proven orphaned reply-delivery leases without replacing pending jobs; preserve execution evidence and live ownership.
+- Correct silent/callback completion status, show pending deliveries, and retain 20 recent communication rows.
+- Recognize newer Claude/Codex composers and preserve padded Claude borders and draft protection.
+- 修复失效回复租约、通信状态及输入框兼容，保留草稿保护；继续包含 PR #386 的 V2 工作流隔离。
+- [Full bilingual notes](docs/releases/v8.7.12.md).
+
 ## v8.7.11 (2026-10-13)
 
 - Isolate V3 workflow policies from ordinary V2 routing, recovery and completion.

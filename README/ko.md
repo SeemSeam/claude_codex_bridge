@@ -6,7 +6,7 @@
 **Codex, Claude, Gemini 등 CLI Agent를 보이고 제어 가능하며 직접 이어받을 수 있는 워크플로로 조율**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 CCB 8.6.6은 Flutter CCB Mobile 소스를 [`mobile/`](../mobile/)에 포함하며 Android APK를 GitHub Releases로 배포합니다.
 
-- [CCB Mobile v8.7.11 APK 다운로드](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
+- [CCB Mobile v8.7.12 APK 다운로드](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
 - 앱 소스: [`mobile/app`](../mobile/app)
 - 서버 gateway 소스: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,14 @@ sidebar 아이디어와 영감을 준 [tmux-agent-sidebar](https://github.com/hi
 ## 릴리스 노트
 
 <details open>
+<summary><b>v8.7.12</b> - Reply queue recovery and composer compatibility</summary>
+
+Recover stale reply delivery, correct communication status, and preserve drafts and valid lease ownership.
+
+[Full bilingual notes](../docs/releases/v8.7.12.md).
+</details>
+
+<details>
 <summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
 
 Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.

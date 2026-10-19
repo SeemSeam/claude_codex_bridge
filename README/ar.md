@@ -6,7 +6,7 @@
 **نسّق Codex وClaude وGemini وغيرهم من وكلاء CLI ضمن سير عمل مرئي وقابل للتحكم والتدخل المباشر**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 يتضمن CCB 8.6.6 مصدر Flutter الخاص بـ CCB Mobile داخل [`mobile/`](../mobile/) وينشر Android APK عبر GitHub Releases:
 
-- [تنزيل CCB Mobile v8.7.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
+- [تنزيل CCB Mobile v8.7.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
 - مصدر التطبيق: [`mobile/app`](../mobile/app)
 - مصدر gateway الخادم: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,14 @@ ccb update rich
 ## ملاحظات الإصدار
 
 <details open>
+<summary><b>v8.7.12</b> - Reply queue recovery and composer compatibility</summary>
+
+Recover stale reply delivery, correct communication status, and preserve drafts and valid lease ownership.
+
+[Full bilingual notes](../docs/releases/v8.7.12.md).
+</details>
+
+<details>
 <summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
 
 Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.

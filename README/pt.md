@@ -6,7 +6,7 @@
 **Coordene Codex, Claude, Gemini e outros agentes CLI em fluxos visíveis e controláveis que você pode assumir diretamente**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Esse comando orienta a instalação e a configuração.
 
 O CCB 8.6.6 inclui o código Flutter do CCB Mobile em [`mobile/`](../mobile/) e publica o APK Android pelo GitHub Releases:
 
-- [Baixar CCB Mobile v8.7.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
+- [Baixar CCB Mobile v8.7.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
 - Fonte do app: [`mobile/app`](../mobile/app)
 - Fonte do gateway servidor: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,14 @@ Obrigado ao [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) 
 ## Notas de versão
 
 <details open>
+<summary><b>v8.7.12</b> - Reply queue recovery and composer compatibility</summary>
+
+Recover stale reply delivery, correct communication status, and preserve drafts and valid lease ownership.
+
+[Full bilingual notes](../docs/releases/v8.7.12.md).
+</details>
+
+<details>
 <summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
 
 Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.

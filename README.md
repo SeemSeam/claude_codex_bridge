@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.11-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -52,9 +52,9 @@
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
 
-## New in 8.7.11: V2 Compatibility and Pi Completion Repair
+## New in 8.7.12: Reply Queue Recovery and Composer Compatibility
 
-Keep V3 workflow policies out of ordinary V2 projects, preserve Pi request attribution after image-input transformation, and scope cancellation to the active request. [Notes](docs/releases/v8.7.11.md).
+Recover proven stale delivery leases without duplicating pending jobs, correct silent/callback completion status, and recognize newer Claude/Codex input layouts. [Notes](docs/releases/v8.7.12.md).
 
 <a id="how-to-install"></a>
 
@@ -246,9 +246,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.11 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.12 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.11 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.11/ccb-mobile-v8.7.11.apk)
+- [Download CCB Mobile v8.7.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -337,6 +337,14 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.12</b> - Reply queue recovery and composer compatibility</summary>
+
+Recover stale reply delivery, correct communication status, and preserve drafts and valid lease ownership.
+
+[Full bilingual notes](docs/releases/v8.7.12.md).
+</details>
+
+<details>
 <summary><b>v8.7.11</b> - V2 workflow compatibility and Pi completion repair</summary>
 
 Isolate V3 workflow policies, repair Pi transformed-input attribution and active-request cancellation, and refresh the WeChat QR image.
