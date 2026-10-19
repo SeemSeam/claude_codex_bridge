@@ -65,7 +65,9 @@ It reuses saved submission receipts on a rerun rather than resubmitting jobs.
 
 Results append to `report.json`; a stage returns nonzero for any failing check.
 The upstream Herdr single-agent restart is currently deferred, so `lifecycle`
-records that unsupported check as failed while still testing full stop/start.
+checks that it explicitly reports unsupported and preserves agent identity;
+this does not count as successful single-agent restart. Full stop/start is
+tested separately.
 Private config UI launch logs contain a short-lived loopback token; do not
 publish raw logs. Screenshots and result JSON do not need that URL.
 

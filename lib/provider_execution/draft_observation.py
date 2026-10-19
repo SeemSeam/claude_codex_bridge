@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 _SGR = re.compile(r'\x1b\[([0-9;]*)m')
 _ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
-_BORDER = re.compile(r'^─{8,}\s*$')
+_BORDER = re.compile(r'^─{8,}(?:\s\S.*\s─+\s*)?$')
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,8 @@ def inspect_screen(provider: str, screen: dict, *, binding: str) -> Observation:
         content = lines[top][2:]
         # Styled terminal rows may retain right-hand padding. This is still
         # the fixed placeholder at its initial cursor, not a typed draft.
-        if content.rstrip(' ') == 'Ask Codex to do anything' and cursor_y == top and cursor_x == 2:
+        if (content.rstrip(' ') in _CODEX_PLACEHOLDERS
+                and cursor_y == top and cursor_x == 2):
             if all(not line.strip() for line in lines[top+1:footer]):
                 return result('empty', 'codex_placeholder')
         if any(line.strip() for line in [content, *lines[top+1:footer]]) or cursor_y != top or cursor_x > 2:
@@ -166,24 +167,35 @@ def _codex_footer(lines, styled, cursor_x: int, cursor_y: int) -> int | None:
         return footer
     if re.fullmatch(r'  Context (?:100|[1-9]?\d)% left *', row):
         return footer
-    # Custom status bars separate fields with a dim middle dot. Require the
+    # Custom status bars separate fields with a middle dot. Require the
     # rendering attribute as well as spacing; ordinary draft prose is not a
     # status bar just because it contains a dot or a model-like word.
     if any(char == '·' and dim and 0 < i < len(row)-1
            and row[i-1:i+2] == ' · '
            for i, (char, dim, _) in enumerate(styled[footer])):
         return footer
-    # New native status bars need not dim their separators, and may contain
-    # only one configured field. Authorize only the EMPTY native composer in
-    # that layout: exact dim placeholder, initial cursor, no continuation text.
-    # Plain draft prose and arbitrary model labels cannot establish a boundary
-    # for clearing nonempty input. Unknown draft layouts still fail closed.
-    if (cursor_x == 2
-            and lines[cursor_y].rstrip(' ') == '› Ask Codex to do anything'
-            and all(dim for char, dim, _ in styled[cursor_y][2:] if not char.isspace())
+    # Newer builds may stop dimming the composer placeholder and status fields
+    # alike. Authorize only the EMPTY native composer in that layout: a known
+    # placeholder text at the initial cursor, no continuation text. Plain
+    # draft prose and arbitrary model labels cannot establish a boundary for
+    # clearing nonempty input. Unknown draft layouts still fail closed.
+    if (_codex_native_placeholder(lines, cursor_x, cursor_y)
             and all(not line.strip() for line in lines[cursor_y+1:footer])):
         return footer
     return None
+
+
+_CODEX_PLACEHOLDERS = ('Ask Codex to do anything', 'Implement {feature}')
+
+
+def _codex_native_placeholder(lines, cursor_x: int, cursor_y: int) -> bool:
+    # The native empty-composer placeholder. Newer builds may drop the dim
+    # attribute and change the wording, so accept the known placeholder texts
+    # regardless of attribute; anything else still fails closed.
+    if cursor_x != 2 or cursor_y >= len(lines):
+        return False
+    content = lines[cursor_y].rstrip(' ')
+    return content.startswith('› ') and content[2:] in _CODEX_PLACEHOLDERS
 
 
 def _editor_mode_in_footer(lines: list[str]) -> bool:

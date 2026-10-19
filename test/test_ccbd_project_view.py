@@ -40,7 +40,7 @@ from ccbd.services.project_namespace import ProjectNamespaceController
 from ccbd.services.project_namespace_state import ProjectNamespaceState, ProjectNamespaceStateStore
 from ccbd.services.registry import AgentRegistry
 from completion.models import CompletionConfidence, CompletionDecision, CompletionStatus
-from message_bureau import CallbackEdgeStore, CallbackEdgeState
+from message_bureau import CallbackEdgeRecord, CallbackEdgeStore, CallbackEdgeState
 from message_bureau.models import AttemptRecord, AttemptState, ReplyRecord, ReplyTerminalStatus
 from project.ids import compute_project_id
 from provider_hooks.activity import load_activity, write_activity
@@ -2969,16 +2969,7 @@ def test_project_view_recent_jobs_uses_bounded_tail_reads(tmp_path: Path, monkey
 
     comms = service.build_response()['view']['comms']
 
-    assert [item['id'] for item in comms] == [
-        'job_tail_159',
-        'job_tail_158',
-        'job_tail_157',
-        'job_tail_156',
-        'job_tail_155',
-        'job_tail_154',
-        'job_tail_153',
-        'job_tail_152',
-    ]
+    assert [item['id'] for item in comms] == [f'job_tail_{index:03d}' for index in range(159, 139, -1)]
 
 
 def test_project_view_recent_jobs_uses_adaptive_scan_budget(tmp_path: Path, monkeypatch) -> None:
@@ -3022,7 +3013,7 @@ def test_project_view_recent_jobs_uses_adaptive_scan_budget(tmp_path: Path, monk
     assert captured['agent_names'] == ('agent1', 'agent2', 'agent3')
     assert captured['per_agent_limit'] == 128
     assert captured['per_agent_initial_limit'] == 32
-    assert captured['result_limit'] == 64
+    assert captured['result_limit'] == 160
     assert 'completed' in captured['statuses']
 
 
@@ -3273,9 +3264,109 @@ def test_project_view_comms_marks_agent_reply_delivery_pending(tmp_path: Path) -
     assert comms_by_id[delivering_source.job_id]['execution_phase_reason'] == 'reply_delivery_running'
     assert comms_by_id[cmd_source.job_id]['business_status'] == 'replied'
     assert comms_by_id[silent_source.job_id]['business_status'] == 'completed'
+    assert comms_by_id[silent_source.job_id]['execution_phase'] == 'terminal'
 
 
-def test_project_view_comms_cleans_instructional_body_preview(tmp_path: Path) -> None:
+def test_project_view_comms_silence_success_not_reply_queued(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-comms-silence-rq'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    silent = _job(
+        project_id,
+        job_id='job_silent_completed',
+        sender='agent1',
+        target='agent3',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:01Z',
+        silence_on_success=True,
+    )
+    dispatcher._append_job(silent)
+    service = _project_view_service(
+        project_root=project_root,
+        project_id=project_id,
+        layout=layout,
+        config=config,
+        registry=registry,
+        dispatcher=dispatcher,
+    )
+
+    comms_by_id = {item['id']: item for item in service.build_response()['view']['comms']}
+
+    assert comms_by_id[silent.job_id]['execution_phase'] == 'terminal'
+    assert comms_by_id[silent.job_id]['execution_phase_reason'] == 'job_completed'
+
+
+def test_project_view_comms_callback_child_not_reply_queued(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-comms-callback-child-rq'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    child = _job(
+        project_id,
+        job_id='job_chain_child',
+        sender='agent1',
+        target='agent3',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:01Z',
+    )
+    dispatcher._append_job(child)
+    # Chain children share the parent message: the attempt links the job to the
+    # parent message id, which is how callback edges reference them.
+    message_id = f'msg_{child.job_id}'
+    dispatcher._message_bureau_control._attempt_store.append(
+        AttemptRecord(
+            attempt_id=f'att_{child.job_id}',
+            message_id=message_id,
+            agent_name=child.agent_name,
+            provider=child.provider,
+            job_id=child.job_id,
+            retry_index=0,
+            health_snapshot_ref=None,
+            started_at=child.created_at,
+            updated_at=child.updated_at,
+            attempt_state=AttemptState.COMPLETED,
+        )
+    )
+    dispatcher._message_bureau._callback_edge_store.append(
+        CallbackEdgeRecord(
+            edge_id='cb_child_edge',
+            parent_job_id='job_chain_parent',
+            parent_message_id='msg_chain_parent',
+            parent_agent='agent1',
+            child_job_id='job_chain_earlier',
+            child_message_id=message_id,
+            callback_target_agent='agent1',
+            original_caller='user',
+            original_task_id=None,
+            state=CallbackEdgeState.DONE,
+            created_at=child.created_at,
+            updated_at=child.updated_at,
+        )
+    )
+    service = _project_view_service(
+        project_root=project_root,
+        project_id=project_id,
+        layout=layout,
+        config=config,
+        registry=registry,
+        dispatcher=dispatcher,
+    )
+
+    comms_by_id = {item['id']: item for item in service.build_response()['view']['comms']}
+
+    assert comms_by_id[child.job_id]['execution_phase'] == 'terminal'
+    assert comms_by_id[child.job_id]['execution_phase_reason'] == 'job_completed'
     project_root = tmp_path / 'repo-comms-preview-cleanup'
     project_root.mkdir()
     layout = PathLayout(project_root)

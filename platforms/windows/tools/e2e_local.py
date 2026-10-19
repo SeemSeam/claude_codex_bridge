@@ -262,7 +262,11 @@ class Runner:
         before = self.identity()
         result = self.cli('restart', 'codex', timeout=180)
         (self.output / 'restart-codex.log').write_text(result.stdout + result.stderr, encoding='utf-8')
-        self.record('restart_codex', result.returncode == 0, exit_code=result.returncode)
+        if 'deferred_to_provider_runtime_on_herdr' in result.stdout + result.stderr:
+            self.record('restart_codex_reports_unsupported', result.returncode != 0 and before == self.identity(),
+                        exit_code=result.returncode, supported=False)
+        else:
+            self.record('restart_codex', result.returncode == 0, exit_code=result.returncode)
         before_stop = self.identity()
         stopped = self.cli('kill', timeout=90)
         self.record('explicit_stop', stopped.returncode == 0, exit_code=stopped.returncode)
