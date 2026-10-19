@@ -55,6 +55,15 @@ def test_codex_empty_placeholder_with_terminal_right_padding():
     assert inspect_screen('codex', screen, binding='pane').state == 'nonempty'
 
 
+@pytest.mark.parametrize('border', ['────────────', '──────────── Claude ────'])
+@pytest.mark.parametrize('padding', ['', '    '])
+@pytest.mark.parametrize('draft,expected', [('', 'empty'), ('human draft', 'nonempty')])
+def test_claude_plain_and_titled_borders_allow_terminal_padding(border, padding, draft, expected):
+    screen = {'text': f'{border}{padding}\n❯ {draft}\n────────────{padding}',
+              'cursor_x': 2 + len(draft), 'cursor_y': 1}
+    assert inspect_screen('claude', screen, binding='pane').state == expected
+
+
 class Target:
     def __init__(self, *, clears=True):
         self.state = 'nonempty'

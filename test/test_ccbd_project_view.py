@@ -3367,6 +3367,9 @@ def test_project_view_comms_callback_child_not_reply_queued(tmp_path: Path) -> N
 
     assert comms_by_id[child.job_id]['execution_phase'] == 'terminal'
     assert comms_by_id[child.job_id]['execution_phase_reason'] == 'job_completed'
+
+
+def test_project_view_comms_cleans_instructional_body_preview(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-comms-preview-cleanup'
     project_root.mkdir()
     layout = PathLayout(project_root)

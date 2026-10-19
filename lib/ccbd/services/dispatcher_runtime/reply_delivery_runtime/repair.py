@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from mailbox_kernel import InboundEventStatus, LeaseState
 from message_bureau.reply_payloads import delivery_job_id_from_payload
 
 from ..records import get_job
 from .common import head_reply_event, head_reply_id
 from .decisions import reply_delivery_failed_decision
+from .head import rewrite_reply_head
 from .preparation_head import reset_stale_reply_head
 
 REPLY_DELIVERY_PENDING_STALL_SECONDS = 300.0
@@ -42,11 +44,8 @@ def repair_agent_reply_delivery_head(dispatcher, agent_name: str):
             agent_name=agent_name,
         )
 
-    if current.status.value == 'accepted' or current.status.value == 'queued':
-        # A delivery job can stay pending forever when its mailbox claim keeps
-        # failing (conflicting lease, head race). The stale-running repair only
-        # covers 'running'; release the pending head so the next tick re-prepares
-        # and re-claims the delivery while the asker sits idle.
+    if current.status.value in {'accepted', 'queued'}:
+        # Recover a proven orphaned lease without replacing the pending job.
         return _repair_pending_stall(dispatcher, current, head, reply_id=reply_id, agent_name=agent_name)
 
     if current.status.value != 'running':
@@ -77,16 +76,32 @@ def _repair_pending_stall(dispatcher, current, head, *, reply_id: str, agent_nam
     stalled = _pending_delivery_is_stalled(dispatcher, current)
     if not stalled:
         return None
-    if not _delivery_never_reached_provider(dispatcher, current, head):
+    if dispatcher._state.active_job_for(current.target_kind, current.target_name) is not None:
         return None
-    reset = reset_stale_reply_head(
+    control = dispatcher._message_bureau_control
+    lease = control._lease_store.load(agent_name)
+    if lease is None or lease.lease_state is not LeaseState.ACQUIRED:
+        return None
+    if not _delivery_never_reached_provider(dispatcher, current):
+        return None
+    if lease.inbound_event_id != head.inbound_event_id:
+        leased_event = control._inbound_store.get_latest(agent_name, lease.inbound_event_id)
+        if leased_event is not None and leased_event.status not in {
+            InboundEventStatus.CONSUMED, InboundEventStatus.SUPERSEDED, InboundEventStatus.ABANDONED,
+        }:
+            return None
+        # The kernel clears only matching leases when rewriting the head.
+        # expire_lease clears missing/terminal events without abandoning work.
+        control._mailbox_kernel.expire_lease(agent_name, finished_at=dispatcher._clock())
+    rewrite_reply_head(
         dispatcher,
         head,
         reply_id=reply_id,
-        agent_name=agent_name,
+        delivery_job_id=current.job_id,
+        status=InboundEventStatus.QUEUED,
+        updated_at=dispatcher._clock(),
+        clear_progress=True,
     )
-    if reset is None:
-        return None
     from ..records import append_event
 
     append_event(
@@ -98,10 +113,11 @@ def _repair_pending_stall(dispatcher, current, head, *, reply_id: str, agent_nam
             'head_inbound_event_id': head.inbound_event_id,
             'reply_id': reply_id,
             'stalled_since': current.updated_at,
+            'released_lease_inbound_event_id': lease.inbound_event_id,
         },
         timestamp=dispatcher._clock(),
     )
-    return reset
+    return head_reply_event(dispatcher, agent_name)
 
 
 def _pending_delivery_is_stalled(dispatcher, current) -> bool:
@@ -109,21 +125,26 @@ def _pending_delivery_is_stalled(dispatcher, current) -> bool:
     return age is not None and age >= REPLY_DELIVERY_PENDING_STALL_SECONDS
 
 
-def _delivery_never_reached_provider(dispatcher, current, head) -> bool:
+def _delivery_never_reached_provider(dispatcher, current) -> bool:
     """Guard against resurrecting a delivery whose prompt already entered a turn.
 
     A pending (accepted/queued) delivery should never have started a provider
-    turn, but completion evidence wins over status: if a prior attempt reached
-    the provider, consuming the head here could duplicate a delivered reply.
+    turn, but execution evidence wins over status: if a prior attempt reached
+    the provider, releasing its lease could duplicate a delivered reply.
     """
-    if current.status.value == 'queued':
-        return True
-    lease = dispatcher._message_bureau_control._lease_store.load(current.agent_name)
-    if lease is not None and lease.lease_state is not None and str(getattr(lease.lease_state, 'value', lease.lease_state)) == 'acquired' and lease.inbound_event_id != head.inbound_event_id:
-        # A live lease on a different event keeps the claim conflicting; the
-        # delivery itself has not been sent for this head.
-        return True
+    if _execution_job_is_live(dispatcher, current.job_id):
+        return False
+    execution = getattr(dispatcher, '_execution_service', None)
+    state_store = getattr(execution, '_state_store', None)
+    if state_store is not None:
+        try:
+            if state_store.load(current.job_id) is not None:
+                return False
+        except Exception:
+            return False
     events = _delivery_events(dispatcher, current)
+    if events is None:
+        return False
     for record in events:
         if record.type in {'job_started', 'provider_start_failed', 'reply_delivery_consumed', 'reply_delivery_terminal_after_delivery'}:
             return False
@@ -138,7 +159,7 @@ def _delivery_events(dispatcher, job):
             0,
         )
     except Exception:
-        return ()
+        return None
     return tuple(record for record in events if getattr(record, 'job_id', None) == job.job_id)
 
 

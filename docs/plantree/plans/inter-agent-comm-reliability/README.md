@@ -4,6 +4,14 @@ Date: 2026-06-14
 
 Last updated: 2026-10-10
 
+## PR #395 local integration and repair
+
+2026-10-19: [pending delivery and composer repair](evidence/pr395-local-repair-20261019.md)
+retains the original pending job while releasing only proven orphaned leases,
+preserves uncertain execution and live lease ownership, and restores Claude
+plain-border padding compatibility. Related regressions pass locally; publication
+and native platform acceptance remain separate.
+
 ## Codex ask caller identity
 
 2026-10-10: [caller identity repair](evidence/codex-ask-caller-identity-20261010.md)

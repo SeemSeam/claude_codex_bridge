@@ -191,8 +191,7 @@ def test_stalled_pending_delivery_is_repaired_after_stall_threshold(tmp_path: Pa
     untouched = dispatcher.get(delivery.job_id)
     assert untouched.status in {JobStatus.ACCEPTED, JobStatus.QUEUED}
 
-    # Advance the clock past the stall threshold: the repair must release the
-    # reply head so a fresh delivery job can be prepared and claimed.
+    # Repair the stale lease and keep the original job/attempt claimable.
     clock.value = '2026-05-22T12:20:00Z'
     assert REPLY_DELIVERY_PENDING_STALL_SECONDS > 0
     result = repair_agent_reply_delivery_head(dispatcher, 'agent2')
@@ -200,13 +199,137 @@ def test_stalled_pending_delivery_is_repaired_after_stall_threshold(tmp_path: Pa
     assert head is not None
     assert head.event_type is InboundEventType.TASK_REPLY
     assert head.payload_ref is not None
-    # The head no longer pins the stalled delivery job id.
     from message_bureau.reply_payloads import delivery_job_id_from_payload
 
-    assert delivery_job_id_from_payload(head.payload_ref) != delivery.job_id
+    assert result is not None
+    assert delivery_job_id_from_payload(head.payload_ref) == delivery.job_id
+    assert dispatcher._message_bureau_control._lease_store.load('agent2') is None
     events = dispatcher._event_store.read_since_target(TargetKind.AGENT, 'agent2', 0)[1]
     stall_events = [record for record in events if record.type == 'reply_delivery_pending_stall_repaired']
     assert stall_events, 'pending stall repair must be auditable'
+
+    dispatcher.tick()
+    assert dispatcher.get(delivery.job_id).status is JobStatus.RUNNING
+    clock.value = '2026-05-22T12:30:00Z'
+    dispatcher.complete(delivery.job_id, _decision(CompletionStatus.COMPLETED))
+    for _ in range(3):
+        dispatcher.tick()
+    delivery_ids = {
+        job.job_id for job in dispatcher._job_store.list_agent('agent2')
+        if job.request.message_type == 'reply_delivery'
+    }
+    assert delivery_ids == {delivery.job_id}
+    assert dispatcher._state.queued_items_for(TargetKind.AGENT, 'agent2') == ()
+    assert dispatcher._message_bureau_control._mailbox_kernel.head_pending_event('agent2') is None
+    attempt = dispatcher._message_bureau._attempt_store.get_latest_by_job_id(delivery.job_id)
+    assert attempt.attempt_state.value == 'completed'
+
+
+@pytest.mark.parametrize('lease_event_state', [
+    'missing', 'consumed', 'superseded', 'abandoned', 'queued', 'delivering',
+])
+def test_pending_repair_only_releases_proven_stale_conflict(tmp_path, lease_event_state):
+    from mailbox_kernel import InboundEventRecord, InboundEventStatus
+
+    ctx, _, _, _, dispatcher, clock = _build_dispatcher(tmp_path / 'repo')
+    source = _submit(dispatcher, ctx, sender='agent2', target='agent1')
+    dispatcher.tick()
+    dispatcher.complete(source, _decision(CompletionStatus.COMPLETED, reply='OK'))
+    _conflict_lease_on_stale_event(dispatcher, 'agent2')
+    lease = dispatcher._message_bureau_control._lease_store.load('agent2')
+    if lease_event_state != 'missing':
+        dispatcher._message_bureau_control._inbound_store.append(InboundEventRecord(
+            inbound_event_id=lease.inbound_event_id, agent_name='agent2',
+            event_type=InboundEventType.SYSTEM_SIGNAL, message_id='msg-conflict',
+            attempt_id=None, payload_ref=None, priority=0,
+            status=InboundEventStatus(lease_event_state), created_at=START,
+        ))
+    dispatcher.tick()
+    delivery = _delivery_job(dispatcher, 'agent2')
+    clock.value = LATER
+    for _ in range(3):
+        result = repair_agent_reply_delivery_head(dispatcher, 'agent2')
+    ids = {j.job_id for j in dispatcher._job_store.list_agent('agent2')
+           if j.request.message_type == 'reply_delivery'}
+    assert ids == {delivery.job_id}
+    remaining = dispatcher._message_bureau_control._lease_store.load('agent2')
+    if lease_event_state in {'missing', 'consumed', 'superseded', 'abandoned'}:
+        assert remaining is None
+    else:
+        assert result is None
+        assert remaining == lease
+
+
+@pytest.mark.parametrize('pending_status', [JobStatus.ACCEPTED, JobStatus.QUEUED])
+@pytest.mark.parametrize('evidence', [
+    'started', 'unreadable', 'active', 'persisted', 'state_unreadable', 'agent_busy',
+])
+def test_pending_repair_preserves_conflict_when_execution_is_uncertain(
+    tmp_path, monkeypatch, pending_status, evidence,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from ccbd.services.dispatcher_runtime.records import append_event, append_job
+
+    ctx, _, _, _, dispatcher, clock = _build_dispatcher(tmp_path / 'repo')
+    source = _submit(dispatcher, ctx, sender='agent2', target='agent1')
+    dispatcher.tick()
+    dispatcher.complete(source, _decision(CompletionStatus.COMPLETED, reply='OK'))
+    _conflict_lease_on_stale_event(dispatcher, 'agent2')
+    dispatcher.tick()
+    delivery = replace(_delivery_job(dispatcher, 'agent2'), status=pending_status)
+    append_job(dispatcher, delivery)
+    lease = dispatcher._message_bureau_control._lease_store.load('agent2')
+    if evidence == 'started':
+        append_event(dispatcher, delivery, 'job_started', {}, timestamp=START)
+    elif evidence == 'unreadable':
+        def fail(*args):
+            raise OSError('event store unavailable')
+        monkeypatch.setattr(dispatcher._event_store, 'read_since_target', fail)
+    elif evidence == 'active':
+        dispatcher._execution_service = SimpleNamespace(_active={delivery.job_id: object()})
+    elif evidence == 'state_unreadable':
+        def fail(_):
+            raise OSError('execution state unavailable')
+        dispatcher._execution_service = SimpleNamespace(_state_store=SimpleNamespace(load=fail))
+    elif evidence == 'agent_busy':
+        dispatcher._state.mark_active_for(TargetKind.AGENT, 'agent2', 'another-job')
+    else:
+        dispatcher._execution_service = SimpleNamespace(
+            _state_store=SimpleNamespace(load=lambda _: object()),
+        )
+    clock.value = LATER
+    assert repair_agent_reply_delivery_head(dispatcher, 'agent2') is None
+    assert dispatcher._message_bureau_control._lease_store.load('agent2') == lease
+
+
+@pytest.mark.parametrize('has_matching_lease', [False, True])
+def test_pending_repair_keeps_job_identity_across_restart(tmp_path, has_matching_lease):
+    from dataclasses import replace
+    from message_bureau.reply_payloads import delivery_job_id_from_payload
+
+    ctx, layout, config, registry, dispatcher, clock = _build_dispatcher(tmp_path / 'repo')
+    source = _submit(dispatcher, ctx, sender='agent2', target='agent1')
+    dispatcher.tick()
+    dispatcher.complete(source, _decision(CompletionStatus.COMPLETED, reply='OK'))
+    _conflict_lease_on_stale_event(dispatcher, 'agent2')
+    dispatcher.tick()
+    delivery = _delivery_job(dispatcher, 'agent2')
+    control = dispatcher._message_bureau_control
+    head = control._mailbox_kernel.head_pending_event('agent2')
+    if has_matching_lease:
+        lease = control._lease_store.load('agent2')
+        control._lease_store.save(replace(lease, inbound_event_id=head.inbound_event_id))
+    else:
+        control._lease_store.remove('agent2')
+    clock.value = LATER
+    dispatcher = JobDispatcher(layout, config, registry, clock=clock)
+    repair_agent_reply_delivery_head(dispatcher, 'agent2')
+    head = dispatcher._message_bureau_control._mailbox_kernel.head_pending_event('agent2')
+    assert delivery_job_id_from_payload(head.payload_ref) == delivery.job_id
+    dispatcher.tick()
+    assert dispatcher.get(delivery.job_id).status is JobStatus.RUNNING
+    assert dispatcher._state.queued_items_for(TargetKind.AGENT, 'agent2') == ()
 
 
 def test_fresh_pending_delivery_is_not_repaired(tmp_path: Path) -> None:
