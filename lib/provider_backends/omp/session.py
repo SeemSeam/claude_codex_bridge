@@ -66,6 +66,10 @@ def render_restart_command(template: str, path: object = None) -> str:
     if template.count(OMP_RESTART_SESSION_MARKER) != 1:
         return ""
     args = f"--resume {shlex.quote(str(path))}" if path else ""
+    if "collab_runtime.mjs" in template:
+        # The marker lives inside the supervisor's single-quoted shell-command
+        # argument. Preserve native argv quoting across that additional layer.
+        args = args.replace("'", "'\"'\"'")
     return template.replace(OMP_RESTART_SESSION_MARKER, args).strip()
 
 

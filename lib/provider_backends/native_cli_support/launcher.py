@@ -36,6 +36,7 @@ class NativeCliLaunchConfig:
     visible_env_builder: VisibleEnvBuilder | None = None
     visible_path_env_names: tuple[str, ...] = ()
     visible_raw_env_names: tuple[str, ...] = ()
+    command_wrapper: Callable[[str, dict[str, object]], str] | None = None
 
 
 def build_native_cli_runtime_launcher(config: NativeCliLaunchConfig) -> ProviderRuntimeLauncher:
@@ -133,6 +134,8 @@ def build_start_cmd(
     ]
     cmd = " ".join(shlex.quote(str(part)) for part in cmd_parts)
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)
+    if config.command_wrapper is not None:
+        cmd = config.command_wrapper(cmd, launch_context)
     env_prefix = join_env_prefix(
         export_env_clause(provider_user_session_env()),
         export_env_clause(magic_context_storage_env(provider)),

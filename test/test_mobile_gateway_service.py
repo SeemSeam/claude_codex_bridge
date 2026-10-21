@@ -2726,9 +2726,9 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
 
 
 
-def test_agent_conversation_reads_omp_native_transcript(tmp_path: Path) -> None:
+def test_agent_conversation_reads_omp_collab_snapshot(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo'
-    _write_pi_family_transcript(
+    transcript = _write_pi_family_transcript(
         project_root,
         agent='mobile',
         provider='omp',
@@ -2774,6 +2774,15 @@ def test_agent_conversation_reads_omp_native_transcript(tmp_path: Path) -> None:
         project_root=project_root,
         mobile_dir=tmp_path / 'mobile',
     )
+    class FakeCollab:
+        def get_snapshot(self, root, agent):
+            return {
+                'session_id': 'omp-session-native', 'generation': 'instance:1', 'revision': 1,
+                'connected': True, 'ready': True, 'state': {},
+                'entries': [json.loads(line) for line in transcript.read_text().splitlines()],
+            }
+
+    service._omp_collab = FakeCollab()
     pairing = service.create_pairing_payload(
         gateway_url='http://127.0.0.1:8787',
         scopes=('view',),
@@ -2793,9 +2802,13 @@ def test_agent_conversation_reads_omp_native_transcript(tmp_path: Path) -> None:
     assert {item['session_id'] for item in items} == {'omp-session-native'}
     assert [(item['kind'], item['body']) for item in items] == [
         ('user_message', 'omp native question'),
-        ('agent_reply', 'omp native answer part one\n\npart two'),
+        ('agent_reply', 'part two'),
     ]
-    assert 'hidden omp thinking' not in json.dumps(payload)
+    assert items[1]['native_turn']['entries'][0]['blocks'][0] == {
+        'type': 'reasoning', 'text': 'hidden omp thinking',
+    }
+    assert items[1]['native_turn']['status'] == 'unknown'
+    assert 'completed_at' not in items[1]
 
 def test_agent_conversation_does_not_fallback_for_pi_without_native_transcript(
     tmp_path: Path,

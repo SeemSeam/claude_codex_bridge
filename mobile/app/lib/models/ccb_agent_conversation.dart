@@ -8,6 +8,8 @@ class CcbAgentConversation {
     required this.items,
     this.nextCursor,
     this.generatedAt,
+    this.ompSessionId,
+    this.ompGeneration,
   });
 
   final String projectId;
@@ -16,6 +18,8 @@ class CcbAgentConversation {
   final List<CcbConversationItem> items;
   final String? nextCursor;
   final DateTime? generatedAt;
+  final String? ompSessionId;
+  final String? ompGeneration;
 
   factory CcbAgentConversation.fromJson(Map<String, Object?> json) {
     final conversation = _map(json['conversation']);
@@ -33,6 +37,14 @@ class CcbAgentConversation {
       ],
       nextCursor: _optionalText(source['next_cursor']),
       generatedAt: _optionalDateTime(source['generated_at']),
+      ompSessionId:
+          source['transport'] == 'collab'
+              ? _optionalText(source['session_id'])
+              : null,
+      ompGeneration:
+          source['transport'] == 'collab'
+              ? _optionalText(source['generation']?.toString())
+              : null,
     );
   }
 
@@ -45,6 +57,9 @@ class CcbAgentConversation {
       if (nextCursor != null) 'next_cursor': nextCursor,
       if (generatedAt != null)
         'generated_at': generatedAt!.toUtc().toIso8601String(),
+      if (ompSessionId != null) 'transport': 'collab',
+      if (ompSessionId != null) 'session_id': ompSessionId,
+      if (ompGeneration != null) 'generation': ompGeneration,
     };
   }
 }
@@ -59,6 +74,8 @@ class CcbAgentMessageSubmitRequest {
     this.format = 'markdown',
     this.attachments = const [],
     this.schemaVersion = 1,
+    this.expectedOmpSessionId,
+    this.expectedOmpGeneration,
   }) {
     _requireText(projectId, 'projectId');
     _requireText(agentName, 'agentName');
@@ -76,6 +93,8 @@ class CcbAgentMessageSubmitRequest {
   final String body;
   final String format;
   final List<CcbMessageAttachment> attachments;
+  final String? expectedOmpSessionId;
+  final String? expectedOmpGeneration;
 
   Map<String, Object?> toJson() {
     return {
@@ -86,6 +105,10 @@ class CcbAgentMessageSubmitRequest {
       'idempotency_key': idempotencyKey,
       'body': body,
       'format': format,
+      if (expectedOmpSessionId != null)
+        'expected_omp_session_id': expectedOmpSessionId,
+      if (expectedOmpGeneration != null)
+        'expected_omp_generation': expectedOmpGeneration,
       if (attachments.isNotEmpty)
         'attachments': [for (final a in attachments) a.toSubmitJson()],
     };

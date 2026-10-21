@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../../models/ccb_agent.dart';
@@ -5,6 +6,9 @@ import '../../models/ccb_agent_conversation.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/ccb_project_view.dart';
 import '../../repository/mobile_ccb_repository.dart';
+import '../../transport/http_gateway_transport.dart';
+import '../../transport/relay_socket_gateway_transport.dart';
+import 'agent_chat_state_helpers.dart';
 import 'agent_conversation_loader.dart';
 
 class AgentRepositoryMessageSubmitter {
@@ -19,6 +23,7 @@ class AgentRepositoryMessageSubmitter {
     required CcbAgent agent,
     required CcbConversationItem message,
     required CcbProjectView view,
+    CcbAgentConversation? conversation,
   }) async {
     final namespaceEpoch = view.namespaceEpoch;
     if (namespaceEpoch == null) {
@@ -40,6 +45,10 @@ class AgentRepositoryMessageSubmitter {
           idempotencyKey: message.id,
           body: message.body,
           attachments: uploadedAttachments,
+          expectedOmpSessionId:
+              isOmpCollabAgent(agent) ? conversation?.ompSessionId : null,
+          expectedOmpGeneration:
+              isOmpCollabAgent(agent) ? conversation?.ompGeneration : null,
         ),
       );
       final resultMessage = result.message;
@@ -59,10 +68,10 @@ class AgentRepositoryMessageSubmitter {
                 ? null
                 : uploadedAttachments,
       );
-      final conversation = result.conversation;
-      if (conversation != null) {
+      final returnedConversation = result.conversation;
+      if (returnedConversation != null) {
         return AgentRepositoryMessageSubmitOutcome.remoteConversation(
-          conversation,
+          returnedConversation,
           replacement: replacement,
         );
       }
@@ -74,7 +83,7 @@ class AgentRepositoryMessageSubmitter {
       // A stale namespace is an unsafe replay boundary. Preserve the local
       // draft/attachment state and require an explicit user retry instead.
       return AgentRepositoryMessageSubmitOutcome.replaceLocalMessage(
-        _failedMessage(message, error),
+        _failedMessage(message, error, omp: isOmpCollabAgent(agent)),
       );
     }
   }
@@ -137,10 +146,14 @@ class AgentRepositoryMessageSubmitter {
 
   CcbConversationItem _failedMessage(
     CcbConversationItem message,
-    Object error,
-  ) {
+    Object error, {
+    bool omp = false,
+  }) {
     return message.copyWith(
-      state: CcbConversationDeliveryState.failed,
+      state:
+          omp && _mayHaveReachedCollab(error)
+              ? CcbConversationDeliveryState.unconfirmed
+              : CcbConversationDeliveryState.failed,
       attachments: [
         for (final attachment in message.attachments)
           attachment.copyWith(
@@ -153,6 +166,17 @@ class AgentRepositoryMessageSubmitter {
       ],
     );
   }
+}
+
+bool _mayHaveReachedCollab(Object error) {
+  final status = switch (error) {
+    GatewayHttpException() => error.statusCode,
+    RelayGatewayException() => error.statusCode,
+    _ => null,
+  };
+  // Explicit rejections are safe to retry. A lost response or unknown native
+  // admission is not: keep the original key and require reconciliation.
+  return status == 502 || status == null || error is TimeoutException;
 }
 
 class AgentRepositoryMessageSubmitOutcome {

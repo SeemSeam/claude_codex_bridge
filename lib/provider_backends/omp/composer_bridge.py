@@ -8,14 +8,93 @@ BRIDGE = r'''
   let editorContext: any = null;
   let editorServer: ReturnType<typeof createServer> | null = null;
   const editorPath = process.env.CCB_OMP_COMPOSER_SOCKET || "";
-  const editorReply = (request: any) => {
+  let modelControlBusy = false;
+  const modelAttempts = new Map<string, { signature: string, result: Promise<any> }>();
+  const modelSnapshot = (ctx: any) => {
+    const available = ctx.modelRegistry?.getAvailable?.();
+    if (!Array.isArray(available) || available.length > 4096)
+      return { error: "OMP model registry unavailable", status_code: 503 };
+    // Matches pi-catalog/model-thinking.getSupportedEfforts: a reasoning
+    // model without baked thinking metadata has no controllable effort ladder.
+    const efforts = (model: any) => model?.reasoning
+      ? ["off", ...(Array.isArray(model.thinking?.efforts) ? model.thinking.efforts : [])].filter((value: any) =>
+          ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(value)) : ["off"];
+    const model = ctx.model ? { provider: String(ctx.model.provider), id: String(ctx.model.id) } : null;
+    const thinking = pi.getThinkingLevel?.() ?? "off";
+    const entries = ctx.sessionManager?.getEntries?.() ?? [];
+    const lastChange = entries.findLast((entry: any) => entry.type === "model_change" || entry.type === "thinking_level_change");
+    return {
+      runtime_instance_id: runtimeInstanceId,
+      session_id: String(ctx.sessionManager?.getSessionId?.() || ""),
+      model, thinking_level: thinking,
+      model_revision: Buffer.from(JSON.stringify([runtimeInstanceId, ctx.sessionManager?.getSessionId?.(), lastChange?.id ?? null, model, thinking])).toString("base64url"),
+      models: available.map((item: any) => ({ provider: String(item.provider), id: String(item.id),
+        name: String(item.name || item.id), reasoning_levels: efforts(item) })),
+    };
+  };
+  const editorReply = async (request: any) => {
     const ctx = editorContext;
     const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
-    const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId };
+    const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId, pid: process.pid, leaf_id: ctx?.sessionManager?.getLeafId?.() ?? null };
     if (request?.actor !== actor || request?.launch_session_id !== launchSessionId ||
         !ctx?.hasUI || typeof ctx.ui?.getEditorText !== "function" ||
         typeof ctx.ui?.setEditorText !== "function" || typeof ctx.isIdle !== "function") {
       return { ...base, state: "unknown", reason: "editor_binding_unavailable" };
+    }
+    if (request.operation === "ancestry") {
+      const entries = ctx.sessionManager?.getEntries?.();
+      if (!Array.isArray(entries) || entries.length > 16384)
+        return { ...base, error: "OMP ancestry exceeds mobile budget", status_code: 503 };
+      // Collab deliberately omits custom metadata records. Export identities
+      // only, never their private contents, so active parent chains remain exact.
+      return { ...base, parent_links: entries.map((entry: any) => [entry.id, entry.parentId ?? null]) };
+    }
+    if (request.operation === "models") return { ...base, ...modelSnapshot(ctx) };
+    if (request.operation === "set_model") {
+      const current = modelSnapshot(ctx);
+      const signature = JSON.stringify([request.model, request.thinking, request.session_id,
+        request.runtime_instance_id, request.expected_model, request.expected_thinking, request.expected_model_revision]);
+      const key = request.idempotency_key;
+      if (typeof key !== "string" || !key || key.length > 256)
+        return { ...base, error: "Invalid OMP model request", status_code: 409 };
+      const previous = modelAttempts.get(key);
+      if (previous) return previous.signature === signature ? await previous.result
+        : { ...base, error: "OMP model idempotency conflict", status_code: 409 };
+      if (current.error) return { ...base, ...current };
+      if (modelControlBusy || modelAttempts.size >= 256 || !ctx.isIdle() || ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "")
+        return { ...base, error: "OMP owner busy or editor draft pending", status_code: 409 };
+      if (request.runtime_instance_id !== runtimeInstanceId || request.session_id !== sessionId ||
+          request.expected_model?.provider !== current.model?.provider || request.expected_model?.id !== current.model?.id ||
+          request.expected_thinking !== current.thinking_level ||
+          typeof request.expected_model_revision !== "string" || request.expected_model_revision !== current.model_revision)
+        return { ...base, error: "OMP model state changed; refresh", status_code: 409 };
+      const target = ctx.modelRegistry.getAvailable().find((item: any) =>
+        item.provider === request.model?.provider && item.id === request.model?.id);
+      const row = current.models.find((item: any) => item.provider === target?.provider && item.id === target?.id);
+      if (!target || (request.thinking != null && !row.reasoning_levels.includes(request.thinking)))
+        return { ...base, error: "OMP model or reasoning level unavailable", status_code: 409 };
+      modelControlBusy = true;
+      const result = Promise.resolve().then(async () => {
+        try {
+          const fresh = modelSnapshot(ctx);
+          if (editorContext !== ctx || ctx.sessionManager?.getSessionId?.() !== sessionId ||
+              !ctx.isIdle() || ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "" ||
+              fresh.model_revision !== request.expected_model_revision)
+            return { ...base, error: "OMP model state changed; refresh", status_code: 409 };
+          // Only the documented native model APIs; no command or model prompt.
+          if (!await pi.setModel(target)) return { ...base, error: "OMP model authentication unavailable", status_code: 409 };
+          if (editorContext !== ctx || ctx.sessionManager?.getSessionId?.() !== sessionId || !ctx.isIdle() ||
+              ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "" ||
+              ctx.model?.provider !== target.provider || ctx.model?.id !== target.id)
+            return { ...base, error: "OMP model change raced owner; refresh", status_code: 502 };
+          if (request.thinking != null) pi.setThinkingLevel(request.thinking);
+          return { ...base, ...modelSnapshot(ctx) };
+        } catch {
+          return { ...base, error: "OMP model change unknown; refresh without replay", status_code: 502 };
+        } finally { modelControlBusy = false; }
+      });
+      modelAttempts.set(key, { signature, result });
+      return await result;
     }
     if (!ctx.isIdle()) return { ...base, state: "unknown", reason: "provider_busy" };
     if (request.operation === "clear") {
@@ -62,13 +141,13 @@ BRIDGE = r'''
       let handled = false;
       client.setTimeout(1000, () => client.destroy());
       client.on("error", () => {});
-      client.on("data", (chunk) => {
+      client.on("data", async (chunk) => {
         if (handled) return;
         input += chunk.toString("utf8");
         if (input.length > 4096) { handled = true; client.destroy(); return; }
         if (!input.includes("\n")) return;
         handled = true;
-        try { client.end(JSON.stringify(editorReply(JSON.parse(input))) + "\n"); }
+        try { client.end(JSON.stringify(await editorReply(JSON.parse(input))) + "\n"); }
         catch { client.end('{"state":"unknown","reason":"editor_error"}\n'); }
       });
     });

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_conversation_item.dart';
@@ -67,7 +68,10 @@ class AgentMessageSubmitCoordinator {
       return;
     }
     final message = CcbConversationItem.userMessage(
-      id: _chatController.nextLocalMessageId(agent.name),
+      id:
+          agent.provider == 'omp'
+              ? 'local-${agent.name}-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}'
+              : _chatController.nextLocalMessageId(agent.name),
       agentName: agent.name,
       body: trimmedBody,
       attachments: attachments,
@@ -162,7 +166,7 @@ class AgentMessageSubmitCoordinator {
     required AgentViewRefresh? refreshView,
     AgentMessageDeliveryUpdated? onDeliveryUpdated,
   }) async {
-    if (usePaneInput && _paneSubmitter != null) {
+    if (!isOmpCollabAgent(agent) && usePaneInput && _paneSubmitter != null) {
       await _submitPaneMessageWithView(
         agent: agent,
         message: message,
@@ -262,7 +266,12 @@ class AgentMessageSubmitCoordinator {
   }) async {
     final outcome = await AgentRepositoryMessageSubmitter(
       repository: repository,
-    ).submit(agent: agent, message: message, view: view);
+    ).submit(
+      agent: agent,
+      message: message,
+      view: view,
+      conversation: _chatController.remoteConversationFor(agent.name),
+    );
     if (!_isMounted()) {
       return;
     }

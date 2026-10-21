@@ -20,6 +20,121 @@ import 'support/project_home_test_driver.dart';
 import 'support/project_home_test_fakes.dart';
 
 void main() {
+  testWidgets(
+    'Mac legacy OMP sends without generation and keeps terminal keys without polling',
+    (tester) async {
+      await setTestSurfaceSize(tester, const Size(390, 844));
+      const agent = CcbAgent(
+        name: 'mobile',
+        provider: 'omp',
+        window: 'main',
+        order: 0,
+        active: true,
+        queueDepth: 0,
+      );
+      final repository = RecordingGatewayRepository();
+      final terminal = RecordingTerminalTransport();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SelectedAgentWorkspace(
+              repository: repository,
+              terminalTransport: terminal,
+              usePaneInputForMessages: true,
+              view: _workspaceView(agent),
+              agent: agent,
+              enableComposerCollapse: false,
+              onRefreshView: null,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final initial = repository.conversationCalls.length;
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(repository.conversationCalls.length, initial);
+      expect(
+        find.byKey(const ValueKey('omp-collab-disconnected')),
+        findsNothing,
+      );
+      final input = find.byKey(const ValueKey('agent-message-composer'));
+      await tester.enterText(input, 'legacy terminal prompt');
+      await tester.tap(find.byKey(const ValueKey('agent-message-send-button')));
+      await tester.pumpAndSettle();
+      expect(repository.submittedMessages, isEmpty);
+      expect(terminal.sessions.single.pasted, ['legacy terminal prompt']);
+      expect(terminal.sessions.single.written, [
+        [13],
+      ]);
+      await tester.tap(input);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('agent-quick-key-esc')));
+      await tester.pumpAndSettle();
+      expect(terminal.sessions.single.written, [
+        [13],
+        [9],
+        [27],
+      ]);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('only visible OMP Collab refreshes and pauses in background', (
+    tester,
+  ) async {
+    const agent = CcbAgent(
+      name: 'mobile',
+      provider: 'omp',
+      providerControl: CcbProviderControl(
+        provider: 'omp',
+        runtimeSource: 'collab',
+      ),
+      window: 'main',
+      order: 0,
+      active: true,
+      queueDepth: 0,
+    );
+    final repository = RecordingGatewayRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SelectedAgentWorkspace(
+            repository: repository,
+            terminalTransport: null,
+            usePaneInputForMessages: true,
+            view: _workspaceView(agent),
+            agent: agent,
+            enableComposerCollapse: false,
+            onRefreshView: null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final initial = repository.conversationCalls.length;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(repository.conversationCalls.length, greaterThan(initial));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final paused = repository.conversationCalls.length;
+    await tester.pump(const Duration(seconds: 5));
+    expect(repository.conversationCalls.length, paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(repository.conversationCalls.length, greaterThan(paused));
+    await tester.pumpWidget(const SizedBox.shrink());
+    final disposed = repository.conversationCalls.length;
+    await tester.pump(const Duration(seconds: 5));
+    expect(repository.conversationCalls.length, disposed);
+  });
   testWidgets('message composer sends on hardware enter', (tester) async {
     final controller = TextEditingController(text: 'hello mobile');
     var sendCount = 0;

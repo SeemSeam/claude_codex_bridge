@@ -1,5 +1,17 @@
 # Changelog
 
+## v8.7.13 (2026-10-21)
+
+- Extract a product-independent native-session Flutter model and turn renderer for CCB and future Nozeli mobile consumers.
+- Render OMP replies as user-anchored turns with folded reasoning, intermediate text and native tool calls/results; preserve branch identity and explicit failure/unknown outcomes.
+- Connect only OMP mobile agents to their existing TUI through private native Collab snapshots/events and fenced prompt submission; keep other Provider paths unchanged.
+- Add live OMP model/effort selection with same-session readback, draft/busy protection, stale revision rejection and no project configuration writes.
+- Show disconnected and unconfirmed delivery states without prompt replay; pause selected-agent refresh in the background.
+- Preserve exact native ancestry across metadata entries omitted by Collab, keeping real tool calls/results in their original reply turn.
+- Give new OMP mobile submissions cross-launch unique keys while preserving the original key for retries, avoiding collisions after app/controller recreation.
+- Enable the new OMP Collab route only on Linux servers; macOS retains its original OMP terminal/history path. Mobile routing follows server-advertised capabilities rather than the Provider name alone.
+- Synchronize Mobile update identity and download entry; [full bilingual notes](docs/releases/v8.7.13.md).
+
 ## v8.7.12 (2026-10-19)
 
 - Recover proven orphaned reply-delivery leases without replacing pending jobs; preserve execution evidence and live ownership.

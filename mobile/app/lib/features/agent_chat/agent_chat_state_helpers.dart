@@ -1,8 +1,15 @@
+import 'dart:convert';
+
+import '../../models/ccb_agent.dart';
 import '../../models/ccb_agent_conversation.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/readable_terminal_history.dart';
 import '../../transport/http_gateway_transport.dart';
 import 'pane_chat_controller.dart';
+
+bool isOmpCollabAgent(CcbAgent? agent) =>
+    agent?.provider == 'omp' &&
+    agent?.providerControl?.runtimeSource == 'collab';
 
 String messageBodyKey(String body) => body.trim();
 
@@ -22,6 +29,8 @@ String conversationSignature(CcbAgentConversation? conversation) {
     return '';
   }
   return [
+    conversation?.ompSessionId ?? '',
+    conversation?.ompGeneration ?? '',
     for (final item in items)
       [
         item.id,
@@ -32,6 +41,7 @@ String conversationSignature(CcbAgentConversation? conversation) {
         item.completedAt?.toUtc().toIso8601String() ?? '',
         item.durationMs?.toString() ?? '',
         item.body.hashCode,
+        if (item.nativeTurn != null) jsonEncode(item.nativeTurn!.toJson()),
       ].join(':'),
   ].join('|');
 }

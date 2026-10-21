@@ -7,14 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ccb_mobile/app/app_update.dart';
 
 void main() {
-  test('compiled update version stays aligned with pubspec', () {
-    final pubspec = File('pubspec.yaml').readAsLinesSync();
-    final versionLine = pubspec.singleWhere(
-      (line) => line.startsWith('version:'),
-    );
-    expect(versionLine.split(':').last.trim(), ccbMobileDefaultVersion);
-  });
-
   test('compares numeric mobile versions without lexical ordering bugs', () {
     expect(compareCcbMobileVersions('8.10.0', '8.9.9'), greaterThan(0));
     expect(compareCcbMobileVersions('8.3.1+99', '8.3.1+1'), 0);

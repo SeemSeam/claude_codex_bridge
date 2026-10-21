@@ -12,6 +12,7 @@ import 'package:ccb_mobile/transport/gateway_transport.dart';
 import 'package:ccb_mobile/models/ccb_project.dart';
 import 'package:ccb_mobile/models/ccb_project_lifecycle.dart';
 import 'package:ccb_mobile/models/ccb_project_view.dart';
+import 'package:ccb_mobile/models/ccb_provider_control.dart';
 import 'package:ccb_mobile/models/readable_terminal_history.dart';
 import 'package:ccb_mobile/repository/mobile_ccb_repository.dart';
 import 'package:ccb_mobile/transport/terminal_transport.dart';
@@ -19,6 +20,151 @@ import 'package:test/test.dart';
 
 void main() {
   group('AgentMessageSubmitCoordinator', () {
+    test(
+      'OMP new controllers cannot reuse a prior prompt key and retry keeps its key',
+      () async {
+        const agent = CcbAgent(
+          name: 'lead',
+          provider: 'omp',
+          providerControl: CcbProviderControl(
+            provider: 'omp',
+            runtimeSource: 'collab',
+          ),
+          window: 'main',
+          order: 0,
+          active: true,
+          queueDepth: 0,
+        );
+        final repository = _SubmitRepository(
+          responses: [
+            for (var index = 0; index < 3; index++)
+              const CcbAgentMessageSubmitResult(
+                accepted: true,
+                idempotencyKey: 'receipt',
+                messageId: 'receipt',
+                state: CcbConversationDeliveryState.unconfirmed,
+              ),
+          ],
+        );
+        final firstChat = AgentChatController();
+        await _coordinator(chatController: firstChat).send(
+          agent: agent,
+          body: 'first',
+          view: _view(epoch: 7),
+          repository: repository,
+          refreshView: null,
+          onAccepted: () {},
+        );
+        final secondChat = AgentChatController();
+        final second = _coordinator(chatController: secondChat);
+        await second.send(
+          agent: agent,
+          body: 'second',
+          view: _view(epoch: 7),
+          repository: repository,
+          refreshView: null,
+          onAccepted: () {},
+        );
+        expect(
+          repository.requests[0].idempotencyKey,
+          isNot(repository.requests[1].idempotencyKey),
+        );
+        await second.retry(
+          item: secondChat.localMessagesFor('lead').single,
+          view: _view(epoch: 7),
+          repository: repository,
+          refreshView: null,
+        );
+        expect(
+          repository.requests[2].idempotencyKey,
+          repository.requests[1].idempotencyKey,
+        );
+      },
+    );
+    test(
+      'Mac legacy OMP honors pane input instead of Collab routing',
+      () async {
+        const agent = CcbAgent(
+          name: 'lead',
+          provider: 'omp',
+          window: 'main',
+          order: 0,
+          active: true,
+          queueDepth: 0,
+        );
+        final repository = _SubmitRepository();
+        final terminal = _RecordingTerminalTransport();
+        final pane = AgentPaneMessageSubmitter(onEvent: (_) {});
+        await _coordinator(
+          chatController: AgentChatController(),
+          paneSubmitter: pane,
+        ).send(
+          agent: agent,
+          body: 'legacy prompt',
+          view: _view(epoch: 7),
+          repository: repository,
+          terminalTransport: terminal,
+          usePaneInput: true,
+          refreshView: null,
+          onAccepted: () {},
+        );
+        expect(repository.requests, isEmpty);
+        expect(terminal.sessions.single.pasted, ['legacy prompt']);
+        expect(terminal.sessions.single.written, [
+          [13],
+        ]);
+        await pane.closeSessions();
+      },
+    );
+
+    test('OMP uses Collab gateway even when pane input is requested', () async {
+      const agent = CcbAgent(
+        name: 'lead',
+        provider: 'omp',
+        providerControl: CcbProviderControl(
+          provider: 'omp',
+          runtimeSource: 'collab',
+        ),
+        window: 'main',
+        order: 0,
+        active: true,
+        queueDepth: 0,
+      );
+      final chat = AgentChatController();
+      final repository = _SubmitRepository(
+        responses: [
+          CcbAgentMessageSubmitResult(
+            accepted: true,
+            idempotencyKey: 'local-lead-0',
+            messageId: 'local-lead-0',
+            state: CcbConversationDeliveryState.unconfirmed,
+          ),
+        ],
+      );
+      final terminal = _RecordingTerminalTransport();
+      final pane = AgentPaneMessageSubmitter(onEvent: (_) {});
+      final coordinator = _coordinator(
+        chatController: chat,
+        paneSubmitter: pane,
+      );
+      await coordinator.send(
+        agent: agent,
+        body: 'native prompt',
+        view: _view(epoch: 7),
+        repository: repository,
+        terminalTransport: terminal,
+        usePaneInput: true,
+        refreshView: null,
+        onAccepted: () {},
+      );
+      expect(repository.requests.single.body, 'native prompt');
+      expect(terminal.requests, isEmpty);
+      expect(
+        chat.localMessagesFor('lead').single.state,
+        CcbConversationDeliveryState.unconfirmed,
+      );
+      await pane.closeSessions();
+    });
     test(
       'sends repository message and replaces optimistic local item',
       () async {

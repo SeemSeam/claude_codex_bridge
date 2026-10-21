@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import shlex
+import stat
 import os
-import tempfile
 from pathlib import Path
+from .socket_paths import socket_temp_root
+from .platform import collab_enabled
 
 from provider_backends.native_cli_support import NativeCliLaunchConfig
 from provider_backends.native_cli_support.launcher import (
@@ -100,6 +104,7 @@ def _launch_config() -> NativeCliLaunchConfig:
         provider="omp",
         visible_args_builder=_omp_visible_args,
         visible_env_builder=_omp_visible_env,
+        command_wrapper=_wrap_collab_command if collab_enabled() else None,
         visible_path_env_names=(
             "PI_CODING_AGENT_DIR",
             "PI_CODING_AGENT_SESSION_DIR",
@@ -140,6 +145,8 @@ def _build_start_cmd(
         runtime_dir=runtime_dir,
         launch_session_id=launch_session_id,
     )
+    if collab_enabled():
+        _prepare_collab_binding(prepared_state, runtime_dir, launch_session_id, spec)
     template = build_native_start_cmd(
         config,
         command,
@@ -203,6 +210,11 @@ def _build_session_payload(
             ),
         }
     )
+    if collab_enabled():
+        payload.update(
+            omp_collab_socket=str(prepared_state.get("omp_collab_socket") or ""),
+            omp_collab_protocol_version=3,
+        )
     # Native identity and CCB launch identity are different namespaces.
     payload.pop("omp_session_id", None)
     for key in ("omp_resume_status", "omp_explicit_session_control", "omp_restore_enabled", "omp_restart_start_cmd_template"):
@@ -214,6 +226,40 @@ def _build_session_payload(
             "omp_session_binding_source": prepared_state.get("omp_resume_binding_source"),
         })
     return payload
+
+
+def _prepare_collab_binding(prepared_state, runtime_dir, launch_session_id, spec) -> None:
+    collab_dir = runtime_dir / "collab"
+    collab_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(collab_dir, 0o700)
+    token = hashlib.sha256(launch_session_id.encode()).hexdigest()[:16]
+    socket_token = hashlib.sha256(f"{runtime_dir.resolve()}:{launch_session_id}".encode()).hexdigest()[:20]
+    socket_dir = socket_temp_root() / f"ccb-omp-{os.getuid()}-{socket_token}"
+    socket_dir.mkdir(mode=0o700, exist_ok=True)
+    info = socket_dir.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError("unsafe OMP Collab socket directory")
+    socket_path = socket_dir / "bridge.sock"
+    overlay = collab_dir / f"omp-{token}.json"
+    binding = collab_dir / f"omp-{token}.binding.json"
+    prepared_state["omp_collab_socket"] = str(socket_path)
+    prepared_state["omp_collab_overlay"] = str(overlay)
+    prepared_state["omp_collab_binding"] = str(binding)
+    _write_owner_only(binding, json.dumps({
+        "actor": spec.name, "launch_session_id": launch_session_id,
+        "cwd": str(prepared_state["workspace_path"]),
+        "socket": str(socket_path), "overlay": str(overlay),
+        "attempt_log": str(collab_dir / f"omp-{token}.attempts.jsonl"),
+        "editor_socket": str(prepared_state["omp_draft_guard_socket"]),
+        "registry_dir": str(Path(str(prepared_state["omp_home"])) / ".omp" / "run" / "collab-hosts"),
+    }))
+
+
+def _wrap_collab_command(command: str, prepared_state: dict[str, object]) -> str:
+    supervisor = Path(__file__).with_name("collab_runtime.mjs").resolve()
+    binding = _path_from_prepared(prepared_state, "omp_collab_binding")
+    # Preserve the complete command, including quoted semicolons and templates.
+    return f"bun {shlex.quote(str(supervisor))} {shlex.quote(str(binding))} -- /bin/sh -c {shlex.quote(command)}"
 
 
 def _omp_visible_args(prepared_state: dict[str, object]) -> tuple[str, ...]:
@@ -231,6 +277,8 @@ def _omp_visible_args(prepared_state: dict[str, object]) -> tuple[str, ...]:
         "--approval-mode",
         "yolo",
     )
+    if collab_enabled():
+        args = (*args, "--config", str(_path_from_prepared(prepared_state, "omp_collab_overlay")))
     if prepared_state.get("omp_explicit_session_control") is False:
         return (*args, OMP_RESTART_SESSION_MARKER)
     return args
@@ -297,7 +345,7 @@ def _materialize_completion_extension(
     prepared_state["omp_dispatch_event_log"] = str(dispatch_events)
     socket_token = hashlib.sha256(str(completion_events.resolve()).encode()).hexdigest()[:24]
     prepared_state["omp_draft_guard_socket"] = str(
-        Path(tempfile.gettempdir()) / f"ccb-editor-{socket_token}.sock"
+        socket_temp_root() / f"ccb-editor-{socket_token}.sock"
     )
 
 

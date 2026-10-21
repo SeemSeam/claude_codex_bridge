@@ -6,7 +6,7 @@
 **Координируйте Codex, Claude, Gemini и другие CLI Agent в видимых и управляемых процессах, которые можно напрямую взять под контроль**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.13-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 CCB 8.6.6 включает Flutter source CCB Mobile в [`mobile/`](../mobile/) и публикует Android APK через GitHub Releases:
 
-- [Скачать CCB Mobile v8.7.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
+- [Скачать CCB Mobile v8.7.13 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.13/ccb-mobile-v8.7.13.apk)
 - Исходники app: [`mobile/app`](../mobile/app)
 - Исходники server gateway: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,14 @@ CCB поддерживает [Agent Roles Spec](https://github.com/SeemSeam/agen
 ## Release Notes
 
 <details open>
+<summary><b>v8.7.13</b> - Linux OMP Collab-native Mobile chat and model selection</summary>
+
+Connect Mobile to Linux OMP's native Collab chat with user-anchored reply bubbles and same-host, same-session model selection. macOS keeps its legacy route, and other providers remain unchanged.
+
+[Full bilingual notes](../docs/releases/v8.7.13.md).
+</details>
+
+<details>
 <summary><b>v8.7.12</b> - Reply queue recovery and composer compatibility</summary>
 
 Recover stale reply delivery, correct communication status, and preserve drafts and valid lease ownership.

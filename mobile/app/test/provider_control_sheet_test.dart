@@ -5,6 +5,74 @@ import 'package:ccb_mobile/ccb_mobile.dart';
 import 'package:ccb_mobile/features/provider_control/provider_control_sheet.dart';
 
 void main() {
+  testWidgets('OMP selects the live host model without restart confirmation', (
+    tester,
+  ) async {
+    final base = _details();
+    final repository = _ProviderRepository(
+      CcbProviderControlDetails(
+        projectId: base.projectId,
+        agent: base.agent,
+        namespaceEpoch: base.namespaceEpoch,
+        configRevision: base.configRevision,
+        catalog: base.catalog,
+        control: const CcbProviderControl(
+          provider: 'omp',
+          activeModel: 'gpt-5.5',
+          activeThinking: 'medium',
+          runtimeRevision: 'native-generation-model-r1',
+          mutationMode: 'native',
+          capabilities: CcbProviderCapabilities(
+            modelCatalog: true,
+            modelSelect: true,
+            thinkingSelect: true,
+          ),
+        ),
+      ),
+    );
+    const agent = CcbAgent(
+      name: 'mobile',
+      provider: 'omp',
+      window: 'main',
+      order: 0,
+      active: true,
+      queueDepth: 0,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder:
+                (context) => TextButton(
+                  onPressed:
+                      () => showProviderControlSheet(
+                        context,
+                        repository: repository,
+                        projectId: 'proj-demo',
+                        agent: agent,
+                      ),
+                  child: const Text('Open native models'),
+                ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open native models'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('omp-native-model-control-note')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('provider-model-option-gpt-5.6-sol')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('confirm-provider-settings-save')),
+      findsNothing,
+    );
+    expect(repository.mutations.single['model'], 'gpt-5.6-sol');
+  });
   testWidgets(
     'provider sheet shows identity usage and submits fenced selection',
     (tester) async {

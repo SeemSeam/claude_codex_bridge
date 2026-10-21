@@ -375,6 +375,18 @@ class _ProviderControlSheetState extends State<ProviderControlSheet> {
           child: Column(
             children: [
               _RuntimeIdentity(control: details.control),
+              if (details.control.provider == 'omp' &&
+                  details.control.mutationMode == 'native')
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    strings.isChinese
+                        ? '直接切换当前 OMP 会话；不重启、不修改项目配置。运行中或有桌面草稿时拒绝切换。'
+                        : 'Changes the current OMP session without restart or project configuration changes. Busy sessions and desktop drafts block switching.',
+                    key: const ValueKey('omp-native-model-control-note'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               if (details.control.hasPendingChange) ...[
                 const SizedBox(height: 10),
                 _PendingRestartBanner(control: details.control),

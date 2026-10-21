@@ -107,17 +107,26 @@ def test_restart_command_resolves_event_and_quotes_path(tmp_path):
 
 @pytest.mark.parametrize("restore,explicit", [(True, False), (False, False), (True, True)])
 def test_launcher_restore_policy_and_native_payload(monkeypatch, tmp_path, restore, explicit):
+    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform='linux'))
     root, native, events, event, data, record = fixture(tmp_path)
     prepared = resolve(tmp_path, root, record)
-    monkeypatch.setattr(launcher, "_materialize_completion_extension", lambda *a, **kw: None)
+    prepared.update(workspace_path=str(tmp_path), omp_home=str(tmp_path / "home"),
+                    omp_state_dir=str(tmp_path / "state"), omp_session_dir=str(root))
+    monkeypatch.setattr(launcher, "socket_temp_root", lambda: tmp_path)
     monkeypatch.setattr(launcher, "provider_start_parts", lambda _: ("omp",))
     monkeypatch.setattr(launcher, "build_native_start_cmd", lambda *a, **kw:
                         "omp --resume manual" if explicit else f"omp {launcher.OMP_RESTART_SESSION_MARKER}")
-    spec = SimpleNamespace(startup_args=("--resume", "manual") if explicit else ())
+    spec = SimpleNamespace(name="demo", startup_args=("--resume", "manual") if explicit else (),
+                           provider_command_template=None)
     command = launcher._build_start_cmd(launcher._launch_config(), SimpleNamespace(restore=restore),
                                        spec, tmp_path, "ccb-new", prepared_state=prepared)
     assert shlex.split(command) == (["omp", "--resume", "manual"] if explicit else
                                   ["omp", "--resume", str(native)] if restore else ["omp"])
+    binding = json.loads(Path(prepared["omp_collab_binding"]).read_text())
+    assert binding["actor"] == "demo"
+    assert binding["launch_session_id"] == "ccb-new"
+    assert binding["cwd"] == str(tmp_path)
+    assert binding["socket"] == prepared["omp_collab_socket"]
     monkeypatch.setattr(launcher, "build_native_session_payload", lambda *a, **kw: {"ccb_session_id": "ccb-new", "omp_session_id": "ccb-new"})
     prepared["omp_session_dir"] = str(root)
     payload = launcher._build_session_payload(launcher._launch_config(), None, spec, None,
@@ -128,6 +137,49 @@ def test_launcher_restore_policy_and_native_payload(monkeypatch, tmp_path, resto
         assert payload["omp_session_path"] == str(native)
     else:
         assert "omp_session_id" not in payload
+
+
+def test_darwin_launcher_keeps_native_command_without_collab(monkeypatch, tmp_path):
+    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform='darwin'))
+    prepared = dict(workspace_path=str(tmp_path), omp_home=str(tmp_path / 'home'),
+                    omp_state_dir=str(tmp_path / 'state'))
+    spec = SimpleNamespace(name='demo', startup_args=(), provider_command_template=None)
+    monkeypatch.setattr(launcher, 'provider_start_parts', lambda _: ('omp',))
+    monkeypatch.setattr(launcher, 'socket_temp_root', lambda: tmp_path)
+    monkeypatch.setattr(launcher, '_prepare_collab_binding', lambda *a: pytest.fail('Collab binding created'))
+    def native(config, *args, **kwargs):
+        assert config.command_wrapper is None
+        visible = launcher._omp_visible_args(kwargs['prepared_state'])
+        assert '--extension' in visible
+        assert '--config' not in visible
+        return f'omp {launcher.OMP_RESTART_SESSION_MARKER}'
+    monkeypatch.setattr(launcher, 'build_native_start_cmd', native)
+    command = launcher._build_start_cmd(launcher._launch_config(), SimpleNamespace(restore=False),
+                                       spec, tmp_path, 'ccb-darwin', prepared_state=prepared)
+    assert command.strip() == 'omp'
+    assert not (tmp_path / 'collab').exists()
+    assert 'omp_collab_binding' not in prepared
+    assert Path(prepared['omp_completion_extension']).is_file()
+    monkeypatch.setattr(launcher, 'build_native_session_payload', lambda *a, **kw: {})
+    payload = launcher._build_session_payload(launcher._launch_config(), None, spec, None,
+                                            tmp_path, tmp_path, '%1', 'marker', command, 'ccb-darwin', prepared)
+    assert 'omp_collab_socket' not in payload
+    assert 'omp_collab_protocol_version' not in payload
+
+
+def test_linux_collab_binding_failure_does_not_launch_native(monkeypatch, tmp_path):
+    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform='linux'))
+    prepared = dict(workspace_path=str(tmp_path), omp_home=str(tmp_path / 'home'),
+                    omp_state_dir=str(tmp_path / 'state'))
+    spec = SimpleNamespace(name='demo', startup_args=(), provider_command_template=None)
+    monkeypatch.setattr(launcher, 'provider_start_parts', lambda _: ('omp',))
+    def fail(*args):
+        raise RuntimeError('binding unavailable')
+    monkeypatch.setattr(launcher, '_prepare_collab_binding', fail)
+    monkeypatch.setattr(launcher, 'build_native_start_cmd', lambda *a, **kw: pytest.fail('native fallback'))
+    with pytest.raises(RuntimeError, match='binding unavailable'):
+        launcher._build_start_cmd(launcher._launch_config(), SimpleNamespace(restore=False),
+                                  spec, tmp_path, 'ccb-linux', prepared_state=prepared)
 
 
 def test_extension_observes_unmanaged_input_switch_and_turn_end():

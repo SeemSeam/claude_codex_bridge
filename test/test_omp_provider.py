@@ -78,6 +78,7 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         "omp_home": str(tmp_path / "provider-state" / "home"),
     }
     runtime_dir = tmp_path / "provider-runtime"
+    prepared["omp_collab_overlay"] = str(runtime_dir / "collab" / "omp-launch.json")
     _materialize_completion_extension(
         prepared,
         runtime_dir=runtime_dir,
@@ -91,6 +92,8 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         str(runtime_dir / "completion" / "ccb-omp-completion.ts"),
         "--approval-mode",
         "yolo",
+        "--config",
+        str(runtime_dir / "collab" / "omp-launch.json"),
     )
     assert _omp_visible_env(prepared) == {
         "PI_CODING_AGENT_DIR": str(

@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.12-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.13-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -50,6 +50,10 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
+
+## 8.7.13 新功能：Linux OMP Mobile Collab
+
+Linux OMP 现在通过私有本机 Collab Relay 将 Mobile 接入现有原生 TUI，实时正文、推理、工具调用和结果按用户回合聚合为对话气泡；手机端还可在同一宿主、同一会话中选择当前原生模型及支持的思考等级。新路由仅在 Linux 启用：Mac 保留原 OMP 终端输入和原生历史路由，其他 Provider 不变。[版本说明](../docs/releases/v8.7.13.md)。
 
 ## 8.7.12 修复：回复队列恢复与输入框兼容
 
@@ -294,9 +298,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.7.12 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.7.13 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.12 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.12/ccb-mobile-v8.7.12.apk)
+- [下载 CCB Mobile v8.7.13 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.13/ccb-mobile-v8.7.13.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -385,6 +389,14 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
+<summary><b>v8.7.13</b> - Linux OMP Mobile Collab</summary>
+
+Linux OMP Mobile 通过 Collab 接入原生 TUI，按用户回合聚合回复气泡，并支持同会话选择模型和思考等级。Mac 保留原终端输入和原生历史路由，其他 Provider 不变。
+
+[完整中英文说明](../docs/releases/v8.7.13.md)。
+</details>
+
+<details>
 <summary><b>v8.7.12</b> - 回复队列恢复与输入框兼容</summary>
 
 恢复失效回复投递、修正通信状态，并保留草稿与有效租约保护。

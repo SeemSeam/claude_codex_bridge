@@ -1,3 +1,5 @@
+import '../native_session/native_session.dart';
+
 import 'ccb_content_item.dart';
 
 enum CcbConversationItemKind {
@@ -140,6 +142,7 @@ class CcbConversationItem {
     this.completedAt,
     this.durationMs,
     this.attachments = const [],
+    this.nativeTurn,
   });
 
   final String id;
@@ -157,6 +160,7 @@ class CcbConversationItem {
   final DateTime? completedAt;
   final int? durationMs;
   final List<CcbMessageAttachment> attachments;
+  final NativeSessionTurn? nativeTurn;
 
   factory CcbConversationItem.userMessage({
     required String id,
@@ -279,6 +283,12 @@ class CcbConversationItem {
       durationMs:
           _optionalInt(json['duration_ms']) ??
           _durationSecondsToMs(json['duration_seconds']),
+      nativeTurn:
+          json['native_turn'] is Map
+              ? NativeSessionTurn.fromJson(
+                Map<String, Object?>.from(json['native_turn'] as Map),
+              )
+              : null,
       attachments: [
         if (json['attachments'] is Iterable)
           for (final item in json['attachments'] as Iterable)
@@ -303,6 +313,7 @@ class CcbConversationItem {
       if (contentId != null) 'content_id': contentId,
       if (source != null) 'source': source,
       if (sessionId != null) 'session_id': sessionId,
+      if (nativeTurn != null) 'native_turn': nativeTurn!.toJson(),
       if (sentAt != null) 'sent_at': sentAt!.toUtc().toIso8601String(),
       if (startedAt != null) 'started_at': startedAt!.toUtc().toIso8601String(),
       if (completedAt != null)
@@ -323,6 +334,7 @@ class CcbConversationItem {
     DateTime? startedAt,
     DateTime? completedAt,
     int? durationMs,
+    NativeSessionTurn? nativeTurn,
   }) {
     return CcbConversationItem(
       id: id ?? this.id,
@@ -340,6 +352,7 @@ class CcbConversationItem {
       completedAt: completedAt ?? this.completedAt,
       durationMs: durationMs ?? this.durationMs,
       attachments: attachments ?? this.attachments,
+      nativeTurn: nativeTurn ?? this.nativeTurn,
     );
   }
 }

@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import json
+import os
+import socket
+import threading
+from pathlib import Path
+
+import pytest
+
+from provider_backends.omp.collab import OmpCollabClient, OmpCollabError
+
+
+def _binding(tmp_path: Path):
+    runtime = tmp_path / '.ccb' / 'runtime'
+    endpoint_dir = runtime / 'collab'
+    endpoint_dir.mkdir(parents=True, mode=0o700)
+    endpoint = endpoint_dir / 'owner.sock'
+    data = {'provider': 'omp', 'agent_name': 'a', 'ccb_session_id': 'launch',
+            'start_dir': str(tmp_path), 'runtime_dir': str(runtime),
+            'omp_collab_socket': str(endpoint)}
+    session = tmp_path / '.ccb' / '.omp-a-session'
+    session.write_text(json.dumps(data))
+    return endpoint, session, data
+
+
+def _server(endpoint, response):
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(endpoint))
+    os.chmod(endpoint, 0o600)
+    server.listen(1)
+    requests = []
+    def serve():
+        try:
+            connection, _ = server.accept()
+            with connection:
+                stream = connection.makefile('rb')
+                requests.append(json.loads(stream.readline()))
+                connection.sendall(json.dumps(response).encode() + b'\n')
+        finally:
+            server.close()
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    return thread, requests
+
+
+def test_snapshot_real_owner_binding(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    snapshot = {'ready': True, 'connected': True, 'session_id': 'native', 'generation': 'owner:1', 'entries': [], 'revision': 1}
+    thread, requests = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': snapshot})
+    client = OmpCollabClient()
+    assert client.get_snapshot(tmp_path, 'a') == snapshot
+    thread.join(2)
+    assert requests == [{'operation': 'snapshot', 'actor': 'a', 'launch_session_id': 'launch'}]
+    client.close_all()
+
+
+def test_wrong_provider_never_connects(tmp_path):
+    _, session, data = _binding(tmp_path)
+    data['provider'] = 'pi'
+    session.write_text(json.dumps(data))
+    with pytest.raises(OmpCollabError) as error:
+        OmpCollabClient().get_snapshot(tmp_path, 'a')
+    assert error.value.status_code == 409
+
+
+def test_endpoint_symlink_rejected(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    endpoint.symlink_to(tmp_path / 'elsewhere')
+    with pytest.raises(OmpCollabError):
+        OmpCollabClient().get_snapshot(tmp_path, 'a')
+
+
+def test_world_accessible_socket_rejected(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(endpoint))
+        os.chmod(endpoint, 0o666)
+        with pytest.raises(OmpCollabError):
+            OmpCollabClient().get_snapshot(tmp_path, 'a')
+    finally:
+        server.close()
+
+
+def test_submit_requires_observed_generation(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(endpoint))
+        os.chmod(endpoint, 0o600)
+        with pytest.raises(OmpCollabError, match='Refresh') as error:
+            OmpCollabClient().submit(tmp_path, 'a', 'body', 'key')
+        assert error.value.status_code == 409
+    finally:
+        server.close()
+
+
+def test_path_like_agent_rejected(tmp_path):
+    with pytest.raises(OmpCollabError):
+        OmpCollabClient().get_snapshot(tmp_path, '../other')
+
+
+def test_command_wrapper_preserves_quoted_semicolons(tmp_path):
+    import shlex
+    from provider_backends.omp.launcher import _wrap_collab_command
+    command = "omp --append-system-prompt 'literal; semicolon'"
+    result = shlex.split(_wrap_collab_command(command, {'omp_collab_binding': str(tmp_path / 'binding.json')}))
+    assert result[-3:] == ['/bin/sh', '-c', command]
+
+
+def test_wrapped_restart_preserves_literal_session_path(tmp_path):
+    import shlex
+    from provider_backends.omp.launcher import _wrap_collab_command
+    from provider_backends.omp.session import OMP_RESTART_SESSION_MARKER, render_restart_command
+    path = tmp_path / "native 'quoted'; session.jsonl"
+    template = _wrap_collab_command(f"omp {OMP_RESTART_SESSION_MARKER}", {'omp_collab_binding': str(tmp_path / 'binding.json')})
+    outer = shlex.split(render_restart_command(template, path))
+    assert shlex.split(outer[-1]) == ['omp', '--resume', str(path)]

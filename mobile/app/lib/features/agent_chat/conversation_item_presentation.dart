@@ -3,6 +3,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
+import '../../native_session/native_session.dart';
 import '../../platform/external_url_opener.dart';
 import 'agent_chat_state_helpers.dart';
 import 'content_text_styles.dart';
@@ -36,10 +37,38 @@ class ConversationBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final turn = item.nativeTurn;
+    if (turn != null && item.kind == CcbConversationItemKind.agentReply) {
+      return NativeTurnBody(
+        turn: turn,
+        textBuilder: _buildText,
+        labels:
+            CcbMobileLocalizations.of(context).isChinese
+                ? const NativeTurnLabels(
+                  process: '执行过程',
+                  reasoning: '思考',
+                  toolCall: '工具调用',
+                  toolResult: '工具结果',
+                  running: '运行中',
+                  completed: '已完成',
+                  failed: '失败',
+                  aborted: '已中止',
+                  unknown: '状态未知',
+                  pendingTools: '工具执行尚未完成',
+                  noAnswer: '本轮尚无正文回复',
+                  message: '中间回复',
+                )
+                : const NativeTurnLabels(),
+      );
+    }
+    return _buildText(context, item.body);
+  }
+
+  Widget _buildText(BuildContext context, String text) {
     if (shouldRenderConversationMarkdown(item)) {
       return MarkdownBody(
         key: ValueKey('markdown-body-conversation-${item.id}'),
-        data: item.body,
+        data: text,
         selectable: true,
         styleSheet: ccbMarkdownStyleSheet(context),
         onTapLink: (text, href, title) {
@@ -56,23 +85,31 @@ class ConversationBody extends StatelessWidget {
         },
       );
     }
-    return SelectableText(
-      item.body,
-      key: ValueKey('conversation-body-${item.id}'),
-    );
+    return SelectableText(text, key: ValueKey('conversation-body-${item.id}'));
   }
 }
 
 class ConversationStateChip extends StatelessWidget {
-  const ConversationStateChip({required super.key, required this.state});
+  const ConversationStateChip({
+    required super.key,
+    required this.state,
+    this.collab = false,
+  });
 
   final CcbConversationDeliveryState state;
+  final bool collab;
 
   @override
   Widget build(BuildContext context) {
     return Chip(
       visualDensity: VisualDensity.compact,
-      label: Text(conversationStateLabel(state)),
+      label: Text(
+        collab && state == CcbConversationDeliveryState.unconfirmed
+            ? (CcbMobileLocalizations.of(context).isChinese
+                ? '原生准入未确认'
+                : 'Admission unconfirmed')
+            : conversationStateLabel(state),
+      ),
     );
   }
 }
@@ -81,6 +118,10 @@ bool conversationShouldCollapse(
   CcbConversationItem item, {
   required bool hasCustomChild,
 }) {
+  if (item.nativeTurn != null &&
+      item.kind == CcbConversationItemKind.agentReply) {
+    return false;
+  }
   if (hasCustomChild) {
     return true;
   }

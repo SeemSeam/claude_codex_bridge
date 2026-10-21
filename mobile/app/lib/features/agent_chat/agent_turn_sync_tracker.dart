@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import '../../models/ccb_agent.dart';
 import '../../models/ccb_agent_conversation.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/ccb_project_view.dart';
+import '../../native_session/native_session.dart';
 
 const agentTurnInitialReconciliationDelay = Duration(seconds: 3);
 const agentTurnStartObservationTimeout = Duration(seconds: 15);
@@ -227,7 +230,12 @@ class _AgentReplySnapshot {
       latestReplySignature:
           latestReply == null ? null : _replySignature(latestReply),
       latestReplyRunning:
-          latestReply != null && latestReply.completedAt == null,
+          latestReply != null && latestReply.nativeTurn != null
+              ? {
+                NativeSessionStatus.running,
+                NativeSessionStatus.unknown,
+              }.contains(latestReply.nativeTurn!.effectiveStatus)
+              : latestReply != null && latestReply.completedAt == null,
     );
   }
 
@@ -264,5 +272,6 @@ String _replySignature(CcbConversationItem item) {
     item.completedAt?.microsecondsSinceEpoch.toString() ?? '',
     item.body,
     item.attachments.length.toString(),
+    if (item.nativeTurn != null) jsonEncode(item.nativeTurn!.toJson()),
   ].join('|');
 }

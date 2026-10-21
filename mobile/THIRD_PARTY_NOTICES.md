@@ -26,3 +26,17 @@ Source-to-target mapping:
 No Paseo daemon, React Native component, asset, icon, credential, or runtime
 process is bundled. The implementation adapts data contracts, normalization,
 state semantics, and interaction behavior to CCB's existing architecture.
+
+## OMP Collab Protocol
+
+- Project: oh-my-pi, https://github.com/can1357/oh-my-pi
+- Reference release: v18.11.0, Collab wire protocol v3 and local host registry v1.
+- License: MIT (upstream sources and notices remain with the installed OMP distribution).
+- CCB implements a private loopback relay and encrypted guest in
+  `lib/provider_backends/omp/collab_runtime.mjs`, and a restricted model/editor
+  companion in the managed extension. The installed upstream runtime is not
+  copied into the mobile application; capabilities stay on the server.
+- Native verification fixtures load the installed release's real CollabHost,
+  SessionManager and native addon. Deterministic fixture outputs do not establish
+  external model quality or paid-provider reliability.
+

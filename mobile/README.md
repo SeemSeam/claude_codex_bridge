@@ -12,9 +12,9 @@ notifications, local/Tailnet gateway access, and file transfer.
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.2 is published as an Android APK:
+CCB Mobile v8.7.13 release APK:
 
-- [Download ccb-mobile-v8.7.2.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.2/ccb-mobile-v8.7.2.apk)
+- [Download ccb-mobile-v8.7.13.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.13/ccb-mobile-v8.7.13.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
@@ -44,6 +44,78 @@ configured/pending state from the active native session, and displays native
 session usage plus optional account quota. These semantics are directly
 aligned with pinned open-source Paseo Provider contracts; see
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+### Native OMP conversation turns
+
+OMP conversations are projected from the live Collab snapshot and events into
+stable user-anchored turns. One reply bubble contains the latest assistant answer;
+visible reasoning, intermediate messages, tool calls and results remain in an
+ordered, initially collapsed execution process. Tool calls retain their native
+call IDs. Missing outcomes and unfinished tools are not presented as success.
+
+`app/lib/native_session/native_session.dart` exports the reusable v1 turn/block
+model and `NativeTurnBody`. This module has no CCB project, job, terminal or
+localization dependency: hosts supply their Markdown renderer and labels, so a
+future Nozeli mobile client can consume the same content contract. CCB stores
+the optional `native_turn` projection with its conversation snapshots.
+
+Only Linux servers enable the new OMP Collab route: a private loopback relay
+and owner-bound local bridge attach to the existing TUI. Linux verifies socket
+ownership through `/proc`. macOS retains the original OMP terminal-input and
+native-session-history route; it does not start the Collab supervisor or expose
+the new live model controls. Other Providers retain their existing routes.
+
+The mobile app selects Collab only when the server advertises
+`provider_control.runtime_source=collab`; an OMP provider name alone is not enough.
+Existing Linux OMP processes must be restarted normally to load the supervisor.
+Unavailable Linux Collab produces an explicit disconnected banner, never a silent
+terminal/history fallback. Collab refresh is limited to the selected foreground
+agent and pauses while the app is backgrounded.
+
+OMP model/effort choices come from the running agent's native model registry.
+The Provider sheet switches that same session through a restricted native
+companion, confirms host readback, and does not edit project configuration or
+restart the agent. Busy sessions, desktop drafts and stale session/model
+revisions reject changes; observable mutation races report an unknown outcome.
+
+Upstream Collab v3 does not provide request-level prompt admission receipts.
+Mobile therefore preserves an unconfirmed delivery state and does not replay
+prompts on reconnect. Session/generation fences and retained idempotency keys
+prevent cross-session delivery and duplicate handoffs. Terminal shortcuts remain
+available only in Open Terminal; interactive approvals and remote session
+branching are not implemented by this connection.
+
+Validation commands (installed OMP 18.11 sources and the Android SDK required):
+
+```sh
+bun test test/omp_collab_runtime.test.mjs test/omp_model_companion.test.mjs
+PYTHONPATH=lib .venv/bin/python test/omp_collab_tui_smoke.py
+bun test/omp_collab_native_smoke.mjs /absolute/path/to/pi-coding-agent
+.venv/bin/python test/omp_mobile_emulator_backend.py --upstream /absolute/path/to/pi-coding-agent --run
+```
+
+The Android harness uses production Flutter workspace/model controls, authenticated
+HTTP gateway, encrypted Collab guest, real upstream CollabHost and SessionManager.
+Its model output/catalog scenarios are deterministic fixtures, not paid-provider
+quality evidence. The actual TUI smoke separately exercises real native model and
+effort APIs without submitting any prompt. Android API 35 verification covered
+two live-to-durable turns, folded tool results, model readback without restart,
+stale revisions, explicit failure, disconnect/reconnect, generation fencing and
+background refresh suspension. The final ancestry/cross-launch-key revision was
+rechecked with 853 Flutter tests passing (one skipped), clean static analysis,
+175 gateway/OMP Python tests, 13 Bun protocol/model tests, the actual native TUI
+model smoke and the Android journey. Local final evidence is retained at
+`/home/bfly/.local/state/ccb-omp-final-android` (three submitted fixture prompts,
+one model change, zero terminal calls and zero external model calls).
+
+The harness disables Bun's implicit package installation so an isolated HOME
+cannot silently download a newer native dependency instead of the pinned release.
+The current-project paid-model run separately exposed omitted metadata ancestors;
+the companion now exports bounded ID/parent-ID links only, preserving original
+turn ownership without exposing the omitted record contents. New OMP mobile
+submissions use cross-launch unique keys; explicit retries retain the same key.
+
+
 
 ### LAN pairing and recovery
 

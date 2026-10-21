@@ -316,6 +316,8 @@ class AgentChatController {
       items: mergedItems,
       nextCursor: conversation.nextCursor,
       generatedAt: previous.generatedAt,
+      ompSessionId: previous.ompSessionId,
+      ompGeneration: previous.ompGeneration,
     );
     final next = _conversationWithLocalTimingFallback(agentName, merged);
     final nextSignature = conversationSignature(next);
@@ -404,6 +406,8 @@ class AgentChatController {
       items: nextItems,
       nextCursor: conversation.nextCursor,
       generatedAt: conversation.generatedAt,
+      ompSessionId: conversation.ompSessionId,
+      ompGeneration: conversation.ompGeneration,
     );
   }
 

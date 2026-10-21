@@ -196,6 +196,7 @@ class ConversationBubble extends StatelessWidget {
                             ConversationStateChip(
                               key: ValueKey('conversation-state-${item.id}'),
                               state: visibleState,
+                              collab: item.source == 'mobile/collab',
                             ),
                           if (collapsible)
                             IconButton(

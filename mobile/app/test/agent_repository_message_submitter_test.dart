@@ -7,6 +7,7 @@ import 'package:ccb_mobile/models/ccb_conversation_item.dart';
 import 'package:ccb_mobile/models/ccb_project.dart';
 import 'package:ccb_mobile/models/ccb_project_lifecycle.dart';
 import 'package:ccb_mobile/models/ccb_project_view.dart';
+import 'package:ccb_mobile/models/ccb_provider_control.dart';
 import 'package:ccb_mobile/models/readable_terminal_history.dart';
 import 'package:ccb_mobile/repository/mobile_ccb_repository.dart';
 import 'package:ccb_mobile/transport/gateway_transport.dart';
@@ -15,6 +16,108 @@ import 'package:test/test.dart';
 
 void main() {
   group('AgentRepositoryMessageSubmitter', () {
+    test(
+      'legacy OMP does not classify gateway errors as Collab admission',
+      () async {
+        const agent = CcbAgent(
+          name: 'lead',
+          provider: 'omp',
+          window: 'main',
+          order: 0,
+          active: true,
+          queueDepth: 0,
+        );
+        final repository = _SubmitRepository(
+          responses: [
+            GatewayHttpException(
+              Uri.parse('http://localhost/messages'),
+              502,
+              'unavailable',
+            ),
+          ],
+        );
+        final outcome = await AgentRepositoryMessageSubmitter(
+          repository: repository,
+        ).submit(
+          agent: agent,
+          message: _localMessage(),
+          view: _view(4, agents: [agent]),
+          conversation: const CcbAgentConversation(
+            projectId: 'proj',
+            agentName: 'lead',
+            namespaceEpoch: 4,
+            items: [],
+            ompSessionId: 'old-session',
+            ompGeneration: 'old-generation',
+          ),
+        );
+        expect(outcome.replacement?.state, CcbConversationDeliveryState.failed);
+        expect(
+          repository.requests.single.toJson()['expected_omp_session_id'],
+          isNull,
+        );
+        expect(
+          repository.requests.single.toJson()['expected_omp_generation'],
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'OMP preserves unknown admission without a second submission',
+      () async {
+        const agent = CcbAgent(
+          name: 'lead',
+          provider: 'omp',
+          providerControl: CcbProviderControl(
+            provider: 'omp',
+            runtimeSource: 'collab',
+          ),
+          window: 'main',
+          order: 0,
+          active: true,
+          queueDepth: 0,
+        );
+        final repository = _SubmitRepository(
+          responses: [
+            GatewayHttpException(
+              Uri.parse('http://localhost/messages'),
+              502,
+              'Collab admission unknown',
+            ),
+          ],
+        );
+        final outcome = await AgentRepositoryMessageSubmitter(
+          repository: repository,
+        ).submit(
+          agent: agent,
+          message: _localMessage(),
+          view: _view(4, agents: [agent]),
+          conversation: const CcbAgentConversation(
+            projectId: 'proj',
+            agentName: 'lead',
+            namespaceEpoch: 4,
+            items: [],
+            ompSessionId: 'native-session',
+            ompGeneration: 'owner:7',
+          ),
+        );
+        expect(
+          outcome.replacement?.state,
+          CcbConversationDeliveryState.unconfirmed,
+        );
+        expect(repository.requests, hasLength(1));
+        expect(outcome.replacement?.id, 'local-lead-0');
+        expect(
+          repository.requests.single.toJson()['expected_omp_session_id'],
+          'native-session',
+        );
+        expect(
+          repository.requests.single.toJson()['expected_omp_generation'],
+          'owner:7',
+        );
+      },
+    );
     test('returns failed replacement without namespace epoch', () async {
       final repository = _SubmitRepository();
 
