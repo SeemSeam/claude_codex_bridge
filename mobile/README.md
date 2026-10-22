@@ -10,6 +10,22 @@ CCB and provider CLIs run on the server; the mobile app is a controller for
 project discovery, agent switching, terminal access, Markdown reading,
 notifications, local/Tailnet gateway access, and file transfer.
 
+## Pairing and authorization
+
+CCB Mobile pairs with the **host gateway**, not with an individual project.
+A paired device can discover and manage the projects exposed by that gateway,
+subject to its operation scopes. Scopes such as `file_upload` apply across
+those projects; they are not project-specific grants.
+
+In server-wide mode, the legacy `project_id` field in pairing payloads and
+device records contains the **host ID**, not a project-level access-control
+rule. A project ID in an API route selects a project from the gateway's registry;
+it does not bind the device token to that project.
+
+The project-local gateway's default registry exposes only the current project.
+Separate host gateways with independent pairing stores require separate pairing;
+a token from one store is not accepted by another.
+
 ## Android Alpha Release
 
 CCB Mobile v8.7.15 release APK:
