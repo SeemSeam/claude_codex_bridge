@@ -3,16 +3,21 @@
 
 Run from repository root (after sourcing mobile/tools/mobile_toolchain_env.sh):
   python test/omp_mobile_emulator_backend.py --upstream /absolute/pi-coding-agent --run
+  python test/omp_mobile_emulator_backend.py --upstream /absolute/pi-coding-agent --relay --run
 
-The only synthetic pieces are the upstream host's model-free session prompt sink,
-model companion catalog, and fixture scenario controls. Flutter and gateway are
-production implementations. All state lives in a temporary directory; fixture
+--relay injects >2MiB native history, starts ProductionRelayService plus the real
+RelayHostConnector with isolated admission, keys and TLS trust, and runs the full
+Android smoke using RelaySocketGatewayTransport through adb reverse. History
+page IDs and original UTF-8 bytes/SHA256 are checked by the production repository;
+only fixture controls/stats use direct authenticated HTTP. No paid inference runs.
+All state lives in a temporary directory; fixture
 controls require a random bearer token and the listener is IPv4 loopback only.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import os
 import queue
 import signal
@@ -29,7 +34,8 @@ from urllib.error import HTTPError
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'lib'))
 from mobile_gateway.service import (MobileGatewayService, MobileGatewayError,
-                                    build_mobile_gateway_server, parse_listen_address)
+                                    build_mobile_gateway_server, parse_listen_address,
+                                    _omp_native_conversation_items)
 from provider_core.pathing import session_filename_for_agent
 
 # Reuse the native smoke's pinned-release loader and isolated native wrapper
@@ -56,6 +62,17 @@ const noop = () => {};
 const ctx = {session, sessionManager: manager, settings: Settings.isolated(),
   statusLine: {setCollabStatus: noop, invalidate: noop, getCachedContextBreakdown: () => ({usedTokens: 0, contextWindow: 1000})},
   ui: {requestRender: noop}, showStatus: noop, updatePendingMessagesDisplay: noop};
+if (process.env.OMP_FIXTURE_LARGE === '1') {
+  for (let index = 0; index < 96; index++) {
+    manager.appendMessage({role:'user',content:`Fixture history ${index}`,timestamp:Date.now()});
+    manager.appendMessage({role:'assistant',content:[{type:'text',text:`Fixture history reply ${index}: ` + 'Unicode 雪🌍 café é\n'.repeat(1100)}],stopReason:'stop',timestamp:Date.now()});
+  }
+  manager.appendMessage({role:'user',content:'Fixture oversized question',timestamp:Date.now()});
+  manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture oversized original\n' + '原文🌍 café é\n'.repeat(35000)},
+    {type:'toolCall',id:'fixture-oversize-call',name:'read',arguments:{path:'fixture-large.txt'}}],stopReason:'tool_use',timestamp:Date.now()});
+  manager.appendMessage({role:'toolResult',toolCallId:'fixture-oversize-call',toolName:'read',content:[{type:'text',text:'Fixture oversized tool result\n' + '工具🔧結果\n'.repeat(12000)}],isError:false,timestamp:Date.now()});
+  manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture oversized complete'}],stopReason:'stop',timestamp:Date.now()});
+}
 manager.appendMessage({role:'user', content:'Fixture history question', timestamp:Date.now()});
 manager.appendMessage({role:'assistant', content:[{type:'text', text:'Fixture initial native snapshot'}], stopReason:'stop', timestamp:Date.now()});
 const relay = startRelay();
@@ -170,7 +187,10 @@ def main():
     parser.add_argument('--evidence', type=Path, default=Path('/tmp/ccb-omp-emulator-evidence'))
     parser.add_argument('--run', action='store_true', help='run Flutter test and collect adb screenshots')
     parser.add_argument('--preflight', action='store_true', help='save native snapshot and authenticated HTTP conversation, then exit without Flutter or adb')
+    parser.add_argument('--relay', action='store_true', help='exercise real encrypted TLS CCB Relay with >2MiB native history')
     args = parser.parse_args()
+    if args.relay and args.preflight:
+        parser.error('--relay requires the Android repository smoke; --preflight is HTTP-only')
     args.evidence.mkdir(parents=True, exist_ok=True)
     loader = (REPO / 'test/omp_collab_native_smoke.mjs').read_text().split('const manager = SessionManager.inMemory(root);', 1)[0]
     loader = loader.replace("'../lib/provider_backends/omp/collab_runtime.mjs'", json.dumps((REPO / 'lib/provider_backends/omp/collab_runtime.mjs').as_uri()))
@@ -186,9 +206,11 @@ def main():
                       'XDG_CONFIG_HOME': str(Path(temporary) / 'config'),
                       'XDG_DATA_HOME': str(Path(temporary) / 'data'),
                       'XDG_STATE_HOME': str(Path(temporary) / 'state'),
+                      'OMP_FIXTURE_LARGE': '1' if args.relay else '0',
                       'XDG_CACHE_HOME': str(Path(temporary) / 'cache')}
         child = subprocess.Popen(['bun', '--no-install', str(script), str(args.upstream.resolve())], stdout=subprocess.PIPE, stderr=stderr, text=True, start_new_session=True, env=native_env)
         server = None
+        relay = None
         try:
             lines = queue.Queue()
             def read_startup():
@@ -247,13 +269,18 @@ def main():
             class FixtureGateway(MobileGatewayService):
                 reads = 0
                 terminals = 0
+                max_conversation_bytes = 0
+                content_reads = 0
+                history_expectations = None
                 last_conversation = None
                 def dispatch_get(self, path, headers=None):
                     if '/conversation' in path:
                         self.reads += 1
                     if path == '/__fixture/stats':
                         self._authenticate(headers, required_scopes=('view',))
-                        return 200, {**bridge('stats'),'conversation_reads':self.reads,'terminal_calls':self.terminals}
+                        return 200, {**bridge('stats'),'conversation_reads':self.reads,'terminal_calls':self.terminals,
+                            'max_conversation_bytes':self.max_conversation_bytes,'content_reads':self.content_reads,
+                            'history':self.history_expectations}
                     if path == '/__fixture/diagnostics':
                         self._authenticate(headers, required_scopes=('view',))
                         return 200, {'snapshot':bridge('snapshot'), 'last_conversation':self.last_conversation}
@@ -265,17 +292,36 @@ def main():
                             (args.evidence/'last-conversation.json').write_text(json.dumps(self.last_conversation,indent=2))
                         raise
                     if '/conversation' in path:
+                        self._record_conversation(payload)
                         self.last_conversation = {'status_code':status,'payload':payload}
                         (args.evidence/'last-conversation.json').write_text(json.dumps(self.last_conversation,indent=2))
                     return status, payload
+
+                def _record_conversation(self, payload):
+                    size = len(json.dumps(payload, ensure_ascii=True, separators=(',', ':')).encode('ascii'))
+                    self.max_conversation_bytes = max(self.max_conversation_bytes, size)
+                    if (payload.get('conversation') or {}).get('native_content') is not None:
+                        self.content_reads += 1
+                    if args.relay and size > 192 * 1024:
+                        raise AssertionError(f'Conversation exceeded relay page budget: {size}')
 
                 def dispatch_post(self, path, body, headers=None):
                     if path.startswith('/__fixture/'):
                         self._authenticate(headers, required_scopes=('view',))
                         action = path.removeprefix('/__fixture/')
+                        if action == 'proof':
+                            proof = {key:(body or {}).get(key) for key in (
+                                'history_pages','history_items','original_pages','original_bytes','original_sha256')}
+                            expected = self.history_expectations or {}
+                            if (proof['original_sha256'] != expected.get('original_sha256')
+                                    or proof['original_bytes'] != expected.get('original_bytes')
+                                    or proof['history_items'] != len(expected.get('ids', []))):
+                                raise MobileGatewayError('Integrity proof mismatch', status_code=400)
+                            (args.evidence/'relay-integrity.json').write_text(json.dumps(proof,indent=2))
+                            return 200, {'recorded':True}
                         if action == 'screenshot':
                             name = (body or {}).get('name')
-                            if name not in {'initial','live','durable','tools','model','reconnect','final'}:
+                            if name not in {'initial','original','original-next','history','live','durable','tools','model','reconnect','final'}:
                                 raise MobileGatewayError('Unknown screenshot',status_code=400)
                             with (args.evidence / f'{name}.png').open('wb') as image:
                                 subprocess.run(['adb','-s',args.device,'exec-out','screencap','-p'],stdout=image,check=True,timeout=15)
@@ -303,23 +349,44 @@ def main():
             pairing = service.create_pairing_payload(gateway_url=url,scopes=('view','message_submit','provider_settings'))
             _, claim = service.dispatch_post('/v1/pairing/claim',{'pairing_code':pairing['pairing_code']})
             token = claim['device_token']
+            if args.relay:
+                from omp_mobile_fixture_relay import AndroidFixtureRelay
+                relay = AndroidFixtureRelay(Path(temporary)/'relay', url, claim['device']['device_id'])
             defines = {'OMP_FIXTURE_URL':url,'OMP_FIXTURE_TOKEN':token}
+            if relay:
+                defines.update(relay.defines)
             # The token file is local-only and removed with the loader directory.
             defines_file = Path(temporary)/'defines.json'
             defines_file.write_text(json.dumps(defines)); defines_file.chmod(0o600)
             server = build_mobile_gateway_server(parse_listen_address(f'127.0.0.1:{args.port}'),service)
             threading.Thread(target=server.serve_forever,daemon=True).start()
+            if args.relay:
+                snapshot = bridge('snapshot')
+                items = _omp_native_conversation_items(root, project_id='omp-fixture', agent='mobile', snapshot=snapshot)
+                originals = [item for item in items if item.get('kind') == 'agent_reply' and 'Fixture oversized original' in json.dumps(item,ensure_ascii=False)]
+                if len(originals) != 1:
+                    raise RuntimeError('Oversized fixture turn missing')
+                original = originals[0]
+                data = json.dumps(original, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+                history_bytes = len(json.dumps(snapshot, ensure_ascii=False).encode('utf-8'))
+                if history_bytes <= 2 * 1024 * 1024 or len(data) <= 512 * 1024:
+                    raise RuntimeError('Large-history fixture did not reach acceptance sizes')
+                service.history_expectations = {'ids':[item['id'] for item in items],
+                    'original_id':original['id'],'original_bytes':len(data),
+                    'original_sha256':hashlib.sha256(data).hexdigest(),'snapshot_bytes':history_bytes}
+                (args.evidence/'history-expectations.json').write_text(json.dumps(service.history_expectations,indent=2))
             (args.evidence/'initial-native-snapshot.json').write_text(json.dumps(bridge('snapshot'),indent=2))
-            request = Request(url+'/v1/projects/omp-fixture/agents/mobile/conversation?namespace_epoch=4',headers={'Authorization':f'Bearer {token}'})
-            try:
-                with urlopen(request,timeout=10) as response:
-                    initial = json.load(response)
-            except HTTPError as error:
-                (args.evidence/'preflight-error.json').write_text(json.dumps({'status_code':error.code,'body':error.read().decode()},indent=2))
-                raise RuntimeError('Gateway preflight failed; inspect preflight-error.json') from None
-            (args.evidence/'initial-conversation.json').write_text(json.dumps(initial,indent=2))
-            if not any(item.get('body') == 'Fixture initial native snapshot' for item in initial.get('conversation',{}).get('items',[])):
-                raise RuntimeError('Initial native reply absent; inspect initial-native-snapshot.json and initial-conversation.json')
+            if not args.relay:
+                request = Request(url+'/v1/projects/omp-fixture/agents/mobile/conversation?namespace_epoch=4',headers={'Authorization':f'Bearer {token}'})
+                try:
+                    with urlopen(request,timeout=10) as response:
+                        initial = json.load(response)
+                except HTTPError as error:
+                    (args.evidence/'preflight-error.json').write_text(json.dumps({'status_code':error.code,'body':error.read().decode()},indent=2))
+                    raise RuntimeError('Gateway preflight failed; inspect preflight-error.json') from None
+                (args.evidence/'initial-conversation.json').write_text(json.dumps(initial,indent=2))
+                if not any(item.get('body') == 'Fixture initial native snapshot' for item in initial.get('conversation',{}).get('items',[])):
+                    raise RuntimeError('Initial native reply absent; inspect initial-native-snapshot.json and initial-conversation.json')
             if args.preflight:
                 print(f'Native and real HTTP gateway preflight complete: {args.evidence}',flush=True)
                 return
@@ -327,6 +394,8 @@ def main():
             print(f'Fixture ready; evidence: {args.evidence}',flush=True)
             if args.run:
                 subprocess.run(['adb','-s',args.device,'reverse',f'tcp:{args.port}',f'tcp:{args.port}'],check=True,timeout=15)
+                if relay:
+                    subprocess.run(['adb','-s',args.device,'reverse',f'tcp:{relay.port}',f'tcp:{relay.port}'],check=True,timeout=15)
                 try:
                     flutter = subprocess.Popen(command,cwd=REPO/'mobile/app',start_new_session=True)
                     try:
@@ -343,16 +412,22 @@ def main():
                             except (OSError,RuntimeError,MobileGatewayError) as error:
                                 (args.evidence/'failure-native-error.txt').write_text(str(error))
                         stop_process_group(flutter)
-                    (args.evidence/'backend-final.json').write_text(json.dumps({**bridge('stats'),'conversation_reads':service.reads,'terminal_calls':service.terminals,'model_calls':0},indent=2))
+                        (args.evidence/'backend-final.json').write_text(json.dumps({**bridge('stats'),'conversation_reads':service.reads,'terminal_calls':service.terminals,'model_calls':0,
+                            'max_conversation_bytes':service.max_conversation_bytes,'content_reads':service.content_reads,
+                            'relay':relay.diagnostics() if relay else None},indent=2))
                     if flutter.returncode:
                         raise SystemExit(flutter.returncode)
                 finally:
                     subprocess.run(['adb','-s',args.device,'reverse','--remove',f'tcp:{args.port}'],check=False,timeout=15)
+                    if relay:
+                        subprocess.run(['adb','-s',args.device,'reverse','--remove',f'tcp:{relay.port}'],check=False,timeout=15)
             else:
                 import shlex
                 print('cd mobile/app && '+shlex.join(command),flush=True)
                 threading.Event().wait()
         finally:
+            if relay:
+                relay.close()
             if server:
                 server.shutdown(); server.server_close()
             stop_process_group(child)

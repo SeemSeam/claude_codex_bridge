@@ -29,19 +29,25 @@ class ConversationBody extends StatelessWidget {
   const ConversationBody({
     required this.item,
     this.onOpenArtifactActions,
+    this.contentLoader,
     super.key,
   });
 
   final CcbConversationItem item;
   final ValueChanged<String>? onOpenArtifactActions;
+  final Future<NativeContentPage> Function(String cursor)? contentLoader;
 
   @override
   Widget build(BuildContext context) {
     final turn = item.nativeTurn;
-    if (turn != null && item.kind == CcbConversationItemKind.agentReply) {
+    if (turn != null &&
+        (item.kind == CcbConversationItemKind.agentReply ||
+            turn.readCursor != null)) {
       return NativeTurnBody(
         turn: turn,
         textBuilder: _buildText,
+        contentLoader: contentLoader,
+        previewText: item.body,
         labels:
             CcbMobileLocalizations.of(context).isChinese
                 ? const NativeTurnLabels(
@@ -57,6 +63,13 @@ class ConversationBody extends StatelessWidget {
                   pendingTools: '工具执行尚未完成',
                   noAnswer: '本轮尚无正文回复',
                   message: '中间回复',
+                  readOriginal: '阅读原文',
+                  preview: '仅为预览 — 内容超出内联大小限制',
+                  previous: '上一页',
+                  next: '下一页',
+                  close: '关闭',
+                  retry: '重试',
+                  loadFailed: '无法加载原文，内容可能已变更。请关闭后刷新会话。',
                 )
                 : const NativeTurnLabels(),
       );
@@ -376,6 +389,80 @@ Future<void> confirmAndOpenExternalUrl(BuildContext context, String url) async {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${strings.couldNotOpenUrl}: $error')),
+    );
+  }
+}
+
+/// A failed request is not evidence that the native agent socket disconnected.
+/// Only explicit host-unavailable responses use the disconnected presentation.
+class OmpConversationErrorBanner extends StatelessWidget {
+  const OmpConversationErrorBanner({
+    super.key,
+    required this.error,
+    required this.onRetry,
+  });
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final chinese = CcbMobileLocalizations.of(context).isChinese;
+    final hostUnavailable =
+        error.contains('OMP Collab snapshot not ready') ||
+        error.contains('OMP Collab snapshot is not ready') ||
+        error.contains('OMP Collab is unavailable') ||
+        error.contains('host_disconnected') ||
+        error.contains('host_not_ready');
+    final explanation =
+        hostUnavailable
+            ? (chinese
+                ? 'OMP 主机尚未就绪。保留的消息可能已过期，请重新连接后再发送。'
+                : 'OMP Collab disconnected. Retained messages may be stale; reconnect before sending.')
+            : (chinese
+                ? 'OMP 会话无法加载。请求失败并不代表原生连接已断开；保留的消息可能已过期。'
+                : 'OMP conversation could not load. A failed request does not mean the native socket disconnected; retained messages may be stale.');
+    return MaterialBanner(
+      key: ValueKey(
+        hostUnavailable
+            ? 'omp-collab-disconnected'
+            : 'omp-conversation-load-failed',
+      ),
+      content: Text(
+        hostUnavailable
+            ? explanation
+            : (chinese
+                ? 'OMP 会话无法加载。保留的消息可能已过期。'
+                : 'OMP conversation could not load. Retained messages may be stale.'),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              () => showDialog<void>(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      title: Text(chinese ? '会话请求' : 'Conversation request'),
+                      content: Text(explanation),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(chinese ? '关闭' : 'Close'),
+                        ),
+                      ],
+                    ),
+              ),
+          child: Text(chinese ? '查看详情' : 'Details'),
+        ),
+        TextButton(
+          onPressed: onRetry,
+          child: Text(
+            hostUnavailable
+                ? (chinese ? '重新连接' : 'Reconnect')
+                : (chinese ? '重试' : 'Retry'),
+          ),
+        ),
+      ],
     );
   }
 }

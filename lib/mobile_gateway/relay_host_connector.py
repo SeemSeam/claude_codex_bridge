@@ -372,16 +372,30 @@ class RelayHostConnector:
         except (RelayHostConnectorError, RelayCryptoError, json.JSONDecodeError) as exc:
             response_payload = _safe_error_payload(exc)
             self._diagnostics['requests_rejected'] = int(self._diagnostics.get('requests_rejected') or 0) + 1
-        await self._send_inner(
-            ws,
-            session_id,
-            session,
-            RelayInnerMessage(
-                kind='response',
-                request_id=message.request_id,
-                payload=response_payload,
-            ),
-        )
+        try:
+            await self._send_inner(
+                ws, session_id, session,
+                RelayInnerMessage(kind='response', request_id=message.request_id,
+                                  payload=response_payload),
+            )
+        except RelayStreamProtocolError as exc:
+            self._diagnostics['requests_rejected'] = int(self._diagnostics.get('requests_rejected') or 0) + 1
+            if session.closed or ws.closed:
+                return
+            try:
+                await self._send_inner(
+                    ws, session_id, session,
+                    RelayInnerMessage(kind='error', request_id=message.request_id,
+                                      payload={'code': exc.code}),
+                )
+            except (RelayHostConnectorError, RelayCryptoError, RelayStreamProtocolError,
+                    ConnectionError, asyncio.TimeoutError, RuntimeError):
+                # A closed transport cannot receive an error. Never recursively
+                # attempt another send from this background request task.
+                return
+        except (RelayHostConnectorError, RelayCryptoError, ConnectionError,
+                asyncio.TimeoutError, RuntimeError):
+            return
 
     async def _send_inner(
         self,
@@ -1396,7 +1410,12 @@ def _gateway_request(operation: str, payload: Mapping[str, object]) -> _GatewayR
         )
     if op == 'submit_agent_message':
         project = _segment(payload, 'project_id')
-        agent = _segment(payload, 'agent_name')
+        agent_value = payload.get('agent') if 'agent' in payload else payload.get('agent_name')
+        agent_name = _required_text(agent_value, 'agent')
+        if 'agent' in payload and 'agent_name' in payload:
+            if agent_name != _required_text(payload.get('agent_name'), 'agent_name'):
+                raise RelayHostConnectorError('relay gateway request has conflicting agent fields')
+        agent = quote(agent_name, safe='')
         return _json_request(
             'POST',
             f'/v1/projects/{project}/agents/{agent}/messages',

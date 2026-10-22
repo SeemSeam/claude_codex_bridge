@@ -57,6 +57,7 @@ from .notifications import (
     encode_sse_event,
 )
 from .omp_conversation import project_omp_snapshot
+from .omp_content import OmpContentError, OmpContentPager, PREFIX as OMP_CONTENT_CURSOR_PREFIX
 from .pairing import MobileGatewayPairingError, MobileGatewayPairingStore
 from .push import MobilePushDispatcher, PushSender
 from .project_activity import MobileGatewayProjectActivityStore
@@ -565,6 +566,7 @@ class MobileGatewayService:
         self._conversation_page_cache_bytes = 0
         self._conversation_page_cache_lock = threading.Lock()
         self._omp_collab = OmpCollabClient() if collab_enabled() else None
+        self._omp_content_pager = OmpContentPager()
         self._provider_settings_store = ProviderSettingsStore()
         self._provider_quota_service = provider_quota_service or ProviderQuotaService()
         self._provider_mutation_lock = threading.Lock()
@@ -1353,12 +1355,27 @@ class MobileGatewayService:
         agent_record = _map(target.get('agent_record'))
         provider_key = (_optional_text(agent_record.get('provider')) or '').strip().lower()
         if provider_key == 'omp' and collab_enabled():
+            if 'cursor' in query and cursor is None:
+                raise MobileGatewayError('cursor must not be empty', status_code=400)
             snapshot = _omp_collab_snapshot(self._omp_collab, project.project_root, str(target['agent']))
             items = _omp_native_conversation_items(
                 project.project_root, project_id=project.project_id, agent=str(target['agent']),
                 mobile_files_dir=self._mobile_files_dir(), snapshot=snapshot,
             )
-            page = _agent_conversation_page(items, limit=limit, cursor=cursor)
+            scope = (project.project_id, str(target['agent']), int(target['namespace_epoch']),
+                     snapshot['session_id'], snapshot['generation'])
+            try:
+                if cursor is not None and cursor.startswith(OMP_CONTENT_CURSOR_PREFIX):
+                    content = self._omp_content_pager.content(
+                        items, scope=scope, revision=snapshot['revision'], cursor=cursor,
+                    )
+                    page = {'items': [], 'native_content': content}
+                else:
+                    page = self._omp_content_pager.page(
+                        items, scope=scope, revision=snapshot['revision'], limit=limit, cursor=cursor,
+                    )
+            except OmpContentError as exc:
+                raise MobileGatewayError(str(exc), status_code=exc.status_code) from exc
             response = self._agent_conversation_response(
                 project_id=project.project_id, agent=str(target['agent']),
                 namespace_epoch=int(target['namespace_epoch']), page=page,
@@ -1438,6 +1455,8 @@ class MobileGatewayService:
         }
         if page.get('next_cursor') is not None:
             conversation['next_cursor'] = page['next_cursor']
+        if 'native_content' in page:
+            conversation['native_content'] = page['native_content']
         return {
             'schema_version': _SCHEMA_VERSION,
             'status': 'ok',

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,12 +15,14 @@ import 'package:ccb_mobile/models/ccb_conversation_item.dart';
 import 'package:ccb_mobile/repository/gateway_mobile_ccb_repository.dart';
 import 'package:ccb_mobile/transport/http_gateway_transport.dart';
 import 'package:ccb_mobile/transport/route_provider.dart';
+import 'package:ccb_mobile/transport/relay_socket_gateway_transport.dart';
 
 const _url = String.fromEnvironment('OMP_FIXTURE_URL');
 const _token = String.fromEnvironment('OMP_FIXTURE_TOKEN');
+const _relayUrl = String.fromEnvironment('OMP_RELAY_URL');
 
 // Scenario controls generate explicit fixture content, not model-quality proof.
-// All user-visible data travels through the production HTTP repository/gateway.
+// All user-visible data uses the production repository over HTTP or encrypted RELAY.
 Future<Map<String, dynamic>> _fixture(
   String action, [
   Map<String, Object?> body = const {},
@@ -68,20 +72,68 @@ List<ConversationBubble> _replies(WidgetTester tester) =>
         .toList();
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.tap(finder);
-  await tester.pump(const Duration(milliseconds: 300));
+  // Native refresh/auto-follow can move a disclosure after ensureVisible.
+  // Let pending layout/scroll work finish, then recenter and hit-test the
+  // actual target. Never invoke callbacks directly or ignore missed taps.
+  for (var attempt = 0; attempt < 12; attempt++) {
+    await tester.ensureVisible(finder);
+    await tester.pump(const Duration(milliseconds: 300));
+    await Scrollable.ensureVisible(
+      tester.element(finder),
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    final target = finder.hitTestable();
+    if (target.evaluate().isNotEmpty) {
+      await tester.tap(target);
+      await tester.pump(const Duration(milliseconds: 300));
+      return;
+    }
+  }
+  fail('Target never became genuinely hit-testable after scrolling: $finder');
 }
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  WidgetController.hitTestWarningShouldBeFatal = true;
   testWidgets('real OMP Collab mobile isolated deep smoke', (tester) async {
     tester.testTextInput.register();
     addTearDown(tester.testTextInput.unregister);
     expect(_url, isNotEmpty);
     expect(_token, isNotEmpty);
+    final relayContext = SecurityContext(withTrustedRoots: false);
+    RelaySocketGatewayTransport? relayTransport;
+    if (_relayUrl.isNotEmpty) {
+      final relayUri = Uri.parse(_relayUrl);
+      expect(relayUri.scheme, 'wss');
+      expect(relayUri.host, '127.0.0.1');
+      relayContext.setTrustedCertificatesBytes(base64Decode(
+        const String.fromEnvironment('OMP_RELAY_CA_B64')));
+      relayTransport = RelaySocketGatewayTransport(
+        profile: GatewayHostProfile(
+          hostId: const String.fromEnvironment('OMP_RELAY_HOST'),
+          deviceId: const String.fromEnvironment('OMP_RELAY_DEVICE'),
+          routeProvider: RouteProvider(
+            kind: RouteProviderKind.relay,
+            gatewayUrl: relayUri.replace(scheme: 'https'),
+            websocketUrl: relayUri,
+            hostFingerprint: const String.fromEnvironment('OMP_RELAY_FINGERPRINT'),
+            relayAccess: const RelayPhoneAccessCredentials(
+              accessGrant: String.fromEnvironment('OMP_RELAY_GRANT'),
+              phoneAuthPrivateKeyB64: String.fromEnvironment('OMP_RELAY_PHONE_KEY')),
+            capabilities: const {'relay.forward', 'relay_reconnect'},
+          ),
+          scopes: const {'view', 'message_submit', 'provider_settings'},
+        ),
+        deviceToken: _token,
+        httpClient: HttpClient(context: relayContext),
+        timeout: const Duration(seconds: 60),
+      );
+      addTearDown(() => relayTransport!.close(force: true));
+    }
     final repository = GatewayMobileCcbRepository(
-      transport: HttpGatewayTransport(
+      transport: relayTransport ?? HttpGatewayTransport(
         profile: GatewayHostProfile(
           hostId: 'omp-fixture',
           deviceId: 'fixture-device',
@@ -94,6 +146,66 @@ void main() {
         deviceToken: _token,
       ),
     );
+    String? originalId;
+    if (_relayUrl.isNotEmpty) {
+      await tester.runAsync(() async {
+        final history = (await _fixture('stats'))['history'] as Map<String, dynamic>;
+        expect(history['snapshot_bytes'], greaterThan(2 * 1024 * 1024));
+        originalId = history['original_id'] as String;
+        final ids = <String>{};
+        final cursors = <String>{};
+        CcbConversationItem? original;
+        String? cursor;
+        var historyPages = 0;
+        do {
+          final page = await repository.getAgentConversation(
+            projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4, cursor: cursor);
+          historyPages++;
+          expect(page.items, isNotEmpty);
+          for (final item in page.items) {
+            expect(ids.add(item.id), isTrue, reason: 'history must not duplicate ${item.id}');
+            if (item.id == originalId) original = item;
+          }
+          cursor = page.nextCursor;
+          if (cursor != null) expect(cursors.add(cursor), isTrue);
+        } while (cursor != null);
+        expect(historyPages, greaterThan(1));
+        expect(ids, unorderedEquals(history['ids'] as List));
+        expect(original, isNotNull);
+        expect(original!.nativeTurn!.entries, isEmpty);
+        cursor = original.nativeTurn!.readCursor;
+        expect(cursor, isNotNull);
+        final content = BytesBuilder(copy: false);
+        final contentCursors = <String>{};
+        var contentPages = 0;
+        do {
+          expect(contentCursors.add(cursor!), isTrue);
+          final page = await repository.getAgentConversation(
+            projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4, cursor: cursor);
+          expect(page.items, isEmpty);
+          final chunk = page.nativeContent!;
+          final bytes = utf8.encode(chunk.text);
+          expect(bytes.length, lessThanOrEqualTo(32 * 1024));
+          expect(chunk.offset, content.length);
+          expect(chunk.totalBytes, history['original_bytes']);
+          expect(chunk.version, history['original_sha256']);
+          content.add(bytes);
+          cursor = chunk.nextCursor;
+          contentPages++;
+        } while (cursor != null);
+        final bytes = content.takeBytes();
+        expect(bytes.length, history['original_bytes']);
+        expect(sha256.convert(bytes).toString(), history['original_sha256']);
+        final decoded = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        expect(decoded['id'], originalId);
+        expect(utf8.decode(bytes), contains('Fixture oversized tool result'));
+        expect(utf8.decode(bytes), contains('原文🌍 café é'));
+        expect(contentPages, greaterThan(16));
+        await _fixture('proof', {'history_pages':historyPages, 'history_items':ids.length,
+          'original_pages':contentPages, 'original_bytes':bytes.length,
+          'original_sha256':sha256.convert(bytes).toString()});
+      });
+    }
     final view = await tester.runAsync(
       () => repository.getProjectView('omp-fixture'),
     );
@@ -133,6 +245,36 @@ void main() {
       ).any((b) => b.item.body == 'Fixture initial native snapshot'),
     );
     await tester.runAsync(() => _fixture('screenshot', {'name': 'initial'}));
+    if (originalId != null) {
+      final bubble = find.byWidgetPredicate((widget) =>
+        widget is ConversationBubble && widget.item.id == originalId);
+      await _until(tester, () => bubble.evaluate().isNotEmpty,
+        reason: 'oversized native turn is reachable in latest UI page');
+      final expand = find.byKey(ValueKey('conversation-expand-$originalId'));
+      if (!tester.widget<ConversationBubble>(bubble).expanded && expand.evaluate().isNotEmpty) {
+        await _tap(tester, expand);
+      }
+      final read = find.descendant(of: bubble,
+        matching: find.byKey(const ValueKey('native-read-original')));
+      await _tap(tester, read);
+      final originalText = find.byKey(const ValueKey('native-original-text'));
+      await _until(tester, () => originalText.evaluate().isNotEmpty);
+      String visibleOriginal() {
+        final widget = tester.widget(originalText);
+        return widget is SelectableText ? widget.data ?? '' : (widget as Text).data ?? '';
+      }
+      final firstPage = visibleOriginal();
+      expect(firstPage, contains('Fixture oversized original'));
+      await tester.runAsync(() => _fixture('screenshot', {'name':'original'}));
+      await _tap(tester, find.byKey(const ValueKey('native-original-next')));
+      await _until(tester, () => originalText.evaluate().isNotEmpty && visibleOriginal() != firstPage);
+      expect(utf8.encode(visibleOriginal()).length, lessThanOrEqualTo(32 * 1024));
+      await tester.runAsync(() => _fixture('screenshot', {'name':'original-next'}));
+      await _tap(tester, find.byKey(const ValueKey('native-original-previous')));
+      await _until(tester, () => originalText.evaluate().isNotEmpty && visibleOriginal() == firstPage);
+      await _tap(tester, find.byKey(const ValueKey('native-original-close')));
+      await _until(tester, () => find.byKey(const ValueKey('native-original-reader')).evaluate().isEmpty);
+    }
     final before = (await tester.runAsync(() => _fixture('stats')))!;
 
     Future<void> send(String body, int count) async {
@@ -355,8 +497,9 @@ void main() {
           idempotencyKey: 'fixture-stale-model',
         );
         fail('Stale model runtime was accepted');
-      } on GatewayHttpException catch (error) {
-        expect(error.statusCode, 409);
+      } catch (error) {
+        expect(error, anyOf(isA<GatewayHttpException>(), isA<RelayGatewayException>()));
+        expect(error is GatewayHttpException ? error.statusCode : (error as RelayGatewayException).statusCode, 409);
       }
     });
 
@@ -373,13 +516,13 @@ void main() {
         ))!;
     await tester.runAsync(() => _fixture('disconnect'));
     controller.refreshLatest();
+    // RELAY intentionally sanitizes unknown gateway 503 details. It presents
+    // the generic failure/retry banner, not the HTTP host-unavailable wording.
+    final disconnectBanner = find.byKey(ValueKey(
+      _relayUrl.isNotEmpty ? 'omp-conversation-load-failed' : 'omp-collab-disconnected'));
     await _until(
       tester,
-      () =>
-          find
-              .byKey(const ValueKey('omp-collab-disconnected'))
-              .evaluate()
-              .isNotEmpty,
+      () => disconnectBanner.evaluate().isNotEmpty,
     );
     expect(
       tester
@@ -389,16 +532,18 @@ void main() {
           .onPressed,
       isNull,
     );
+    await _tap(tester, find.descendant(of: disconnectBanner,
+      matching: find.text(_relayUrl.isNotEmpty ? 'Retry' : 'Reconnect')));
     await tester.runAsync(() => _fixture('reconnect'));
-    await _tap(tester, find.text('Reconnect'));
     await _until(
       tester,
-      () =>
-          find
-              .byKey(const ValueKey('omp-collab-disconnected'))
-              .evaluate()
-              .isEmpty,
+      () => disconnectBanner.evaluate().isEmpty,
     );
+    final reconnectedConversation = (await tester.runAsync(
+      () => repository.getAgentConversation(
+        projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4)))!;
+    expect(reconnectedConversation.ompSessionId, oldConversation.ompSessionId);
+    expect(reconnectedConversation.ompGeneration, isNot(oldConversation.ompGeneration));
     await tester.runAsync(() async {
       try {
         await repository.submitAgentMessage(
@@ -413,8 +558,9 @@ void main() {
           ),
         );
         fail('Stale Collab generation was accepted');
-      } on GatewayHttpException catch (error) {
-        expect(error.statusCode, 409);
+      } catch (error) {
+        expect(error, anyOf(isA<GatewayHttpException>(), isA<RelayGatewayException>()));
+        expect(error is GatewayHttpException ? error.statusCode : (error as RelayGatewayException).statusCode, 409);
       }
     });
     await tester.runAsync(() => _fixture('screenshot', {'name': 'reconnect'}));
@@ -448,6 +594,10 @@ void main() {
     expect(finalStats['terminal_calls'], 0);
     expect(finalStats['prompts'], 3);
     expect(finalStats['changes'], 1);
+    if (_relayUrl.isNotEmpty) {
+      expect(finalStats['max_conversation_bytes'], lessThanOrEqualTo(192 * 1024));
+      expect(finalStats['content_reads'], greaterThan(16));
+    }
     await tester.runAsync(() => _fixture('screenshot', {'name': 'final'}));
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

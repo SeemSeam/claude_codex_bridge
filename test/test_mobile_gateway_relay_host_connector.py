@@ -145,6 +145,38 @@ def test_relay_host_connector_maps_provider_control_without_proxy_escape() -> No
     )['expected_runtime_revision'] is None
 
 
+@pytest.mark.parametrize('agent_fields', [
+    {'agent': 'worker /?# one'},
+    {'agent_name': 'worker /?# one'},
+    {'agent': 'worker /?# one', 'agent_name': 'worker /?# one'},
+])
+def test_relay_submit_maps_canonical_agent_without_path_escape(agent_fields):
+    request = _gateway_request('submit_agent_message', {
+        'project_id': 'project/demo', **agent_fields, 'body': 'hello',
+        'namespace_epoch': 4, 'idempotency_key': 'message-budget-0001',
+        'expected_omp_session_id': 'native', 'expected_omp_generation': 'instance:1',
+        'device_token': 'do-not-forward',
+    })
+    assert request.method == 'POST'
+    assert request.path == '/v1/projects/project%2Fdemo/agents/worker%20%2F%3F%23%20one/messages'
+    body = json.loads(request.body)
+    assert body['body'] == 'hello'
+    assert body['expected_omp_session_id'] == 'native'
+    assert body['expected_omp_generation'] == 'instance:1'
+    assert 'device_token' not in body
+
+
+@pytest.mark.parametrize('agent_fields', [
+    {'agent': 'one', 'agent_name': 'two'},
+    {'agent': '', 'agent_name': 'two'},
+    {'agent': 'one', 'agent_name': ''},
+    {},
+])
+def test_relay_submit_rejects_conflicting_or_missing_agent(agent_fields):
+    with pytest.raises(RelayHostConnectorError):
+        _gateway_request('submit_agent_message', {'project_id': 'project', **agent_fields})
+
+
 def test_relay_host_connector_maps_host_terminal_without_path_escape() -> None:
     opened = _gateway_request(
         'open_host_terminal',

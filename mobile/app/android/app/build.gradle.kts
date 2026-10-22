@@ -94,6 +94,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (providers.environmentVariable("CCB_MOBILE_TEST_BUILD").orNull == "1") {
+                applicationIdSuffix = ".relaytest"
+                versionNameSuffix = "-relay-test"
+            }
+        }
         release {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -12,9 +12,9 @@ notifications, local/Tailnet gateway access, and file transfer.
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.13 release APK:
+CCB Mobile v8.7.14 release APK:
 
-- [Download ccb-mobile-v8.7.13.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.13/ccb-mobile-v8.7.13.apk)
+- [Download ccb-mobile-v8.7.14.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.14/ccb-mobile-v8.7.14.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
@@ -93,6 +93,30 @@ PYTHONPATH=lib .venv/bin/python test/omp_collab_tui_smoke.py
 bun test/omp_collab_native_smoke.mjs /absolute/path/to/pi-coding-agent
 .venv/bin/python test/omp_mobile_emulator_backend.py --upstream /absolute/path/to/pi-coding-agent --run
 ```
+
+For the actual encrypted CCB Relay large-history lane, add `--relay` to the
+Android harness command. It starts an isolated TLS Relay plus host connector,
+checks history above 2 MiB and an oversized single turn, and verifies original
+content UTF-8 byte offsets and SHA-256 without increasing the 512 KiB Relay cap.
+
+OMP inline pages use a conservative 192 KiB serialized budget. Oversized turns
+show a preview and explicit Read original action; originals are returned in
+versioned UTF-8-safe pages of at most 32 KiB. Changed session/generation/content
+invalidates the read cursor instead of mixing snapshots. Both the server repair
+and the updated app are required; installing the APK alone does not fix an old
+server's oversized responses.
+
+`CCB_MOBILE_TEST_BUILD=1 flutter build apk --debug` uses the separate
+`io.ccb.mobile.ccb_mobile.relaytest` application ID so repair test builds do not
+replace the production installation or its paired-device data.
+
+The repair was exercised on Android API 35 over the real TLS CCB Relay:
+196 history items across four pages; a 987,082-byte original reconstructed
+across 31 pages with exact SHA-256; send/live/tools/model/stale-fence/reconnect
+and background-pause checks passed without increasing the Relay cap.
+Evidence: `/home/bfly/.local/state/ccb-relay-fix-test/relay-run8`.
+
+
 
 The Android harness uses production Flutter workspace/model controls, authenticated
 HTTP gateway, encrypted Collab guest, real upstream CollabHost and SessionManager.

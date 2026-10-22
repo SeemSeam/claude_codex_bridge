@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.14 (2026-10-22)
+
+- Bound Linux OMP conversation pages by serialized bytes below the CCB Relay limit; oversized turns expose versioned, UTF-8-safe original-content pages rather than dropping tool history.
+- Return correlated Relay payload-limit errors instead of request timeouts, and distinguish conversation-load failures from actual OMP host disconnection.
+- Add an opt-in parallel-install Debug APK identifier for Relay repair testing without replacing the signed production app.
+- Correct Relay mobile message target forwarding (`agent` with compatible legacy `agent_name`), rejecting conflicting identities; [full bilingual notes](docs/releases/v8.7.14.md).
+
 ## v8.7.13 (2026-10-21)
 
 - Extract a product-independent native-session Flutter model and turn renderer for CCB and future Nozeli mobile consumers.

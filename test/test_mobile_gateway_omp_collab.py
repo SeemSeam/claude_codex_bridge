@@ -376,3 +376,37 @@ def test_darwin_project_view_preserves_existing_provider_controls(monkeypatch):
                'capabilities': {'model_select': False}, 'mutation_mode': 'restart'}
     payload = {'view': {'agents': [{'provider': 'omp', 'provider_control': control}]}}
     assert _redact_project_view_payload(payload)['view']['agents'][0]['provider_control'] == control
+
+
+def test_omp_original_content_uses_authenticated_conversation_and_fences(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    transport.snapshot['entries'] = [
+        {'type': 'message', 'id': 'u', 'parentId': None,
+         'message': {'role': 'user', 'content': 'question'}},
+        {'type': 'message', 'id': 'a', 'parentId': 'u',
+         'message': {'role': 'assistant', 'content': '中文😀' * 100000}},
+    ]
+    query = {'namespace_epoch': ['4']}
+    response = service.agent_conversation_payload('project', agent='mobile', query=query, headers=service.test_headers)
+    cursor = response['conversation']['items'][-1]['native_turn']['read_cursor']
+    query['cursor'] = [cursor]
+    response = service.agent_conversation_payload('project', agent='mobile', query=query, headers=service.test_headers)
+    assert response['conversation']['items'] == []
+    assert 'next_cursor' not in response['conversation']
+    assert response['conversation']['native_content']['next_cursor']
+    with pytest.raises(MobileGatewayError) as error:
+        service.agent_conversation_payload('project', agent='mobile', query=query, headers={})
+    assert error.value.status_code == 401
+    transport.snapshot['generation'] = 'instance:2'
+    with pytest.raises(MobileGatewayError) as error:
+        service.agent_conversation_payload('project', agent='mobile', query=query, headers=service.test_headers)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize('cursor', ['', 'not-a-cursor', 'omp-content-v1.%%%'])
+def test_omp_invalid_conversation_cursor_is_bad_request(tmp_path, monkeypatch, cursor):
+    service, _, _ = gateway(tmp_path, monkeypatch)
+    with pytest.raises(MobileGatewayError) as error:
+        service.agent_conversation_payload('project', agent='mobile',
+            query={'namespace_epoch': ['4'], 'cursor': [cursor]}, headers=service.test_headers)
+    assert error.value.status_code == 400

@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import '../../app/chat_background.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
+import '../../native_session/native_session.dart';
 import '../../widgets/working_attention_beat.dart';
 import 'conversation_item_presentation.dart';
 
@@ -30,6 +31,7 @@ class ConversationBubble extends StatelessWidget {
     this.timelineScrollController,
     this.onUserScrollDirectionChanged,
     this.isWorking = false,
+    this.contentLoader,
     super.key,
   });
 
@@ -47,6 +49,7 @@ class ConversationBubble extends StatelessWidget {
   final ScrollController? timelineScrollController;
   final ValueChanged<ScrollDirection>? onUserScrollDirectionChanged;
   final bool isWorking;
+  final Future<NativeContentPage> Function(String cursor)? contentLoader;
 
   void _toggleExpanded() {
     onToggleExpanded(item.id);
@@ -73,6 +76,7 @@ class ConversationBubble extends StatelessWidget {
         child ??
         ConversationBody(
           item: item,
+          contentLoader: contentLoader,
           onOpenArtifactActions: (fileId) {
             final attachment =
                 item.attachments.where((a) => a.fileId == fileId).firstOrNull;

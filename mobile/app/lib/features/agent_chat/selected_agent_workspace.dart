@@ -28,6 +28,7 @@ import 'agent_pane_message_submitter.dart';
 import 'agent_submission_semantics.dart';
 import 'agent_turn_sync_tracker.dart';
 import 'pane_chat_controller.dart';
+import 'conversation_item_presentation.dart';
 import 'selected_agent_workspace_model.dart';
 import 'selected_agent_workspace_view.dart';
 
@@ -1392,17 +1393,9 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
       children: [
         if (isOmpCollabAgent(selectedAgent) &&
             _chatController.conversationErrorFor(selectedAgent.name) != null)
-          MaterialBanner(
-            key: const ValueKey('omp-collab-disconnected'),
-            content: const Text(
-              'OMP Collab disconnected. Retained messages may be stale; reconnect before sending.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => _loadConversation(selectedAgent.name),
-                child: const Text('Reconnect'),
-              ),
-            ],
+          OmpConversationErrorBanner(
+            error: _chatController.conversationErrorFor(selectedAgent.name)!,
+            onRetry: () => _loadConversation(selectedAgent.name),
           ),
         Expanded(
           child: SelectedAgentWorkspaceView(

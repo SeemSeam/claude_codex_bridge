@@ -1,3 +1,4 @@
+import '../native_session/native_content_page.dart';
 import 'ccb_conversation_item.dart';
 
 class CcbAgentConversation {
@@ -10,6 +11,7 @@ class CcbAgentConversation {
     this.generatedAt,
     this.ompSessionId,
     this.ompGeneration,
+    this.nativeContent,
   });
 
   final String projectId;
@@ -20,6 +22,7 @@ class CcbAgentConversation {
   final DateTime? generatedAt;
   final String? ompSessionId;
   final String? ompGeneration;
+  final NativeContentPage? nativeContent;
 
   factory CcbAgentConversation.fromJson(Map<String, Object?> json) {
     final conversation = _map(json['conversation']);
@@ -45,6 +48,10 @@ class CcbAgentConversation {
           source['transport'] == 'collab'
               ? _optionalText(source['generation']?.toString())
               : null,
+      nativeContent:
+          source['native_content'] is Map
+              ? NativeContentPage.fromJson(_map(source['native_content']))
+              : null,
     );
   }
 
@@ -60,6 +67,7 @@ class CcbAgentConversation {
       if (ompSessionId != null) 'transport': 'collab',
       if (ompSessionId != null) 'session_id': ompSessionId,
       if (ompGeneration != null) 'generation': ompGeneration,
+      if (nativeContent != null) 'native_content': nativeContent!.toJson(),
     };
   }
 }

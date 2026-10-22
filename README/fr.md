@@ -6,7 +6,7 @@
 **Coordonne Codex, Claude, Gemini et d'autres agents CLI dans des workflows visibles, contrôlables et reprenables directement**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.13-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.14-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Cette commande guide l'installation et la configuration.
 
 CCB 8.6.6 inclut le code source Flutter de CCB Mobile dans [`mobile/`](../mobile/) et publie l'APK Android via GitHub Releases :
 
-- [Télécharger l'APK CCB Mobile v8.7.13](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.13/ccb-mobile-v8.7.13.apk)
+- [Télécharger l'APK CCB Mobile v8.7.14](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.14/ccb-mobile-v8.7.14.apk)
 - Source de l'app : [`mobile/app`](../mobile/app)
 - Source du gateway serveur : [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -263,6 +263,14 @@ Merci à [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) pou
 ## Notes de version
 
 <details open>
+<summary><b>v8.7.14</b> - Relay large-history delivery fixes</summary>
+
+Fix Relay delivery for very large Linux OMP histories with byte-based pagination and lossless paging of oversized raw messages, repair Relay agent fields, and classify errors accurately. macOS keeps its legacy route unchanged.
+
+[Full bilingual notes](../docs/releases/v8.7.14.md).
+</details>
+
+<details>
 <summary><b>v8.7.13</b> - Linux OMP Collab-native Mobile chat and model selection</summary>
 
 Connect Mobile to Linux OMP's native Collab chat with user-anchored reply bubbles and same-host, same-session model selection. macOS keeps its legacy route, and other providers remain unchanged.

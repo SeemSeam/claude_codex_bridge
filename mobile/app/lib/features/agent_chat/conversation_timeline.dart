@@ -252,6 +252,23 @@ class _ConversationTimelineItem extends StatelessWidget {
     }
     return ConversationBubble(
       item: item,
+      contentLoader: (cursor) async {
+        final namespaceEpoch = view.namespaceEpoch;
+        if (namespaceEpoch == null) {
+          throw const FormatException('Conversation namespace unavailable');
+        }
+        final conversation = await repository.getAgentConversation(
+          projectId: view.project.id,
+          agent: agent.name,
+          namespaceEpoch: namespaceEpoch,
+          cursor: cursor,
+        );
+        final page = conversation.nativeContent;
+        if (page == null) {
+          throw const FormatException('Missing original content');
+        }
+        return page;
+      },
       expanded: expanded,
       timelineViewportHeight: timelineViewportHeight,
       timelineScrollController: timelineScrollController,

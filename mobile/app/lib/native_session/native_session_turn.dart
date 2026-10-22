@@ -116,6 +116,8 @@ class NativeSessionTurn {
     required this.turnId,
     required this.status,
     required List<NativeSessionEntry> entries,
+    this.readCursor,
+    this.reason,
   }) : entries = _deduplicate(entries);
 
   static const schemaVersion = 1;
@@ -123,6 +125,8 @@ class NativeSessionTurn {
   final String turnId;
   final NativeSessionStatus status;
   final List<NativeSessionEntry> entries;
+  final String? readCursor;
+  final String? reason;
 
   factory NativeSessionTurn.fromJson(Map<String, Object?> json) {
     if (json['schema_version'] != schemaVersion) {
@@ -146,6 +150,8 @@ class NativeSessionTurn {
                 ),
               )
               .toList(),
+      readCursor: json['read_cursor'] as String?,
+      reason: json['reason'] as String?,
     );
   }
 
@@ -155,6 +161,8 @@ class NativeSessionTurn {
     'turn_id': turnId,
     'status': status.name,
     'entries': entries.map((entry) => entry.toJson()).toList(),
+    if (readCursor != null) 'read_cursor': readCursor,
+    if (reason != null) 'reason': reason,
   };
 
   /// Latest assistant entry containing visible text, never a tool result or a
