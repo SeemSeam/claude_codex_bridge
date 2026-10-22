@@ -605,6 +605,59 @@ def test_dispatcher_routes_reply_into_registered_caller_mailbox(tmp_path: Path) 
     assert 'queued_events' not in queue_summary['agent']
 
 
+def test_omp_python_ask_routes_artifact_reply_back_to_frontdesk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from agents.config_loader import load_project_config
+    from cli.context import CliContextBuilder
+    from cli.models import ParsedAskCommand
+    from cli.services import ask as ask_service
+
+    project_root = tmp_path / 'omp-python-return'
+    _bootstrap_test_project(project_root)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        'frontdesk:omp, executor:omp\n', encoding='utf-8',
+    )
+    command = ParsedAskCommand(
+        project=None, target='executor', sender=None, message='review', artifact_reply=True,
+    )
+    context = CliContextBuilder().build(command, cwd=project_root)
+    layout = context.paths
+    config = load_project_config(project_root).config
+    registry = AgentRegistry(layout, config)
+    for pid, name in enumerate(('frontdesk', 'executor'), start=101):
+        registry.upsert(_runtime(name, project_id=context.project.project_id, layout=layout, pid=pid))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: '2026-10-22T00:00:00Z')
+    monkeypatch.setenv('PI_CODING_AGENT_DIR', str(
+        layout.agent_provider_state_dir('frontdesk', 'omp') / 'home' / '.omp' / 'agent'
+    ))
+
+    class Client:
+        def submit(self, envelope):
+            return dispatcher.submit(envelope).to_record()
+
+    monkeypatch.setattr(
+        ask_service, 'invoke_mounted_daemon',
+        lambda context, allow_restart_stale, request_fn: request_fn(Client()),
+    )
+    summary = ask_service.submit_ask(context, command)
+    job_id = summary.jobs[0]['job_id']
+    dispatcher.tick()
+    dispatcher.complete(job_id, _decision(reply='request_changes: review evidence'))
+
+    attempt = AttemptStore(layout).get_latest_by_job_id(job_id)
+    message = MessageStore(layout).get_latest(attempt.message_id)
+    assert message.from_actor == 'frontdesk'
+    reply = ReplyStore(layout).list_message(message.message_id)[0]
+    assert reply.reply_artifact is not None
+    assert Path(reply.reply_artifact['path']).read_text(encoding='utf-8') == 'request_changes: review evidence'
+    events = InboundEventStore(layout).list_agent('frontdesk')
+    assert len(events) == 1
+    assert events[0].event_type is InboundEventType.TASK_REPLY
+    assert events[0].status is InboundEventStatus.QUEUED
+    assert MailboxStore(layout).load('frontdesk').pending_reply_count == 1
+
+
 def test_dispatcher_records_empty_cancel_as_consumed_completion_notice(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-empty-cancel-notice'
     ctx = _bootstrap_test_project(project_root)

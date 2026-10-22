@@ -2,7 +2,14 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-10-10
+Last updated: 2026-10-22
+
+## OMP Python ask identity — Local repair verified
+
+2026-10-22: [evidence](evidence/omp-python-ask-identity-20261022.md) records the
+lost-caller root cause, exact managed-directory fallback, native OMP environment
+filter probe and related regressions. Local source repair is complete; rollout
+and release qualification remain separate. No live task recovery was performed.
 
 ## PR #395 local repair — Done
 

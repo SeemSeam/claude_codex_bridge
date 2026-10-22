@@ -2,7 +2,14 @@
 
 Date: 2026-06-14
 
-Last updated: 2026-10-10
+Last updated: 2026-10-22
+
+## OMP Python ask caller identity
+
+2026-10-22: [local source repair and verification](evidence/omp-python-ask-identity-20261022.md)
+recovers the configured Agent from its exact managed OMP directory after the
+Python environment filter removes CCB caller fields. Sender precedence and
+project boundaries are covered; existing live tasks and sessions are untouched.
 
 ## PR #395 local integration and repair
 

@@ -1045,6 +1045,99 @@ def test_caller_context_env_includes_project_identity(tmp_path: Path) -> None:
     assert env['CCB_CALLER_PROJECT_ID'] == compute_project_id(project_root)
 
 
+@pytest.mark.parametrize('relocated', [False, True])
+def test_omp_python_ask_recovers_sender_from_managed_agent_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, relocated: bool,
+) -> None:
+    project_root = tmp_path / 'omp-project'
+    _write_config(project_root, 'frontdesk:omp, executor:omp\n')
+    if relocated:
+        (project_root / '.ccb' / 'runtime-root-ref.json').write_text(json.dumps({
+            'schema_version': 1,
+            'record_type': 'ccb_runtime_root_ref',
+            'project_id': compute_project_id(project_root),
+            'runtime_state_root': str(tmp_path / 'relocated-state'),
+            'created_at': '2026-10-22T00:00:00Z',
+        }), encoding='utf-8')
+    command = ParsedAskCommand(project=None, target='executor', sender=None, message='review')
+    context = CliContextBuilder().build(command, cwd=project_root)
+    # OMP's Python allowlist preserves PI_* but drops CCB_* and CODEX_*.
+    if relocated:
+        assert context.paths.runtime_state_root == tmp_path / 'relocated-state'
+    monkeypatch.setenv('PI_CODING_AGENT_DIR', str(
+        context.paths.agent_provider_state_dir('frontdesk', 'omp') / 'home' / '.omp' / 'agent'
+    ))
+
+    assert ask_service.resolve_ask_sender(context, None) == 'frontdesk'
+    assert ask_service.resolve_ask_sender(context, 'user') == 'user'
+
+
+@pytest.mark.parametrize('agent_dir', [
+    'other/.ccb/agents/frontdesk/provider-state/omp/home/.omp/agent',
+    'project/.ccb/agents/unknown/provider-state/omp/home/.omp/agent',
+    'project/.ccb/agents/frontdesk/provider-state/pi/home/.omp/agent',
+    'project/.ccb/agents/frontdesk/provider-state/omp/home/.omp/agent/child',
+    'project/.ccb/agents/frontdesk/provider-runtime/omp',
+    'external/.omp/agent',
+])
+def test_omp_python_ask_does_not_infer_sender_from_unbound_agent_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, agent_dir: str,
+) -> None:
+    project_root = tmp_path / 'project'
+    _write_config(project_root, 'frontdesk:omp, executor:omp\n')
+    command = ParsedAskCommand(project=None, target='executor', sender=None, message='review')
+    context = CliContextBuilder().build(command, cwd=project_root)
+    monkeypatch.setenv('PI_CODING_AGENT_DIR', str(tmp_path / agent_dir))
+
+    assert ask_service.resolve_ask_sender(context, None) == 'user'
+
+
+def test_omp_python_sender_does_not_follow_managed_dir_symlink_outside_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'project'
+    _write_config(project_root, 'frontdesk:omp, executor:omp\n')
+    command = ParsedAskCommand(project=None, target='executor', sender=None, message='review')
+    context = CliContextBuilder().build(command, cwd=project_root)
+    external = tmp_path / 'external-agent-dir'
+    external.mkdir()
+    agent_dir = context.paths.agent_provider_state_dir('frontdesk', 'omp') / 'home' / '.omp' / 'agent'
+    agent_dir.parent.mkdir(parents=True)
+    agent_dir.symlink_to(external, target_is_directory=True)
+    monkeypatch.setenv('PI_CODING_AGENT_DIR', str(agent_dir))
+
+    assert ask_service.resolve_ask_sender(context, None) == 'user'
+
+
+@pytest.mark.parametrize('identity', ['runtime', 'actor', 'session', 'foreign-runtime', 'non-omp'])
+def test_omp_python_sender_fallback_preserves_existing_identity_authority(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, identity: str,
+) -> None:
+    project_root = tmp_path / 'project'
+    provider = 'codex' if identity == 'non-omp' else 'omp'
+    _write_config(project_root, f'frontdesk:{provider}, executor:omp\n')
+    command = ParsedAskCommand(project=None, target='executor', sender=None, message='review')
+    context = CliContextBuilder().build(command, cwd=project_root)
+    monkeypatch.setenv('PI_CODING_AGENT_DIR', str(
+        context.paths.agent_provider_state_dir('frontdesk', 'omp') / 'home' / '.omp' / 'agent'
+    ))
+    if identity == 'runtime':
+        monkeypatch.setenv('CCB_CALLER_RUNTIME_DIR', str(
+            context.paths.agent_provider_runtime_dir('executor', 'omp')
+        ))
+    elif identity == 'actor':
+        monkeypatch.setenv('CCB_CALLER_ACTOR', 'executor')
+    elif identity == 'session':
+        monkeypatch.setenv('CCB_SESSION_ID', 'ccb-executor-current')
+    elif identity == 'foreign-runtime':
+        monkeypatch.setenv('CCB_CALLER_RUNTIME_DIR', str(
+            tmp_path / 'other' / '.ccb' / 'agents' / 'frontdesk' / 'provider-runtime' / 'omp'
+        ))
+
+    expected = 'user' if identity in {'foreign-runtime', 'non-omp'} else 'executor'
+    assert ask_service.resolve_ask_sender(context, None) == expected
+
+
 def test_watch_ask_job_reconnects_and_preserves_cursor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-ask-watch'
     project_root.mkdir()

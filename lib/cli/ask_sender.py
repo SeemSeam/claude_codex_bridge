@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from agents.config_loader import load_project_config
-from agents.models import AgentValidationError, normalize_agent_name
+from agents.models import AgentSpec, AgentValidationError, normalize_agent_name
 from cli.context import CliContext
 from mailbox_runtime.targets import USER_ACTOR
 from workspace.actors import resolve_workspace_actor
@@ -25,11 +26,41 @@ def resolve_ask_sender(context: CliContext, explicit_sender: str | None) -> str:
     if session_actor:
         return session_actor
 
+    # OMP's Python tool filters CCB_* and CODEX_* out of its environment,
+    # but preserves PI_*. Recover only an exact, configured managed OMP home.
+    # A supplied runtime path remains authoritative even when it is stale.
+    runtime_env_seen = any(
+        str(os.environ.get(key) or '').strip()
+        for key in ('CCB_CALLER_RUNTIME_DIR', 'CODEX_RUNTIME_DIR')
+    )
+    if not runtime_env_seen:
+        omp_actor = _actor_from_omp_agent_dir(context, config.agents)
+        if omp_actor:
+            return omp_actor
+
     workspace_actor = resolve_workspace_actor(context.cwd, project_id=context.project.project_id)
     if workspace_actor:
         return workspace_actor
 
     return USER_ACTOR
+
+
+def _actor_from_omp_agent_dir(context: CliContext, configured_agents: Mapping[str, AgentSpec]) -> str | None:
+    raw = str(os.environ.get('PI_CODING_AGENT_DIR') or '').strip()
+    if not raw:
+        return None
+    agent_dir = _resolve_path(Path(raw))
+    try:
+        relative = agent_dir.relative_to(_resolve_path(context.paths.agents_dir))
+    except ValueError:
+        return None
+    if len(relative.parts) != 6 or relative.parts[1:] != ('provider-state', 'omp', 'home', '.omp', 'agent'):
+        return None
+    actor = relative.parts[0]
+    spec = configured_agents.get(actor)
+    if getattr(spec, 'provider', None) != 'omp':
+        return None
+    return actor
 
 
 def _resolve_session_actor(context: CliContext, *, allowed_session_actors: frozenset[str]) -> str | None:
