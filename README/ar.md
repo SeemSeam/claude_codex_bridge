@@ -6,7 +6,7 @@
 **نسّق Codex وClaude وGemini وغيرهم من وكلاء CLI ضمن سير عمل مرئي وقابل للتحكم والتدخل المباشر**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.16-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.17-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,14 @@
 - متحكم هاتف بعيد: تحكم صوتي عبر providers، ونقل ملفات، ووصول إلى طرفية بعيدة.
 
 <a id="how-to-install"></a>
+
+## New in 8.7.17: OMP Reply Receipts / OMP 回复收据
+
+OMP replies use bounded, owner-bound native `reply_deliver` / `reply_status` delivery. A `ccb-reply` is received as an aside at a safe step boundary; only a persisted native `custom_message` counts as a receipt and releases the mailbox. Receipt does not mean subsequent business processing is finished. Drafts and active ask anchors remain intact, no concurrent turn is started, and ambiguous sends are queried rather than replayed.
+
+OMP 回复通过有界、绑定归属的原生 `reply_deliver` / `reply_status` 投递；`ccb-reply` 在安全步骤边界作为 aside 接收。只有已持久化的原生 `custom_message` 才算收据并释放邮箱，不代表后续业务处理完成。保留草稿与活跃 ask 锚点，不启动并发回合；发送结果不明时查询状态，不重放。
+
+[Full bilingual notes](../docs/releases/v8.7.17.md).
 
 ## طريقة التثبيت
 
@@ -184,7 +192,7 @@ ccb update mobile
 
 يتضمن CCB 8.6.6 مصدر Flutter الخاص بـ CCB Mobile داخل [`mobile/`](../mobile/) وينشر Android APK عبر GitHub Releases:
 
-- [تنزيل CCB Mobile v8.7.16 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.16/ccb-mobile-v8.7.16.apk)
+- [تنزيل CCB Mobile v8.7.17 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.17/ccb-mobile-v8.7.17.apk)
 - مصدر التطبيق: [`mobile/app`](../mobile/app)
 - مصدر gateway الخادم: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -261,6 +269,16 @@ ccb update rich
 <a id="release-notes"></a>
 
 ## ملاحظات الإصدار
+
+<details open>
+<summary><b>v8.7.17</b> - OMP reply receipts / OMP 回复收据</summary>
+
+OMP replies use bounded, owner-bound native `reply_deliver` / `reply_status` delivery. A `ccb-reply` is received as an aside at a safe step boundary; only a persisted native `custom_message` counts as a receipt and releases the mailbox. Receipt does not mean subsequent business processing is finished. Drafts and active ask anchors remain intact, no concurrent turn is started, and ambiguous sends are queried rather than replayed.
+
+OMP 回复通过有界、绑定归属的原生 `reply_deliver` / `reply_status` 投递；`ccb-reply` 在安全步骤边界作为 aside 接收。只有已持久化的原生 `custom_message` 才算收据并释放邮箱，不代表后续业务处理完成。保留草稿与活跃 ask 锚点，不启动并发回合；发送结果不明时查询状态，不重放。
+
+[Full bilingual notes](../docs/releases/v8.7.17.md).
+</details>
 
 <details open>
 <summary><b>v8.7.16</b> - OMP Python ask sender identity recovery</summary>

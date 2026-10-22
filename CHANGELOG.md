@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.7.17 (2026-10-22)
+
+- Add bounded, owner-bound native OMP `reply_deliver` / `reply_status` ingress so returned replies do not wait behind an entire long-running business turn. Deliver `ccb-reply` as an aside at a safe step boundary.
+- Treat only a persisted native `custom_message` receipt as delivery completion and release the mailbox without claiming subsequent business processing is finished; preserve composer drafts and active ask anchors, start no concurrent turn, and query ambiguous sends instead of replaying them.
+- Existing OMP processes must restart normally when idle to load the new extension; never restart a busy session just to apply this update.
+- 为 OMP 增加有界、绑定归属的原生回复投递/状态接口，在安全步骤边界以 aside 接收 `ccb-reply`，避免回复被完整长回合阻塞。仅以持久化的原生 `custom_message` 为收据并释放邮箱，不表示后续业务完成；保留草稿及活跃 ask 锚点，不启动并发回合，发送结果不明时查询而不重放。已有 OMP 进程请在空闲后正常重启加载扩展，不要重启忙碌会话。
+- Preserve v8.7.16 history and the existing WeChat QR image/cache key; [full bilingual notes](docs/releases/v8.7.17.md).
+
 ## v8.7.16 (2026-10-22)
 
 - Include `6d3ae4a53`: recover OMP Python `ask` caller identity from an exact configured managed `PI_CODING_AGENT_DIR` when the tool filters CCB environment fields, preserving existing identity precedence and completion mailbox routing.

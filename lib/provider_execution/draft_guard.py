@@ -219,6 +219,11 @@ def resolve_job_target(job, context) -> DraftTarget | None:
     data = json.loads(session_file.read_text(encoding='utf-8-sig'))
     if not isinstance(data, dict):
         raise ValueError('invalid managed binding')
+    if job.provider == 'omp' and str(getattr(getattr(job, 'request', None), 'message_type', '')) == 'reply_delivery':
+        from provider_backends.omp.reply_delivery import capable
+        if capable(str(data.get('omp_draft_guard_socket') or ''), job.agent_name,
+                   str(data.get('ccb_session_id') or '')):
+            return None
     backend = get_backend_for_session(data)
     config = initial_guard_state(job.provider, backend, data)
     if not config['draft_guard_enabled']:

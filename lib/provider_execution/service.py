@@ -275,6 +275,8 @@ class ExecutionService(ExecutionServiceStateMixin):
 
 
 def interrupt_active_submission(submission: ProviderSubmission) -> None:
+    if submission.provider == 'omp' and submission.runtime_state.get('reply_receipt_transport'):
+        return  # Receipt admission never owns the provider's business turn.
     backend = submission.runtime_state.get("backend")
     pane_target = _runtime_pane_target(submission.runtime_state)
     if backend is None or pane_target is None:
@@ -301,6 +303,8 @@ def _complete_herdr_pane_ref(value: object) -> bool:
 
 
 def _cancel_submission(adapter, submission: ProviderSubmission) -> None:
+    if submission.provider == 'omp' and submission.runtime_state.get('reply_receipt_transport'):
+        return
     if submission.runtime_state.get('draft_guard_enabled') and submission.runtime_state.get('prompt_sent') is False:
         return  # This job owns no provider turn or composer content yet.
     provider_cancel = getattr(adapter, 'cancel', None) if adapter is not None else None

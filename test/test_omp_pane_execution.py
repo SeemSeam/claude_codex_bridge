@@ -391,3 +391,45 @@ def test_omp_composite_defaults_to_pane_and_preserves_headless_jobs(
     )
     assert headless.calls == ["start", "poll", "cancel", "export", "resume"]
     assert pane.calls == ["start"]
+
+
+def test_omp_busy_reply_receipt_releases_without_terminal_or_composer_send(monkeypatch, tmp_path):
+    from provider_backends.omp import reply_delivery
+    import hashlib
+
+    data, events, dispatch = _runtime(tmp_path)
+    data['omp_draft_guard_socket'] = '/receipt.sock'
+    _append(events, _event('extension_ready'), _event('agent_start'))
+    backend = _FakeBackend()
+    monkeypatch.setattr(pane_execution, 'get_backend_for_session', lambda data: backend)
+    adapter = OmpPaneExecutionAdapter()
+    adapter.session_loader = lambda work_dir, instance=None: _FakeSession(data)
+    body = 'CCB_REPLY from=executor result'
+    calls = []
+
+    def request(path, actor, launch, operation, **fields):
+        calls.append(operation)
+        base = {'runtime_instance_id': INSTANCE_ID, 'session_id': 'native'}
+        if operation == 'reply_capabilities':
+            return {**base, 'reply_ingress_version': 1}
+        return {**base, 'state': 'received', 'delivery_id': fields['delivery_id'],
+                'body_sha256': hashlib.sha256(body.encode()).hexdigest()}
+
+    monkeypatch.setattr(reply_delivery, 'request', request)
+    job = _job(body=body)
+    job.request.message_type = 'reply_delivery'
+    job.provider_options = {'no_wrap': True}
+    submission = adapter.start(job, context=_context(tmp_path), now=NOW)
+    assert submission.runtime_state['reply_receipt_transport']
+    adapter.cancel(submission)
+    assert backend.keys == []
+    from provider_execution.service import _cancel_submission, interrupt_active_submission
+    _cancel_submission(adapter, submission)
+    interrupt_active_submission(submission)
+    assert backend.keys == []
+    result = adapter.poll(submission, now=NOW)
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert result.decision.reason == 'omp_reply_received'
+    assert result.decision.diagnostics['business_processing_complete'] is False
+    assert calls == ['reply_capabilities', 'reply_deliver', 'reply_status']
+    assert backend.sent == [] and dispatch.read_text() == ''

@@ -10,11 +10,19 @@ CCB and provider CLIs run on the server; the mobile app is a controller for
 project discovery, agent switching, terminal access, Markdown reading,
 notifications, local/Tailnet gateway access, and file transfer.
 
+## v8.7.17: OMP reply receipts / OMP 回复收据
+
+OMP reply delivery uses bounded, owner-bound native `reply_deliver` / `reply_status` calls. A `ccb-reply` arrives as an aside at a safe step boundary; only its persisted native `custom_message` counts as a receipt and releases the mailbox. This does not mean the agent has finished subsequent business processing. The composer and active ask anchor are preserved, no concurrent turn starts, and ambiguous sends are queried instead of replayed. Existing OMP processes load the new extension after a normal idle restart; do not restart a busy session.
+
+OMP 回复采用有界、绑定归属的原生 `reply_deliver` / `reply_status` 调用，在安全步骤边界将 `ccb-reply` 作为 aside 接收。只有已持久化的原生 `custom_message` 才算收据并释放邮箱，不代表 Agent 已完成后续业务处理。保留输入草稿与活跃 ask 锚点，不启动并发回合；结果不明时查询状态，不重放。已有 OMP 进程需空闲后正常重启以加载新扩展，不要重启忙碌会话。
+
+[Full bilingual notes](../docs/releases/v8.7.17.md).
+
 ## Android Alpha Release
 
-CCB Mobile v8.7.16 release APK:
+CCB Mobile v8.7.17 release APK:
 
-- [Download ccb-mobile-v8.7.16.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.16/ccb-mobile-v8.7.16.apk)
+- [Download ccb-mobile-v8.7.17.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.17/ccb-mobile-v8.7.17.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 

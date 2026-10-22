@@ -1,7 +1,24 @@
-"""OMP-only native editor bridge embedded in the managed completion extension."""
+"""OMP-only native editor and reply bridge in the managed completion extension.
+
+Reply ingress v1 uses actor/launch-bound ``reply_capabilities`` to discover the
+runtime/session binding. ``reply_deliver`` accepts delivery_id and body;
+``reply_status`` accepts delivery_id plus optional body/body_sha256. Both require
+that exact runtime/session. States are pending, received, missing, or unknown;
+only native ccb-reply custom_message entries also verified in the session JSONL
+authorize a received receipt with delivery_id/body_sha256. Owner-private fsynced
+intents hold ambiguous attempts across restarts, never replaying them.
+Admission and native processing have separate lifetimes, so busy owners can
+admit multiple aside messages without interruption.
+"""
 
 IMPORTS = '''import { createServer, createConnection } from "node:net";
 import { chmodSync, lstatSync, unlinkSync } from "node:fs";
+import { createHash as replyCreateHash } from "node:crypto";
+import { open as replyOpen } from "node:fs/promises";
+import { openSync as replyOpenSync, closeSync as replyCloseSync, fstatSync as replyFstatSync,
+  readFileSync as replyReadSync, writeSync as replyWriteSync, fsyncSync as replyFsyncSync,
+  constants as replyFsConstants } from "node:fs";
+import { dirname as replyDirname } from "node:path";
 '''
 
 BRIDGE = r'''
@@ -10,6 +27,180 @@ BRIDGE = r'''
   const editorPath = process.env.CCB_OMP_COMPOSER_SOCKET || "";
   let modelControlBusy = false;
   const modelAttempts = new Map<string, { signature: string, result: Promise<any> }>();
+  // Admission is serialized, not native processing: sendMessage may resolve
+  // only after an entire business turn. Never put that promise on this tail.
+  let replyAdmission = Promise.resolve();
+  const replyAttempts = new Map<string, { hash: string, failed: boolean, processing: Promise<void> | null }>();
+  const replyHash = (body: string) => replyCreateHash("sha256").update(body, "utf8").digest("hex");
+  const replyIntentPath = (typeof eventPath === "string" && eventPath ? eventPath : editorPath) + ".reply-intents.jsonl";
+  const replyJournal = (record?: any) => {
+    const fd = replyOpenSync(replyIntentPath, replyFsConstants.O_RDWR | replyFsConstants.O_APPEND |
+      replyFsConstants.O_CREAT | replyFsConstants.O_NOFOLLOW, 0o600);
+    try {
+      const stat = replyFstatSync(fd);
+      if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) || stat.size > 1024 * 1024)
+        throw Error("unsafe or full reply intent journal");
+      const text = replyReadSync(fd, "utf8");
+      if (text && !text.endsWith("\n")) throw Error("partial reply intent journal");
+      const records = text.split("\n").filter(Boolean).map((line: string) => {
+        const value = JSON.parse(line);
+        if (typeof value.actor !== "string" || typeof value.launch_session_id !== "string" ||
+            typeof value.session_id !== "string" || typeof value.delivery_id !== "string" ||
+            !/^[a-f0-9]{64}$/.test(value.body_sha256)) throw Error("invalid reply intent");
+        return value;
+      });
+      if (record) {
+        const bytes = Buffer.from(JSON.stringify(record) + "\n");
+        if (stat.size + bytes.length > 1024 * 1024) throw Error("full reply intent journal");
+        let offset = 0;
+        while (offset < bytes.length) {
+          const written = replyWriteSync(fd, bytes, offset, bytes.length - offset);
+          if (!written) throw Error("short reply intent write");
+          offset += written;
+        }
+        replyFsyncSync(fd);
+        const directory = replyOpenSync(replyDirname(replyIntentPath), replyFsConstants.O_RDONLY | replyFsConstants.O_DIRECTORY);
+        try { replyFsyncSync(directory); } finally { replyCloseSync(directory); }
+      }
+      return records;
+    } finally { replyCloseSync(fd); }
+  };
+  // Read only the bounded JSONL tail, never trust an in-memory append as a
+  // receipt. Older records outside this budget remain held, not replayed.
+  const replyOnDisk = async (path: string, matches: any[]) => {
+    let file: any;
+    try {
+      file = await replyOpen(path, "r");
+      const size = (await file.stat()).size;
+      const length = Math.min(size, 4 * 1024 * 1024);
+      const start = size - length;
+      const buffer = Buffer.allocUnsafe(length);
+      const { bytesRead } = await file.read(buffer, 0, length, start);
+      const text = buffer.subarray(0, bytesRead).toString("utf8");
+      const lines = text.split("\n");
+      if (start > 0) lines.shift(); // May start in a record or UTF-8 code point.
+      lines.pop(); // Only newline-terminated records are persisted receipts.
+      const found = lines.some((line: string) => {
+        let entry: any;
+        try { entry = JSON.parse(line); } catch { return false; }
+        return entry.type === "custom_message" && entry.customType === "ccb-reply" &&
+          matches.some((match: any) => entry.id === match.id &&
+            entry.details?.delivery_id === match.details.delivery_id &&
+            entry.details?.body_sha256 === match.details.body_sha256 &&
+            typeof entry.content === "string" && replyHash(entry.content) === match.details.body_sha256);
+      });
+      if (found) await file.sync();
+      return found;
+    } catch (error: any) {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    } finally { await file?.close(); }
+  };
+  const replyOperation = async (request: any) => {
+    const ctx = editorContext;
+    const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
+    const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId };
+    const unknown = (reason: string, status_code = 409) => ({ ...base, state: "unknown", reason, status_code });
+    if (request.actor !== actor || request.launch_session_id !== launchSessionId || !ctx || !sessionId)
+      return unknown("reply_binding_unavailable");
+    if (request.operation === "reply_capabilities") {
+      if (typeof pi.sendMessage !== "function" || typeof ctx.sessionManager?.getEntries !== "function")
+        return unknown("reply_ingress_unavailable", 503);
+      return { ...base, reply_ingress_version: 1 };
+    }
+    if (request.runtime_instance_id !== runtimeInstanceId || request.session_id !== sessionId)
+      return unknown("reply_binding_changed");
+    const id = request.delivery_id;
+    if (typeof id !== "string" || !id || id.length > 256)
+      return unknown("invalid_delivery_id", 400);
+    const delivering = request.operation === "reply_deliver";
+    if ((delivering || request.body !== undefined) &&
+        (typeof request.body !== "string" || Buffer.byteLength(request.body, "utf8") > 256 * 1024))
+      return unknown("invalid_reply_body", 400);
+    const hash = typeof request.body === "string" ? replyHash(request.body) : request.body_sha256;
+    if (hash !== undefined && (typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)))
+      return unknown("invalid_reply_hash", 400);
+    if (request.body_sha256 !== undefined && request.body_sha256 !== hash)
+      return unknown("reply_body_conflict");
+    // Session identity is part of the key. Never use another session's receipt
+    // or replay a held attempt, including after sendMessage rejects.
+    const key = JSON.stringify([sessionId, id]);
+    const previous = replyAttempts.get(key);
+    let intents: any[];
+    try { intents = replyJournal().filter((record: any) => record.actor === actor &&
+      record.launch_session_id === launchSessionId && record.session_id === sessionId && record.delivery_id === id); }
+    catch { return unknown("reply_intent_unknown", 503); }
+    if (intents.some((record: any) => hash !== undefined && record.body_sha256 !== hash))
+      return unknown("reply_body_conflict");
+    let entries: any;
+    try { entries = ctx.sessionManager?.getEntries?.(); }
+    catch { return unknown("reply_entries_unavailable", 503); }
+    if (!Array.isArray(entries)) return unknown("reply_entries_unavailable", 503);
+    const matches = entries.filter((entry: any) => entry.type === "custom_message" &&
+      entry.customType === "ccb-reply" && entry.details?.delivery_id === id);
+    if ((previous && hash !== undefined && previous.hash !== hash) ||
+        matches.some((entry: any) => (hash !== undefined && entry.details?.body_sha256 !== hash) ||
+          typeof entry.content !== "string" || replyHash(entry.content) !== entry.details?.body_sha256))
+      return unknown("reply_body_conflict");
+    if (matches.length) {
+      const persistedHash = matches[0].details.body_sha256;
+      if (matches.some((entry: any) => entry.details.body_sha256 !== persistedHash) ||
+          intents.some((record: any) => record.body_sha256 !== persistedHash) ||
+          (previous && previous.hash !== persistedHash)) return unknown("reply_body_conflict");
+      const sessionFile = ctx.sessionManager?.getSessionFile?.();
+      if (typeof sessionFile !== "string" || !sessionFile) return unknown("reply_persistence_unavailable", 503);
+      let persisted = false;
+      try {
+        if (typeof ctx.sessionManager.flush === "function") await ctx.sessionManager.flush();
+        persisted = await replyOnDisk(sessionFile, matches);
+      } catch { return unknown("reply_persistence_unknown", 502); }
+      if (editorContext !== ctx || String(ctx.sessionManager?.getSessionId?.() || "") !== sessionId ||
+          ctx.sessionManager?.getSessionFile?.() !== sessionFile)
+        return { runtime_instance_id: runtimeInstanceId,
+          session_id: String(editorContext?.sessionManager?.getSessionId?.() || ""),
+          state: "unknown", reason: "reply_binding_changed", status_code: 409 };
+      if (!persisted) return { ...base, state: "pending", delivery_id: id, body_sha256: persistedHash };
+      return { ...base, state: "received", delivery_id: id, body_sha256: persistedHash };
+    }
+    if (previous) return { ...base, state: previous.failed ? "unknown" : "pending",
+      delivery_id: id, body_sha256: previous.hash,
+      ...(previous.failed ? { reason: "reply_processing_unknown" } : {}) };
+    if (intents.length) return { ...base, state: "unknown", reason: "reply_processing_unknown",
+      delivery_id: id, body_sha256: intents[0].body_sha256 };
+    if (!delivering) return { ...base, state: "missing", delivery_id: id };
+    // Never evict unresolved/failed admissions: eviction would permit replay.
+    // Receipted attempts may be evicted because native entries deduplicate them.
+    if (replyAttempts.size >= 256) {
+      for (const [oldKey, attempt] of replyAttempts) {
+        const [oldSession, oldId] = JSON.parse(oldKey);
+        if (oldSession === sessionId && !attempt.processing && entries.some((entry: any) =>
+            entry.type === "custom_message" && entry.customType === "ccb-reply" &&
+            entry.details?.delivery_id === oldId && entry.details?.body_sha256 === attempt.hash)) {
+          replyAttempts.delete(oldKey);
+          break;
+        }
+      }
+    }
+    if (replyAttempts.size >= 256) return unknown("reply_admission_full", 503);
+    if (typeof pi.sendMessage !== "function") return unknown("reply_ingress_unavailable", 503);
+    try { replyJournal({ actor, launch_session_id: launchSessionId, session_id: sessionId,
+      delivery_id: id, body_sha256: hash }); }
+    catch {
+      replyAttempts.set(key, { hash: hash as string, failed: true, processing: null });
+      return unknown("reply_intent_unknown", 503);
+    }
+    const attempt = { hash: hash as string, failed: false, processing: null as Promise<void> | null };
+    replyAttempts.set(key, attempt);
+    try {
+      const processing = pi.sendMessage({ customType: "ccb-reply", content: request.body,
+        display: true, details: { delivery_id: id, body_sha256: hash } },
+        { deliverAs: "aside", triggerTurn: true });
+      attempt.processing = Promise.resolve(processing).then(() => {}, () => { attempt.failed = true; })
+        .finally(() => { attempt.processing = null; });
+    } catch { attempt.failed = true; }
+    return { ...base, state: attempt.failed ? "unknown" : "pending", delivery_id: id, body_sha256: hash,
+      ...(attempt.failed ? { reason: "reply_processing_unknown" } : {}) };
+  };
   const modelSnapshot = (ctx: any) => {
     const available = ctx.modelRegistry?.getAvailable?.();
     if (!Array.isArray(available) || available.length > 4096)
@@ -33,6 +224,11 @@ BRIDGE = r'''
     };
   };
   const editorReply = async (request: any) => {
+    if (["reply_capabilities", "reply_deliver", "reply_status"].includes(request?.operation)) {
+      const result = replyAdmission.then(() => replyOperation(request));
+      replyAdmission = result.then(() => {}, () => {});
+      return await result;
+    }
     const ctx = editorContext;
     const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
     const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId, pid: process.pid, leaf_id: ctx?.sessionManager?.getLeafId?.() ?? null };
@@ -137,18 +333,23 @@ BRIDGE = r'''
       if (error.code !== "ENOENT") return;
     }
     const server = createServer((client) => {
-      let input = "";
+      const chunks: Buffer[] = [];
+      let inputBytes = 0;
       let handled = false;
       client.setTimeout(1000, () => client.destroy());
       client.on("error", () => {});
       client.on("data", async (chunk) => {
         if (handled) return;
-        input += chunk.toString("utf8");
-        if (input.length > 4096) { handled = true; client.destroy(); return; }
-        if (!input.includes("\n")) return;
+        chunks.push(chunk);
+        inputBytes += chunk.length;
+        if (inputBytes > 300 * 1024) { handled = true; client.destroy(); return; }
+        if (!chunk.includes(10)) return;
+        const input = Buffer.concat(chunks).toString("utf8");
         handled = true;
         try { client.end(JSON.stringify(await editorReply(JSON.parse(input))) + "\n"); }
-        catch { client.end('{"state":"unknown","reason":"editor_error"}\n'); }
+        catch { client.end(JSON.stringify({ state: "unknown", reason: "editor_error",
+          runtime_instance_id: runtimeInstanceId,
+          session_id: String(editorContext?.sessionManager?.getSessionId?.() || "") }) + "\n"); }
       });
     });
     server.on("error", () => {});

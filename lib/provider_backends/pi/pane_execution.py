@@ -283,6 +283,10 @@ class PiPaneExecutionAdapter:
         if pane_dead is not None:
             return pane_dead
 
+        if state.get('reply_receipt_transport'):
+            from provider_backends.omp.reply_delivery import poll_receipt
+            result = poll_receipt(submission, state, now=now)
+            return result if isinstance(result, ProviderPollResult) else ProviderPollResult(submission=result)
         if not bool(state.get("prompt_sent")):
             updated = _dispatch_if_ready(submission, state, now=now)
             if isinstance(updated, ProviderSubmission):
@@ -505,6 +509,8 @@ class PiPaneExecutionAdapter:
         return None
 
     def cancel(self, submission: ProviderSubmission) -> None:
+        if submission.runtime_state.get('reply_receipt_transport'):
+            return
         if _text(submission.runtime_state.get("mode")) != self.pane_mode:
             return
         state = submission.runtime_state
@@ -670,6 +676,9 @@ def _dispatch_if_ready(
             now=now,
             detail=_provider_reason(state, "completion_extension_not_ready"),
         )
+    if _text(state.get('provider')) == 'omp' and state.get('reply_delivery_complete_on_dispatch'):
+        from provider_backends.omp.reply_delivery import poll_receipt
+        return poll_receipt(submission, state, now=now)
     if observation.busy:
         guard = state.get('_draft_guard')
         if guard is not None:
