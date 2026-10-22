@@ -6,7 +6,7 @@
 **Coordonne Codex, Claude, Gemini et d'autres agents CLI dans des workflows visibles, contrôlables et reprenables directement**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.15-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.16-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Cette commande guide l'installation et la configuration.
 
 CCB 8.6.6 inclut le code source Flutter de CCB Mobile dans [`mobile/`](../mobile/) et publie l'APK Android via GitHub Releases :
 
-- [Télécharger l'APK CCB Mobile v8.7.15](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
+- [Télécharger l'APK CCB Mobile v8.7.16](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.16/ccb-mobile-v8.7.16.apk)
 - Source de l'app : [`mobile/app`](../mobile/app)
 - Source du gateway serveur : [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -247,7 +247,7 @@ Pour la configuration courante du projet, utilisez le panneau **⚙ Paramètres*
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=583d37f5" alt="Groupe WeChat" width="240">
+  <img src="../assets/weixin.png?v=a9f2d800" alt="Groupe WeChat" width="240">
 </p>
 
 <a id="community"></a>
@@ -263,6 +263,14 @@ Merci à [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) pou
 ## Notes de version
 
 <details open>
+<summary><b>v8.7.16</b> - OMP Python ask sender identity recovery</summary>
+
+Recover the OMP Python `ask` sender identity from the exact configured managed `PI_CODING_AGENT_DIR` when CCB environment variables are filtered, while preserving existing identity precedence and without replaying historical jobs. Refresh the WeChat group 2 QR code, valid until October 29.
+
+[Full bilingual notes](../docs/releases/v8.7.16.md).
+</details>
+
+<details>
 <summary><b>v8.7.15</b> - Incremental turn history and persisted FIFO delivery</summary>
 
 Preserve the complete historical body of same-session incremental turns while collapsing tool reasoning. Sends made while an agent is running now enter a persisted FIFO and execute serially: queued items stay visible without steering the active turn, while items with unknown delivery after a disconnect are held instead of blindly replayed. This release also includes v8.7.14's Relay large-history fixes. The changes are Linux-only; macOS keeps its legacy route unchanged.

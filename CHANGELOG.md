@@ -1,5 +1,11 @@
 # Changelog
 
+## v8.7.16 (2026-10-22)
+
+- Include `6d3ae4a53`: recover OMP Python `ask` caller identity from an exact configured managed `PI_CODING_AGENT_DIR` when the tool filters CCB environment fields, preserving existing identity precedence and completion mailbox routing.
+- Refresh the WeChat group 2 invitation image and README cache keys; the supplied QR expires October 29.
+- Retain v8.7.15's incremental OMP Mobile conversation history and durable FIFO delivery; [full bilingual notes](docs/releases/v8.7.16.md).
+
 ## v8.7.15 (2026-10-22)
 
 - Incrementally merge same-branch OMP history and preserve all visible assistant prose, loaded older pages and disclosure state instead of replacing the current view.

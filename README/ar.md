@@ -6,7 +6,7 @@
 **نسّق Codex وClaude وGemini وغيرهم من وكلاء CLI ضمن سير عمل مرئي وقابل للتحكم والتدخل المباشر**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.15-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.16-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ ccb update mobile
 
 يتضمن CCB 8.6.6 مصدر Flutter الخاص بـ CCB Mobile داخل [`mobile/`](../mobile/) وينشر Android APK عبر GitHub Releases:
 
-- [تنزيل CCB Mobile v8.7.15 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
+- [تنزيل CCB Mobile v8.7.16 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.16/ccb-mobile-v8.7.16.apk)
 - مصدر التطبيق: [`mobile/app`](../mobile/app)
 - مصدر gateway الخادم: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -247,7 +247,7 @@ ccb update rich
 - WeChat: `seemseam-com`
 
 <p align="center">
-  <img src="../assets/weixin.png?v=583d37f5" alt="مجموعة WeChat" width="240">
+  <img src="../assets/weixin.png?v=a9f2d800" alt="مجموعة WeChat" width="240">
 </p>
 
 <a id="community"></a>
@@ -263,6 +263,14 @@ ccb update rich
 ## ملاحظات الإصدار
 
 <details open>
+<summary><b>v8.7.16</b> - OMP Python ask sender identity recovery</summary>
+
+Recover the OMP Python `ask` sender identity from the exact configured managed `PI_CODING_AGENT_DIR` when CCB environment variables are filtered, while preserving existing identity precedence and without replaying historical jobs. Refresh the WeChat group 2 QR code, valid until October 29.
+
+[Full bilingual notes](../docs/releases/v8.7.16.md).
+</details>
+
+<details>
 <summary><b>v8.7.15</b> - Incremental turn history and persisted FIFO delivery</summary>
 
 Preserve the complete historical body of same-session incremental turns while collapsing tool reasoning. Sends made while an agent is running now enter a persisted FIFO and execute serially: queued items stay visible without steering the active turn, while items with unknown delivery after a disconnect are held instead of blindly replayed. This release also includes v8.7.14's Relay large-history fixes. The changes are Linux-only; macOS keeps its legacy route unchanged.

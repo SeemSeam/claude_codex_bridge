@@ -12,9 +12,9 @@ notifications, local/Tailnet gateway access, and file transfer.
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.15 release APK:
+CCB Mobile v8.7.16 release APK:
 
-- [Download ccb-mobile-v8.7.15.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
+- [Download ccb-mobile-v8.7.16.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.16/ccb-mobile-v8.7.16.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
