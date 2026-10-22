@@ -9,7 +9,10 @@ Run from repository root (after sourcing mobile/tools/mobile_toolchain_env.sh):
 RelayHostConnector with isolated admission, keys and TLS trust, and runs the full
 Android smoke using RelaySocketGatewayTransport through adb reverse. History
 page IDs and original UTF-8 bytes/SHA256 are checked by the production repository;
-only fixture controls/stats use direct authenticated HTTP. No paid inference runs.
+only fixture controls/stats use direct authenticated HTTP. The full smoke also
+submits three native inputs while busy and checks FIFO order, no concurrent
+prompts, stable queued IDs, and preserved intermediate/durable history.
+No paid inference runs.
 All state lives in a temporary directory; fixture
 controls require a random bearer token and the listener is IPv4 loopback only.
 """
@@ -46,6 +49,16 @@ const manager = SessionManager.inMemory(root);
 const listeners = new Set();
 let prompts = 0, changes = 0, modelRevision = 1, disconnected = false;
 let model = {provider: 'fixture', id: 'one'}, thinking = 'off', live = null;
+let automaticLive = false, activePrompts = 0, maxActivePrompts = 0;
+const dispatchOrder = [];
+const emit = event => {for (const fn of listeners) fn(event);};
+const beginLive = () => {
+  live = {role:'assistant',content:[{type:'text',text:`Fixture live turn ${prompts}`}],timestamp:Date.now()};
+  session.isStreaming = true;
+  emit({type:'agent_start'});
+  emit({type:'message_start',message:live});
+  emit({type:'message_update',message:live,assistantMessageEvent:{type:'text_delta',contentIndex:0,delta:live.content[0].text,partial:live}});
+};
 const models = ['one', 'two'].map(id => ({provider: 'fixture', id,
   name: `Fixture ${id} (no inference)`, reasoning_levels: ['off']}));
 const session = {
@@ -55,6 +68,12 @@ const session = {
   async promptCustomMessage(message) {
     prompts++;
     manager.appendCustomMessageEntry(message.customType, message.content, message.display, message.details, message.attribution);
+    dispatchOrder.push({ordinal:prompts,content:message.content});
+    if (automaticLive) {
+      activePrompts++;
+      maxActivePrompts = Math.max(maxActivePrompts, activePrompts);
+      beginLive();
+    }
     return true;
   },
 };
@@ -108,7 +127,12 @@ await new Promise(resolve => companion.listen(editor, resolve));
 const guest = new ManagedGuest({cwd:root, actor:'mobile', launch_session_id:'fixture-launch',
   registry_dir:collabHostsRuntimeDir(), editor_socket:editor}, relay);
 await guest.sync();
-const emit = event => {for (const fn of listeners) fn(event);};
+let draining = false, closed = false;
+const drainTimer = setInterval(() => {
+  if (closed || draining) return;
+  draining = true;
+  guest.exclusive(() => guest.drain()).catch(() => {}).finally(() => {draining = false;});
+}, 250);
 const bridge = path.join(root, 'runtime/collab/bridge.sock');
 await fs.mkdir(path.dirname(bridge), {recursive:true, mode:0o700});
 const bridgeServer = net.createServer(socket => {
@@ -122,12 +146,19 @@ const bridgeServer = net.createServer(socket => {
       let result;
       if (request.operation === 'scenario') {
         switch (request.action) {
-          case 'live':
-            live = {role:'assistant', content:[{type:'text',text:`Fixture live turn ${prompts}`}], timestamp:Date.now()};
-            session.isStreaming = true;
-            emit({type:'agent_start'});
+          case 'automatic_live': automaticLive = true; break;
+          case 'intermediate': {
+            if (!live) throw Error('No live fixture turn');
+            const completed = {...live,stopReason:'tool_use'};
+            manager.appendMessage(completed);
+            emit({type:'message_end',message:completed});
+            live = {role:'assistant',content:[{type:'text',text:`Fixture intermediate continuation ${prompts}`}],timestamp:Date.now()};
             emit({type:'message_start',message:live});
             emit({type:'message_update',message:live,assistantMessageEvent:{type:'text_delta',contentIndex:0,delta:live.content[0].text,partial:live}});
+            break;
+          }
+          case 'live':
+            beginLive();
             break;
           case 'finish':
             if (!live) throw Error('No live fixture turn');
@@ -135,21 +166,30 @@ const bridgeServer = net.createServer(socket => {
             emit({type:'message_end',message:live});
             manager.appendMessage({role:'toolResult',toolCallId:`fixture-call-${prompts}`,toolName:'read',content:[{type:'text',text:`Fixture tool result ${prompts}`}],isError:false,timestamp:Date.now()});
             manager.appendMessage({role:'assistant',content:[{type:'text',text:`Fixture durable turn ${prompts}`}],stopReason:'stop',timestamp:Date.now()});
-            live = null; session.isStreaming = false; emit({type:'agent_end',messages:[]}); break;
+            live = null; session.isStreaming = false;
+            if (automaticLive) activePrompts--;
+            emit({type:'agent_end',messages:[]}); break;
           case 'error':
-            manager.appendMessage({role:'assistant',content:[],stopReason:'error',errorMessage:'Fixture explicit failure',timestamp:Date.now()}); break;
+            emit({type:'agent_start'});
+            manager.appendMessage({role:'assistant',content:[],stopReason:'error',errorMessage:'Fixture explicit failure',timestamp:Date.now()});
+            session.isStreaming = false; emit({type:'agent_end',messages:[]}); break;
           case 'disconnect': await host.stop(); disconnected = true; break;
           case 'reconnect': host = new CollabHost(ctx); await host.start(relay.url); disconnected = false; await guest.sync(); break;
           default: throw Error('Unknown fixture scenario');
         }
         await new Promise(resolve => setTimeout(resolve,100));
-        result = {prompts, changes, session_id:manager.getSessionId(), generation:guest.snapshot().generation, model, pid:process.pid};
+        result = {prompts, changes, active_prompts:activePrompts,max_active_prompts:maxActivePrompts,dispatch_order:dispatchOrder,session_id:manager.getSessionId(), generation:guest.snapshot().generation, model, pid:process.pid};
       } else if (request.operation === 'snapshot') {
         if (disconnected) throw Object.assign(Error('Fixture disconnected'),{status_code:503});
-        await guest.sync(); result = guest.snapshot();
-      } else if (request.operation === 'submit') result = await guest.submit(request);
-      else if (request.operation === 'models' || request.operation === 'set_model') result = await guest.models(request,request.operation === 'set_model');
-      else if (request.operation === 'stats') result = {prompts, changes, session_id:manager.getSessionId(), generation:guest.snapshot().generation, model, pid:process.pid};
+        result = await guest.exclusive(() => guest.refreshSnapshot());
+      } else if (request.operation === 'submit') result = await guest.exclusive(() => guest.admit(request));
+      else if (request.operation === 'models' || request.operation === 'set_model') result = await guest.exclusive(() => guest.models(request,request.operation === 'set_model'));
+      else if (request.operation === 'stats') {
+        const snapshot = guest.snapshot();
+        result = {prompts, changes,active_prompts:activePrompts,max_active_prompts:maxActivePrompts,dispatch_order:dispatchOrder,
+          pending_inputs:snapshot.pending_inputs,state:snapshot.state,streaming:session.isStreaming,
+          session_id:manager.getSessionId(), generation:snapshot.generation, model, pid:process.pid};
+      }
       else throw Error('Unknown fixture bridge operation');
       socket.end(JSON.stringify({actor:'mobile',launch_session_id:'fixture-launch',result})+'\n');
     } catch(error) {socket.end(JSON.stringify({actor:'mobile',launch_session_id:'fixture-launch',error:error.message,status_code:error.status_code??503})+'\n');}
@@ -158,7 +198,7 @@ const bridgeServer = net.createServer(socket => {
 await new Promise(resolve => bridgeServer.listen(bridge,resolve));
 await fs.chmod(bridge,0o600);
 console.log(JSON.stringify({fixture_ready:true,root,bridge,session_id:manager.getSessionId()}));
-process.on('SIGTERM',async()=>{guest.reset();await host.stop();relay.close();companion.close();bridgeServer.close();await fs.rm(root,{recursive:true,force:true});process.exit(0);});
+process.on('SIGTERM',async()=>{closed = true;clearInterval(drainTimer);await guest.exclusive(async()=>{guest.reset();await guest.persist();});await host.stop();relay.close();companion.close();bridgeServer.close();await fs.rm(root,{recursive:true,force:true});process.exit(0);});
 '''
 
 
@@ -309,6 +349,14 @@ def main():
                     if path.startswith('/__fixture/'):
                         self._authenticate(headers, required_scopes=('view',))
                         action = path.removeprefix('/__fixture/')
+                        if action == 'fifo-proof':
+                            stats = bridge('stats')
+                            if (stats['max_active_prompts'] != 1 or stats['active_prompts'] != 0
+                                    or stats['prompts'] != 6 or (body or {}).get('dispatch_ordinals') != [4,5,6]):
+                                raise MobileGatewayError('FIFO proof mismatch', status_code=400)
+                            (args.evidence/'fifo-integrity.json').write_text(json.dumps({
+                                'proof':body,'stats':stats},indent=2))
+                            return 200, {'recorded':True}
                         if action == 'proof':
                             proof = {key:(body or {}).get(key) for key in (
                                 'history_pages','history_items','original_pages','original_bytes','original_sha256')}
@@ -321,7 +369,7 @@ def main():
                             return 200, {'recorded':True}
                         if action == 'screenshot':
                             name = (body or {}).get('name')
-                            if name not in {'initial','original','original-next','history','live','durable','tools','model','reconnect','final'}:
+                            if name not in {'initial','original','original-next','history','live','durable','tools','model','reconnect','fifo-queued','fifo-complete','final'}:
                                 raise MobileGatewayError('Unknown screenshot',status_code=400)
                             with (args.evidence / f'{name}.png').open('wb') as image:
                                 subprocess.run(['adb','-s',args.device,'exec-out','screencap','-p'],stdout=image,check=True,timeout=15)

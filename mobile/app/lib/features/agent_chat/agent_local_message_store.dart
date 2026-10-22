@@ -102,6 +102,7 @@ class AgentLocalMessageStore {
     return item.kind == CcbConversationItemKind.userMessage &&
         switch (item.state) {
           CcbConversationDeliveryState.pending ||
+          CcbConversationDeliveryState.queued ||
           CcbConversationDeliveryState.failed ||
           CcbConversationDeliveryState.unconfirmed => true,
           _ => false,

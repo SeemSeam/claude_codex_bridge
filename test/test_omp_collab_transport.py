@@ -117,3 +117,32 @@ def test_wrapped_restart_preserves_literal_session_path(tmp_path):
     template = _wrap_collab_command(f"omp {OMP_RESTART_SESSION_MARKER}", {'omp_collab_binding': str(tmp_path / 'binding.json')})
     outer = shlex.split(render_restart_command(template, path))
     assert shlex.split(outer[-1]) == ['omp', '--resume', str(path)]
+
+
+def test_submit_returns_queued_receipt_without_business_job(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    receipt = {'state': 'queued', 'request_id': 'fifo-1', 'session_id': 'native', 'generation': 'owner:1'}
+    thread, requests = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': receipt})
+    assert OmpCollabClient().submit(tmp_path, 'a', 'second input', 'key',
+                                    expected_session_id='native', expected_generation='owner:1') == receipt
+    thread.join(2)
+    assert requests[0]['body'] == 'second input'
+    assert requests[0]['idempotency_key'] == 'key'
+    assert 'job_id' not in receipt
+
+
+def test_submit_bounds_utf8_body_before_transport(tmp_path):
+    with pytest.raises(OmpCollabError, match='too large') as error:
+        OmpCollabClient().submit(tmp_path, 'a', '界' * (256 * 1024 // 3 + 1), 'key',
+                                 expected_session_id='native', expected_generation='owner:1')
+    assert error.value.status_code == 409
+
+
+def test_snapshot_preserves_safe_pending_inputs(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    pending = {'id': 'fifo-1', 'idempotency_key': 'key', 'body': 'waiting', 'state': 'queued',
+               'request_id': 'fifo-1', 'session_id': 'native', 'generation': 'owner:1', 'position': 1}
+    snapshot = {'pending_inputs': [pending], 'ready': True, 'connected': True}
+    thread, _ = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': snapshot})
+    assert OmpCollabClient().get_snapshot(tmp_path, 'a')['pending_inputs'] == [pending]
+    thread.join(2)

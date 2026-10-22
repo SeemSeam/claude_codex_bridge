@@ -31,6 +31,8 @@ String conversationSignature(CcbAgentConversation? conversation) {
   return [
     conversation?.ompSessionId ?? '',
     conversation?.ompGeneration ?? '',
+    conversation?.namespaceEpoch.toString() ?? '',
+    conversation?.branchId ?? '',
     for (final item in items)
       [
         item.id,
@@ -182,6 +184,11 @@ bool remoteUserMessageCoversLocalMessage({
   }
   if (remote.id == local.id) {
     return true;
+  }
+  if (remote.source == 'mobile/collab' ||
+      remote.source == 'provider_native/omp' ||
+      local.source == 'mobile/collab') {
+    return false;
   }
   final bodyKey = messageBodyKey(local.body);
   if (bodyKey.isNotEmpty && messageBodyKey(remote.body) == bodyKey) {

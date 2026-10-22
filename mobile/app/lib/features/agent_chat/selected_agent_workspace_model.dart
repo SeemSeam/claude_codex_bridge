@@ -203,7 +203,7 @@ CcbConversationItem syntheticAgentWorkingConversationItem(
 
 DateTime? _latestUserSentAt(List<CcbConversationItem> items) {
   for (final item in items.reversed) {
-    if (item.kind == CcbConversationItemKind.userMessage) {
+    if (_isExecutingUserMessage(item)) {
       return item.sentAt;
     }
   }
@@ -217,7 +217,7 @@ String? selectedAgentWorkingReplyItemId(List<CcbConversationItem> items) {
   var latestReplyIndex = -1;
   for (var index = 0; index < items.length; index += 1) {
     final item = items[index];
-    if (item.kind == CcbConversationItemKind.userMessage) {
+    if (_isExecutingUserMessage(item)) {
       latestUser = item;
       latestUserIndex = index;
     } else if (item.kind == CcbConversationItemKind.agentReply) {
@@ -227,6 +227,10 @@ String? selectedAgentWorkingReplyItemId(List<CcbConversationItem> items) {
   }
   if (latestReply == null) {
     return null;
+  }
+  if (latestReply.source == 'provider_native/omp' &&
+      latestReply.nativeTurn?.status.name == 'running') {
+    return latestReply.id;
   }
   final completedNativeCurrentTurn =
       latestReply.completedAt != null &&
@@ -249,6 +253,12 @@ String? selectedAgentWorkingReplyItemId(List<CcbConversationItem> items) {
   }
   return _isCurrentTurnReplyCandidate(latestReply) ? latestReply.id : null;
 }
+
+bool _isExecutingUserMessage(CcbConversationItem item) =>
+    item.kind == CcbConversationItemKind.userMessage &&
+    item.state != CcbConversationDeliveryState.queued &&
+    (item.source != 'mobile/collab' ||
+        item.state == CcbConversationDeliveryState.sent);
 
 bool _isCurrentTurnReplyCandidate(CcbConversationItem item) {
   final source = item.source ?? '';

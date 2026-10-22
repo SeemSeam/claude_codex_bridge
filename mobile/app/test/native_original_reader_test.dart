@@ -40,6 +40,25 @@ Widget host(Future<NativeContentPage> Function(String) loader) => MaterialApp(
 );
 
 void main() {
+  testWidgets('queued original remains readable without native turn ownership', (tester) async {
+    final item = CcbConversationItem.fromJson({
+      'id': 'queue-key', 'agent': 'demo', 'kind': 'user_message',
+      'body': 'Queue preview', 'source': 'mobile/collab', 'state': 'queued',
+      'read_cursor': 'queue-page', 'read_reason': 'Content exceeds inline budget',
+    });
+    final restored = CcbConversationItem.fromJson(item.copyWith(body: item.body).toJson());
+    expect(restored.nativeTurn, isNull);
+    expect(restored.readCursor, 'queue-page');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ConversationBody(
+      item: restored,
+      contentLoader: (_) async => const NativeContentPage(
+        text: 'Complete queued request', offset: 0, totalBytes: 23, version: 'v',
+      ),
+    ))));
+    await tester.tap(find.byKey(const ValueKey('conversation-read-original')));
+    await tester.pumpAndSettle();
+    expect(find.text('Complete queued request'), findsOneWidget);
+  });
   testWidgets('oversized user input retains an explicit original reader', (
     tester,
   ) async {

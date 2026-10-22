@@ -1363,7 +1363,7 @@ class MobileGatewayService:
                 mobile_files_dir=self._mobile_files_dir(), snapshot=snapshot,
             )
             scope = (project.project_id, str(target['agent']), int(target['namespace_epoch']),
-                     snapshot['session_id'], snapshot['generation'])
+                     snapshot['session_id'], snapshot['generation'], snapshot.get('branch_id'))
             try:
                 if cursor is not None and cursor.startswith(OMP_CONTENT_CURSOR_PREFIX):
                     content = self._omp_content_pager.content(
@@ -1383,6 +1383,7 @@ class MobileGatewayService:
             response['conversation'].update({
                 'transport': 'collab', 'session_id': snapshot['session_id'],
                 'generation': snapshot['generation'], 'revision': snapshot['revision'],
+                'branch_id': snapshot.get('branch_id'),
                 'is_streaming': _map(snapshot.get('state')).get('isStreaming'),
                 'connected': True, 'ready': True,
             })
@@ -1801,7 +1802,7 @@ class MobileGatewayService:
             except Exception as exc:
                 raise _omp_collab_gateway_error(exc) from exc
             state = receipt.get('state')
-            if state not in {'sent', 'unconfirmed'}:
+            if state not in {'queued', 'sent', 'unconfirmed'}:
                 raise MobileGatewayError('OMP Collab returned an unknown submission result; refresh before retrying.', status_code=502)
             created_at = self._clock()
             self._record_project_activity(project.project_id, activity_at=created_at)
@@ -1812,10 +1813,12 @@ class MobileGatewayService:
                     'accepted': True, 'idempotency_key': idempotency_key,
                     'message_id': idempotency_key, 'job_id': None, 'state': state,
                     'request_id': receipt.get('request_id'), 'created_at': created_at,
+                    'queue_position': receipt.get('queue_position', receipt.get('position')),
                     'message': {
                         'id': idempotency_key, 'agent': target['agent'], 'kind': 'user_message',
                         'title': 'You', 'body': body, 'format': message_format,
                         'state': state, 'source': 'mobile/collab', 'attachments': attachments,
+                        'queue_position': receipt.get('queue_position', receipt.get('position')),
                     },
                 },
             }
@@ -3952,6 +3955,17 @@ def _omp_native_conversation_items(
 
     session_id, turns = project_omp_snapshot(snapshot, clean_text=clean_text)
     items = []
+    pending = [row for row in snapshot.get('pending_inputs', []) if isinstance(row, dict)]
+    # Completed bodies leave pending_inputs, but exact receipt associations
+    # retain the original user ID across later history refreshes.
+    bindings = [row for row in snapshot.get('input_bindings', []) if isinstance(row, dict)]
+    associated = {
+        row['entry_id']: row for row in (*bindings, *pending)
+        if isinstance(row.get('entry_id'), str) and row.get('entry_id')
+        and row.get('session_id') == session_id
+        and row.get('generation') == snapshot.get('generation')
+    }
+    projected_keys = set()
     for turn in turns:
         native = {
             'schema_version': 1, 'session_id': session_id, 'turn_id': turn.turn_id,
@@ -3983,6 +3997,12 @@ def _omp_native_conversation_items(
             }
             if is_user:
                 item['state'] = 'sent'
+                queued = associated.get(turn.user.get('id'))
+                if queued is not None:
+                    key = queued.get('idempotency_key') or queued.get('id')
+                    if isinstance(key, str) and key:
+                        item['id'] = key
+                        projected_keys.add(key)
             else:
                 _apply_mobile_conversation_timing(
                     item, started_at=_native_record_timestamp(turn.first_record),
@@ -3990,6 +4010,23 @@ def _omp_native_conversation_items(
                                   if turn.status in {'completed', 'failed', 'aborted'} else None),
                 )
             items.append(item)
+    for row in pending:
+        key = row.get('idempotency_key') or row.get('id')
+        if not isinstance(key, str) or not key or key in projected_keys:
+            continue
+        state = row.get('state')
+        if state not in {'queued', 'unconfirmed', 'sent', 'failed', 'held'}:
+            continue
+        item = {
+            'id': key, 'agent': agent, 'session_id': row.get('session_id'),
+            'kind': 'user_message', 'title': 'You', 'body': clean_text(str(row.get('body') or '')),
+            'format': 'markdown', 'source': 'mobile/collab', 'attachments': [],
+            'state': 'unconfirmed' if state == 'held' else state,
+            'queue_position': row.get('position'),
+        }
+        if state == 'held':
+            item['delivery_reason'] = 'needs_review'
+        items.append(item)
     return items
 
 

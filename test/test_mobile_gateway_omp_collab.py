@@ -80,11 +80,85 @@ def test_omp_submit_never_uses_terminal_or_frontdesk(tmp_path, monkeypatch, agen
     assert not terminal
 
 
+def test_omp_queued_receipt_and_snapshot_visibility(tmp_path, monkeypatch):
+    service, transport, terminal = gateway(tmp_path, monkeypatch)
+    monkeypatch.setattr(transport, 'submit', lambda *args, **kwargs: {
+        'state': 'queued', 'request_id': 'request', 'queue_position': 2,
+    })
+    receipt = service._submit_agent_message(
+        project_id='project', agent='mobile', headers=service.test_headers,
+        payload={'namespace_epoch': 4, 'body': 'next', 'idempotency_key': 'key',
+                 'expected_omp_session_id': 'native', 'expected_omp_generation': 'instance:1'},
+    )['message_submit']
+    assert receipt['state'] == 'queued'
+    assert receipt['queue_position'] == receipt['message']['queue_position'] == 2
+    transport.snapshot.update(branch_id='branch-1', pending_inputs=[{
+        'idempotency_key': 'key', 'body': 'next', 'state': 'queued',
+        'session_id': 'native', 'generation': 'instance:1', 'position': 2,
+    }])
+    for state in ('queued', 'unconfirmed', 'sent', 'failed', 'held'):
+        transport.snapshot['pending_inputs'][0]['state'] = state
+        conversation = service.agent_conversation_payload(
+            'project', agent='mobile', query={'namespace_epoch': ['4']},
+            headers=service.test_headers,
+        )['conversation']
+        item = conversation['items'][0]
+        assert item['id'] == 'key'
+        assert item['body'] == 'next'
+        assert item['state'] == ('unconfirmed' if state == 'held' else state)
+        assert item['source'] == 'mobile/collab'
+        assert 'native_turn' not in item
+        assert conversation['branch_id'] == 'branch-1'
+    assert not terminal
+
+
+def test_omp_exact_entry_binding_preserves_queue_identity(tmp_path):
+    from mobile_gateway.service import _omp_native_conversation_items
+    snapshot = {
+        'session_id': 'native', 'generation': 'instance:1',
+        'entries': [{'type': 'message', 'id': 'entry', 'parentId': None,
+                     'message': {'role': 'user', 'content': 'same'}}],
+        'state': {}, 'pending_inputs': [
+            {'id': 'key', 'body': 'same', 'state': 'sent', 'entry_id': 'entry',
+             'session_id': 'native', 'generation': 'instance:1'},
+            {'id': 'other', 'body': 'same', 'state': 'queued'},
+        ],
+    }
+    items = _omp_native_conversation_items(tmp_path, project_id='project', agent='mobile', snapshot=snapshot)
+    assert [item['id'] for item in items] == ['key', 'other']
+    assert items[0]['native_turn']['entries'][0]['id'] == 'entry'
+    assert 'native_turn' not in items[1]
+    completed = snapshot['pending_inputs'].pop(0)
+    snapshot['input_bindings'] = [{key: value for key, value in completed.items()
+                                   if key not in {'body', 'state'}}]
+    refreshed = _omp_native_conversation_items(
+        tmp_path, project_id='project', agent='mobile', snapshot=snapshot,
+    )
+    assert [item['id'] for item in refreshed] == ['key', 'other']
+    snapshot['input_bindings'][0]['generation'] = 'old'
+    stale = _omp_native_conversation_items(
+        tmp_path, project_id='project', agent='mobile', snapshot=snapshot,
+    )
+    assert stale[0]['id'] != 'key'
+
+
 def test_non_omp_submit_keeps_terminal_route(tmp_path, monkeypatch):
     service, transport, terminal = gateway(tmp_path, monkeypatch, provider='pi')
     result = service._submit_agent_message(
         project_id='project', agent='mobile', headers=service.test_headers,
         payload={'namespace_epoch': 4, 'body': 'hello', 'idempotency_key': 'key'},
+    )
+    assert result['message_submit']['state'] == 'sent'
+    assert len(terminal) == 1
+    assert not transport.calls
+
+
+def test_macos_omp_submit_keeps_legacy_terminal_route(tmp_path, monkeypatch):
+    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform='darwin'))
+    service, transport, terminal = gateway(tmp_path, monkeypatch)
+    result = service._submit_agent_message(
+        project_id='project', agent='mobile', headers=service.test_headers,
+        payload={'namespace_epoch': 4, 'body': 'legacy', 'idempotency_key': 'mac-key'},
     )
     assert result['message_submit']['state'] == 'sent'
     assert len(terminal) == 1

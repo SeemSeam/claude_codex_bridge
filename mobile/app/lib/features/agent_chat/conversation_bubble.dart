@@ -201,6 +201,7 @@ class ConversationBubble extends StatelessWidget {
                               key: ValueKey('conversation-state-${item.id}'),
                               state: visibleState,
                               collab: item.source == 'mobile/collab',
+                              needsReview: item.deliveryReason == 'needs_review',
                             ),
                           if (collapsible)
                             IconButton(

@@ -1,7 +1,8 @@
 """Owner-bound, bounded local IPC for the managed OMP Collab guest.
 
-The bridge, not this client, holds Collab capabilities. A submit is never
-retried: upstream protocol v3 cannot acknowledge acceptance of a prompt.
+The bridge, not this client, holds Collab capabilities and the durable FIFO.
+Queued receipts confirm local admission only; upstream protocol v3 has no
+request acknowledgement. Handed-off prompts are never automatically replayed.
 """
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ from pathlib import Path
 
 from provider_core.pathing import session_filename_for_agent
 from .socket_paths import socket_temp_root
+
+MAX_PROMPT_BYTES = 256 * 1024
 
 
 class OmpCollabError(RuntimeError):
@@ -76,8 +79,9 @@ class OmpCollabClient:
                     raise OmpCollabError("OMP Collab client capacity reached")
                 self._locks[key] = threading.Lock()
             lock = self._locks[key]
-        if not lock.acquire(timeout=self.timeout):
-            raise OmpCollabError("OMP Collab request busy", 409)
+        # Concurrent sends wait their turn locally; a running provider is not
+        # an admission conflict. The runtime owns the durable bounded FIFO.
+        lock.acquire()
         handed_off = False
         try:
             request = {"operation": operation, "actor": agent,
@@ -125,6 +129,8 @@ class OmpCollabClient:
                expected_session_id: str | None = None, expected_generation: object = None) -> dict:
         if not isinstance(body, str) or not body.strip() or not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 256:
             raise OmpCollabError("Invalid OMP prompt", 409)
+        if len(body.encode("utf-8")) > MAX_PROMPT_BYTES:
+            raise OmpCollabError("OMP prompt too large", 409)
         if not isinstance(expected_session_id, str) or not expected_session_id or expected_generation is None:
             raise OmpCollabError("Refresh OMP conversation before submitting", 409)
         return self._request(project_root, agent, "submit", body=body, idempotency_key=idempotency_key,

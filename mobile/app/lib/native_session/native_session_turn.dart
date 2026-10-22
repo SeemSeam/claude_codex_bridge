@@ -61,12 +61,14 @@ class NativeSessionEntry {
     required this.role,
     required List<NativeSessionBlock> blocks,
     this.stopReason,
+    this.streaming = false,
   }) : blocks = List.unmodifiable(blocks);
 
   final String id;
   final NativeSessionRole role;
   final List<NativeSessionBlock> blocks;
   final String? stopReason;
+  final bool streaming;
 
   factory NativeSessionEntry.fromJson(Map<String, Object?> json) {
     return NativeSessionEntry(
@@ -86,6 +88,7 @@ class NativeSessionEntry {
               )
               .toList(),
       stopReason: json['stop_reason'] as String?,
+      streaming: json['streaming'] == true,
     );
   }
 
@@ -94,6 +97,7 @@ class NativeSessionEntry {
     'role': role.name,
     'blocks': blocks.map((block) => block.toJson()).toList(),
     if (stopReason != null) 'stop_reason': stopReason,
+    if (streaming) 'streaming': true,
   };
 }
 
@@ -118,6 +122,7 @@ class NativeSessionTurn {
     required List<NativeSessionEntry> entries,
     this.readCursor,
     this.reason,
+    this.retainedInline = false,
   }) : entries = _deduplicate(entries);
 
   static const schemaVersion = 1;
@@ -127,6 +132,7 @@ class NativeSessionTurn {
   final List<NativeSessionEntry> entries;
   final String? readCursor;
   final String? reason;
+  final bool retainedInline;
 
   factory NativeSessionTurn.fromJson(Map<String, Object?> json) {
     if (json['schema_version'] != schemaVersion) {
@@ -152,6 +158,7 @@ class NativeSessionTurn {
               .toList(),
       readCursor: json['read_cursor'] as String?,
       reason: json['reason'] as String?,
+      retainedInline: json['retained_inline'] == true,
     );
   }
 
@@ -163,10 +170,11 @@ class NativeSessionTurn {
     'entries': entries.map((entry) => entry.toJson()).toList(),
     if (readCursor != null) 'read_cursor': readCursor,
     if (reason != null) 'reason': reason,
+    if (retainedInline) 'retained_inline': true,
   };
 
-  /// Latest assistant entry containing visible text, never a tool result or a
-  /// reasoning block. Earlier assistant text remains in the ordered process.
+  /// Latest assistant text entry, for callers needing the final native identity.
+  /// Rendering uses [answerText], which includes all assistant prose.
   NativeSessionEntry? get answerEntry {
     for (final entry in entries.reversed) {
       if (entry.role == NativeSessionRole.assistant &&
@@ -181,21 +189,24 @@ class NativeSessionTurn {
     return null;
   }
 
-  String get answerText =>
-      answerEntry?.blocks
-          .where((block) => block.type == NativeSessionBlockType.text)
-          .map((block) => block.text ?? '')
-          .where((text) => text.isNotEmpty)
-          .join('\n\n') ??
-      '';
+  /// Every visible assistant text block in native order. Equal text in distinct
+  /// entries is intentional content, not evidence of duplicate delivery.
+  String get answerText => [
+    for (final entry in entries)
+      if (entry.role == NativeSessionRole.assistant)
+        for (final block in entry.blocks)
+          if (block.type == NativeSessionBlockType.text &&
+              (block.text?.isNotEmpty ?? false))
+            block.text!,
+  ].join('\n\n');
 
   List<NativeSessionProcessBlock> get processBlocks {
-    final answerId = answerEntry?.id;
+    // Assistant prose is always readable, independently of process disclosure.
     return [
       for (final entry in entries)
         if (entry.role != NativeSessionRole.user)
           for (var index = 0; index < entry.blocks.length; index++)
-            if (!(entry.id == answerId &&
+            if (!(entry.role == NativeSessionRole.assistant &&
                 entry.blocks[index].type == NativeSessionBlockType.text))
               NativeSessionProcessBlock(
                 entryId: entry.id,
@@ -208,6 +219,7 @@ class NativeSessionTurn {
   /// Match results only to preceding calls with the same native call ID.
   /// Anonymous calls cannot be guessed complete from unrelated tool output.
   bool get hasPendingTools {
+    if (retainedInline) return false;
     final pending = <String, int>{};
     var anonymousCalls = 0;
     for (final entry in entries) {
@@ -238,6 +250,7 @@ class NativeSessionTurn {
   /// A persisted message's stop reason (including tool_use) never completes
   /// a turn. Even explicit completion cannot hide an unfinished tool call.
   NativeSessionStatus get effectiveStatus {
+    if (retainedInline) return status;
     if (status != NativeSessionStatus.completed) return status;
     if (hasPendingTools) return NativeSessionStatus.unknown;
     for (final entry in entries.reversed) {

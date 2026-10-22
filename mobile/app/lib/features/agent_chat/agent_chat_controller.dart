@@ -1,6 +1,7 @@
 import '../../models/ccb_agent_conversation.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/readable_terminal_history.dart';
+import '../../native_session/native_session_turn.dart';
 import 'agent_chat_state_helpers.dart';
 
 class AgentChatConversationUpdate {
@@ -269,9 +270,22 @@ class AgentChatController {
     required CcbAgentConversation conversation,
     required bool shouldScroll,
   }) {
+    final previous = _remoteConversations[agentName];
+    final sameScope =
+        previous != null && _sameConversationScope(previous, conversation);
+    if (previous != null && !sameScope) {
+      _expandedConversationItems.remove(agentName);
+      _remotePresentationIds.removeWhere(
+        (key, _) => key.startsWith('$agentName\u0000'),
+      );
+    }
+    final incremental =
+        sameScope &&
+        conversation.ompSessionId != null &&
+        conversation.branchId != null;
     final nextConversation = _conversationWithLocalTimingFallback(
       agentName,
-      conversation,
+      incremental ? _mergeConversation(previous, conversation) : conversation,
     );
     final previousSignature = conversationSignature(
       _remoteConversations[agentName],
@@ -301,12 +315,17 @@ class AgentChatController {
         shouldScroll: false,
       );
     }
+    if (!_sameConversationScope(previous, conversation)) {
+      // A response to a page request from a superseded session is stale.
+      return const AgentChatConversationUpdate(changed: false);
+    }
     final previousSignature = conversationSignature(previous);
     final seenIds = <String>{};
+    final previousById = {for (final item in previous.items) item.id: item};
     final mergedItems = <CcbConversationItem>[];
     for (final item in [...conversation.items, ...previous.items]) {
       if (seenIds.add(item.id)) {
-        mergedItems.add(item);
+        mergedItems.add(previousById[item.id] ?? item);
       }
     }
     final merged = CcbAgentConversation(
@@ -319,6 +338,7 @@ class AgentChatController {
       ompSessionId: previous.ompSessionId,
       ompGeneration: previous.ompGeneration,
       nativeContent: previous.nativeContent,
+      branchId: previous.branchId,
     );
     final next = _conversationWithLocalTimingFallback(agentName, merged);
     final nextSignature = conversationSignature(next);
@@ -327,6 +347,91 @@ class AgentChatController {
     _pruneLocalMessagesCoveredByRemote(agentName, next);
     return AgentChatConversationUpdate(
       changed: previousSignature != nextSignature,
+    );
+  }
+
+  bool _sameConversationScope(
+    CcbAgentConversation previous,
+    CcbAgentConversation next,
+  ) =>
+      previous.projectId == next.projectId &&
+      previous.namespaceEpoch == next.namespaceEpoch &&
+      previous.ompSessionId == next.ompSessionId &&
+      previous.ompGeneration == next.ompGeneration &&
+      previous.branchId == next.branchId;
+
+  CcbAgentConversation _mergeConversation(
+    CcbAgentConversation previous,
+    CcbAgentConversation next,
+  ) {
+    final incoming = {for (final item in next.items) item.id: item};
+    final items = <CcbConversationItem>[
+      for (final item in previous.items)
+        incoming.containsKey(item.id)
+            ? _mergeNativeItem(item, incoming.remove(item.id)!)
+            : item,
+      ...incoming.values,
+    ];
+    return CcbAgentConversation(
+      projectId: next.projectId,
+      agentName: next.agentName,
+      namespaceEpoch: next.namespaceEpoch,
+      items: items,
+      // Refreshing latest50 must not reset the already consumed page boundary.
+      nextCursor: previous.nextCursor,
+      generatedAt: next.generatedAt,
+      ompSessionId: next.ompSessionId,
+      ompGeneration: next.ompGeneration,
+      branchId: next.branchId,
+      nativeContent: next.nativeContent,
+    );
+  }
+
+  CcbConversationItem _mergeNativeItem(
+    CcbConversationItem previous,
+    CcbConversationItem next,
+  ) {
+    final oldTurn = previous.nativeTurn;
+    final newTurn = next.nativeTurn;
+    if (oldTurn == null ||
+        newTurn == null ||
+        oldTurn.sessionId != newTurn.sessionId ||
+        oldTurn.turnId != newTurn.turnId) {
+      return next;
+    }
+    if (newTurn.readCursor != null) {
+      // Retained content remains reachable, explicitly as an older snapshot,
+      // not misrepresented as the current oversized original.
+      final retained =
+          oldTurn.entries.where((entry) => !entry.streaming).toList();
+      if (retained.isEmpty) return next;
+      return next.copyWith(
+        nativeTurn: NativeSessionTurn(
+          sessionId: newTurn.sessionId,
+          turnId: newTurn.turnId,
+          status: newTurn.status,
+          entries: retained,
+          readCursor: newTurn.readCursor,
+          reason: newTurn.reason,
+          retainedInline: true,
+        ),
+      );
+    }
+    final entries = <String, NativeSessionEntry>{
+      for (final entry in oldTurn.entries)
+        if (!entry.streaming) entry.id: entry,
+    };
+    for (final entry in newTurn.entries) {
+      entries[entry.id] = entry;
+    }
+    return next.copyWith(
+      nativeTurn: NativeSessionTurn(
+        sessionId: newTurn.sessionId,
+        turnId: newTurn.turnId,
+        status: newTurn.status,
+        entries: entries.values.toList(),
+        reason: newTurn.reason,
+      ),
     );
   }
 
@@ -410,6 +515,7 @@ class AgentChatController {
       ompSessionId: conversation.ompSessionId,
       ompGeneration: conversation.ompGeneration,
       nativeContent: conversation.nativeContent,
+      branchId: conversation.branchId,
     );
   }
 

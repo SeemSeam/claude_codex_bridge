@@ -90,12 +90,19 @@ void main() {
             body: 'retry me',
             state: CcbConversationDeliveryState.unconfirmed,
           ),
+          CcbConversationItem.userMessage(
+            id: 'queued-key',
+            agentName: 'lead',
+            body: 'accepted by FIFO',
+            state: CcbConversationDeliveryState.queued,
+          ),
         ],
       );
 
       final loaded = await store.load(projectId: 'proj', agentName: 'lead');
 
-      expect(loaded.map((item) => item.id), ['local-lead-1']);
+      expect(loaded.map((item) => item.id), ['local-lead-1', 'queued-key']);
+      expect(loaded.last.state, CcbConversationDeliveryState.queued);
     });
 
     test('scopes messages by project and agent', () async {

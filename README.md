@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.14-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.15-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -52,9 +52,9 @@
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
 
-## Fixed in 8.7.14: OMP History Paging and Relay Accuracy
+## New in 8.7.15: Reliable OMP Mobile Turns
 
-Linux OMP now pages large native history by byte size while preserving oversized raw entries across pages. Relay agent fields are restored and failures are classified accurately; the existing macOS OMP route is unchanged. [Notes](docs/releases/v8.7.14.md).
+Linux OMP Mobile now preserves earlier reply text while appending same-session updates, with tool reasoning folded in place. Runtime sends use a persisted FIFO and run serially; queued sends remain visible but cannot steer an active turn, and disconnects with an unknown outcome are held instead of blindly replayed. This release also includes the 8.7.14 Relay and large-history fixes. The legacy macOS route is unchanged. [Notes](docs/releases/v8.7.15.md).
 
 ## New in 8.7.13: OMP Mobile Collab on Linux
 
@@ -345,9 +345,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.14 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.15 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.14 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.14/ccb-mobile-v8.7.14.apk)
+- [Download CCB Mobile v8.7.15 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -436,9 +436,17 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 ## Release Notes
 
 <details open>
-<summary><b>v8.7.14</b> - OMP history paging and Relay fixes</summary>
+<summary><b>v8.7.15</b> - Reliable OMP Mobile turns</summary>
 
-Page large Linux OMP native history by byte size while preserving oversized raw entries across pages, restore Relay agent fields, and classify failures accurately. The existing macOS OMP route is unchanged.
+Preserve earlier reply text across same-session incremental updates, fold tool reasoning in place, and serialize runtime sends through a persisted FIFO. Queued sends remain visible but do not steer an active turn; unknown disconnect outcomes are held rather than blindly replayed. Includes the 8.7.14 Relay and large-history fixes on Linux; the legacy macOS route is unchanged.
+
+[Full bilingual notes](docs/releases/v8.7.15.md).
+</details>
+
+<details>
+<summary><b>v8.7.14</b> - Incomplete prerelease (Android release canceled)</summary>
+
+This incomplete prerelease contained the Linux OMP history paging and Relay work now included in 8.7.15. No Android release was published.
 
 [Full bilingual notes](docs/releases/v8.7.14.md).
 </details>

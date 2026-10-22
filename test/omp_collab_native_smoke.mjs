@@ -128,7 +128,11 @@ try {
     assert.equal(result.state, 'unconfirmed');
     for (let i = 0; prompts === 0 && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(prompts, 1);
-    assert.deepEqual(await guest.submit(request), result);
+    for (let i = 0; guest.attempts.get('native-smoke').result.state !== 'sent' && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const duplicate = await guest.submit(request);
+    assert.equal(duplicate.request_id, result.request_id);
+    assert.equal(duplicate.state, 'sent');
+    assert.ok(duplicate.entry_id);
     assert.equal(prompts, 1);
     const message = { role: 'assistant', content: [{ type: 'text', text: 'live local text' }], timestamp: Date.now() };
     for (const fn of listeners) fn({ type: 'message_update', message, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'live local text', partial: message } });

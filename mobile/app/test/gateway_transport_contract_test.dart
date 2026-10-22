@@ -4,6 +4,28 @@ import 'package:ccb_mobile/ccb_mobile.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('Collab queued receipt preserves explicit delivery and queue metadata', () {
+    final result = CcbAgentMessageSubmitResult.fromJson({
+      'message_submit': {
+        'accepted': true,
+        'idempotency_key': 'queue-key',
+        'message_id': 'queue-key',
+        'state': 'queued',
+        'queue_position': 2,
+        'message': {
+          'id': 'queue-key', 'agent': 'mobile', 'kind': 'user_message',
+          'title': 'You', 'body': 'next', 'state': 'queued',
+          'source': 'mobile/collab', 'queue_position': 2,
+        },
+      },
+    });
+    expect(result.state, CcbConversationDeliveryState.queued);
+    expect(result.message!.queuePosition, 2);
+    expect(result.message!.nativeTurn, isNull);
+    final restored = CcbConversationItem.fromJson(result.message!.toJson());
+    expect(restored.state, CcbConversationDeliveryState.queued);
+    expect(restored.queuePosition, 2);
+  });
   test('legacy adaptive pane policy is treated as a fixed source viewport', () {
     const viewport = TerminalViewport(
       geometry: TerminalGeometry(columns: 164, rows: 47),

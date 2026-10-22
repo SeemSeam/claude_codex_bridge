@@ -20,6 +20,31 @@ import 'support/project_home_test_driver.dart';
 import 'support/project_home_test_fakes.dart';
 
 void main() {
+  testWidgets('OMP queue receipts preserve live awaiting and allow next send', (tester) async {
+    await setTestSurfaceSize(tester, const Size(390, 844));
+    const agent = CcbAgent(
+      name: 'mobile', provider: 'omp', window: 'main', order: 0,
+      active: true, queueDepth: 0,
+      providerControl: CcbProviderControl(provider: 'omp', runtimeSource: 'collab'),
+    );
+    final repository = _QueuedCollabRepository();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SelectedAgentWorkspace(
+      repository: repository, terminalTransport: null,
+      usePaneInputForMessages: true, view: _workspaceView(agent), agent: agent,
+      enableComposerCollapse: false, onRefreshView: null,
+    ))));
+    await tester.pumpAndSettle();
+    for (final body in ['first', 'second', 'third']) {
+      await tester.enterText(find.byKey(const ValueKey('agent-message-composer')), body);
+      await tester.tap(find.byKey(const ValueKey('agent-message-send-button')));
+      await tester.pumpAndSettle();
+      final workspace = tester.widget<SelectedAgentWorkspaceView>(find.byType(SelectedAgentWorkspaceView));
+      expect(workspace.model.isAwaitingAgentResponse, isTrue);
+    }
+    expect(repository.submittedMessages, hasLength(3));
+    expect(find.text('Queued'), findsNWidgets(2));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets(
     'Mac legacy OMP sends without generation and keeps terminal keys without polling',
     (tester) async {
@@ -3153,6 +3178,33 @@ void main() {
       expect(find.text('Failed'), findsOneWidget);
     },
   );
+}
+
+class _QueuedCollabRepository extends RecordingGatewayRepository {
+  @override
+  Future<CcbAgentConversation> getAgentConversation({
+    required String projectId, required String agent, required int namespaceEpoch,
+    int limit = 50, String? cursor,
+  }) async => CcbAgentConversation(
+    projectId: projectId, agentName: agent, namespaceEpoch: namespaceEpoch,
+    items: const [], ompSessionId: 'native', ompGeneration: 'instance:1',
+  );
+
+  @override
+  Future<CcbAgentMessageSubmitResult> submitAgentMessage(CcbAgentMessageSubmitRequest request) async {
+    submittedMessages.add(request);
+    final state = submittedMessages.length == 1
+        ? CcbConversationDeliveryState.sent : CcbConversationDeliveryState.queued;
+    return CcbAgentMessageSubmitResult(
+      accepted: true, idempotencyKey: request.idempotencyKey,
+      messageId: request.idempotencyKey, state: state,
+      message: CcbConversationItem(
+        id: request.idempotencyKey, agentName: request.agentName,
+        kind: CcbConversationItemKind.userMessage, title: 'You', body: request.body,
+        source: 'mobile/collab', state: state,
+      ),
+    );
+  }
 }
 
 File _tempFile(Directory dir, String name) {

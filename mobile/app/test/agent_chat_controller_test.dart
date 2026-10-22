@@ -2,10 +2,74 @@ import 'package:ccb_mobile/features/agent_chat/agent_chat_controller.dart';
 import 'package:ccb_mobile/models/ccb_agent_conversation.dart';
 import 'package:ccb_mobile/models/ccb_conversation_item.dart';
 import 'package:ccb_mobile/models/readable_terminal_history.dart';
+import 'package:ccb_mobile/native_session/native_session.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('AgentChatController', () {
+    test('latest refresh retains old pages and updates stable entries', () {
+      final controller = AgentChatController();
+      void apply(CcbAgentConversation value) => controller.applyRemoteConversation(
+        agentName: 'lead', conversation: value, shouldScroll: false);
+      apply(_nativeConversation([_agentReply(id: 'latest', body: 'before')], nextCursor: 'older'));
+      controller.prependRemoteConversationPage(agentName: 'lead', conversation:
+        _nativeConversation([_agentReply(id: 'old', body: 'loaded page')], nextCursor: 'oldest'));
+      controller.toggleExpandedItem('lead', 'latest');
+      apply(_nativeConversation([
+        _agentReply(id: 'latest', body: 'after'),
+        _agentReply(id: 'new', body: 'new reply'),
+      ], nextCursor: 'older'));
+      final value = controller.remoteConversationFor('lead')!;
+      expect(value.items.map((item) => item.id), ['old', 'latest', 'new']);
+      expect(value.items[1].body, 'after');
+      expect(value.nextCursor, 'oldest');
+      expect(controller.expandedItemIds('lead'), {'latest'});
+    });
+
+    test('session generation namespace and branch changes replace active history', () {
+      for (final changed in [
+        _nativeConversation([], session: 'other'),
+        _nativeConversation([], generation: '2'),
+        _nativeConversation([], epoch: 8),
+        _nativeConversation([], branch: 'fork'),
+      ]) {
+        final controller = AgentChatController();
+        controller.applyRemoteConversation(agentName: 'lead', conversation:
+          _nativeConversation([_agentReply(id: 'old', body: 'old branch')]), shouldScroll: false);
+        controller.toggleExpandedItem('lead', 'old');
+        controller.applyRemoteConversation(agentName: 'lead', conversation: changed, shouldScroll: false);
+        expect(controller.remoteConversationFor('lead')!.items, isEmpty);
+        expect(controller.expandedItemIds('lead'), isEmpty);
+        final stalePage = controller.prependRemoteConversationPage(
+          agentName: 'lead', conversation: _nativeConversation([
+            _agentReply(id: 'stale-page', body: 'superseded session'),
+          ]));
+        expect(stalePage.changed, isFalse);
+        expect(controller.remoteConversationFor('lead')!.items, isEmpty);
+      }
+    });
+
+    test('durable text survives snapshots while absent stream partial is removed', () {
+      final controller = AgentChatController();
+      void apply(List<NativeSessionEntry> entries, {String? cursor}) {
+        final item = _agentReply(id: 'turn', body: 'preview').copyWith(
+          nativeTurn: NativeSessionTurn(sessionId: 's', turnId: 'u',
+            status: NativeSessionStatus.running, entries: entries, readCursor: cursor));
+        controller.applyRemoteConversation(agentName: 'lead',
+          conversation: _nativeConversation([item]), shouldScroll: false);
+      }
+      apply([_nativeEntry('a', 'first'), _nativeEntry('stream', 'par', streaming: true)]);
+      apply([_nativeEntry('b', 'second'), _nativeEntry('c', 'second')]);
+      var value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
+      expect(value.entries.map((entry) => entry.id), ['a', 'b', 'c']);
+      expect(value.answerText, 'first\n\nsecond\n\nsecond');
+      apply([], cursor: 'original');
+      value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
+      expect(value.readCursor, 'original');
+      expect(value.retainedInline, isTrue);
+      expect(value.answerText, 'first\n\nsecond\n\nsecond');
+    });
+
     test('owns message ids and per-agent transient flags', () {
       final controller = AgentChatController();
 
@@ -329,3 +393,20 @@ CcbConversationItem _agentReply({required String id, required String body}) {
     body: body,
   );
 }
+
+CcbAgentConversation _nativeConversation(
+  List<CcbConversationItem> items, {
+  String? nextCursor,
+  String session = 's',
+  String generation = '1',
+  int epoch = 7,
+  String branch = 'main',
+}) => CcbAgentConversation(
+  projectId: 'proj', agentName: 'lead', namespaceEpoch: epoch, items: items,
+  ompSessionId: session, ompGeneration: generation, branchId: branch,
+  nextCursor: nextCursor,
+);
+
+NativeSessionEntry _nativeEntry(String id, String text, {bool streaming = false}) =>
+  NativeSessionEntry(id: id, role: NativeSessionRole.assistant, streaming: streaming,
+    blocks: [NativeSessionBlock(type: NativeSessionBlockType.text, text: text)]);

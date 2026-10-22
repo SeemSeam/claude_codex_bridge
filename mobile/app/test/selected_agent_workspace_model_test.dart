@@ -9,6 +9,26 @@ import 'package:ccb_mobile/models/readable_terminal_history.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('queued and held users do not displace the native running reply', () {
+    final reply = CcbConversationItem.fromJson({
+      'id': 'active-reply', 'agent': 'mobile', 'kind': 'agent_reply',
+      'body': 'partial', 'source': 'provider_native/omp',
+      'native_turn': {
+        'schema_version': 1,
+        'session_id': 'session', 'turn_id': 'active', 'status': 'running',
+        'entries': <Object?>[],
+      },
+    });
+    for (final state in [CcbConversationDeliveryState.queued, CcbConversationDeliveryState.unconfirmed]) {
+      final pending = CcbConversationItem(
+        id: 'next', agentName: 'mobile', kind: CcbConversationItemKind.userMessage,
+        title: 'You', body: 'same', source: 'mobile/collab', state: state,
+        sentAt: DateTime.utc(2026, 10, 22),
+      );
+      expect(selectedAgentWorkingReplyItemId([reply, pending]), 'active-reply');
+      expect(selectedAgentWorkingReplyItemId([pending]), isNull);
+    }
+  });
   test('inserts one visible boundary between provider sessions', () {
     final chatController = AgentChatController();
     final view = _view();

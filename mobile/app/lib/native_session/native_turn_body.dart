@@ -59,6 +59,17 @@ class NativeTurnLabels {
   };
 }
 
+Future<void> showNativeOriginalReader(
+  BuildContext context, {
+  required String cursor,
+  required Future<NativeContentPage> Function(String) loader,
+  NativeTurnLabels labels = const NativeTurnLabels(),
+}) => showDialog<void>(
+  context: context,
+  builder:
+      (_) => _OriginalReader(cursor: cursor, loader: loader, labels: labels),
+);
+
 /// A single turn's content, without an outer conversation bubble or actions.
 ///
 /// [textBuilder] renders visible assistant prose using the host's text/markdown
@@ -111,19 +122,31 @@ class NativeTurnBody extends StatelessWidget {
             onPressed:
                 contentLoader == null
                     ? null
-                    : () => showDialog<void>(
-                      context: context,
-                      builder:
-                          (context) => _OriginalReader(
-                            cursor: turn.readCursor!,
-                            loader: contentLoader!,
-                            labels: labels,
-                          ),
+                    : () => showNativeOriginalReader(
+                      context,
+                      cursor: turn.readCursor!,
+                      loader: contentLoader!,
+                      labels: labels,
                     ),
             child: Text(labels.readOriginal),
           ),
         ],
-        if (process.isNotEmpty)
+        if (turn.retainedInline)
+          _Disclosure(
+            key: ValueKey((turn.sessionId, turn.turnId, 'retained-inline')),
+            title: '${labels.message} — previously loaded snapshot',
+            builder:
+                (context) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (answer.isNotEmpty)
+                      SelectionArea(child: textBuilder(context, answer)),
+                    for (final item in process) _processBlock(context, item),
+                  ],
+                ),
+          ),
+        if (!turn.retainedInline && process.isNotEmpty)
           _Disclosure(
             key: ValueKey((turn.sessionId, turn.turnId, 'process')),
             title: labels.process,
@@ -136,9 +159,9 @@ class NativeTurnBody extends StatelessWidget {
                   ],
                 ),
           ),
-        if (answer.isNotEmpty)
+        if (!turn.retainedInline && answer.isNotEmpty)
           SelectionArea(child: textBuilder(context, answer))
-        else if (turn.readCursor == null)
+        else if (turn.readCursor == null && !turn.retainedInline)
           Text(labels.noAnswer),
       ],
     );

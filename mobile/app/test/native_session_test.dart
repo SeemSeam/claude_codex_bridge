@@ -46,6 +46,37 @@ Widget host(
 );
 
 void main() {
+  testWidgets('all assistant prose stays visible across later assistant updates', (tester) async {
+    final first = entry('a', [
+      text('First explanation'),
+      const NativeSessionBlock(type: NativeSessionBlockType.reasoning, text: 'detail'),
+    ]);
+    await tester.pumpWidget(host(turn([first])));
+    await tester.tap(find.text('Execution process'));
+    await tester.pump();
+    await tester.tap(find.text('Reasoning'));
+    await tester.pump();
+    await tester.pumpWidget(host(turn([first, entry('b', [text('Later explanation')])])));
+    expect(find.text('First explanation\n\nLater explanation'), findsOneWidget);
+    // Stable native keys retain both disclosure levels through a refresh.
+    expect(find.text('detail'), findsOneWidget);
+  });
+
+  testWidgets('inline to original keeps previous text reachable and labeled stale', (tester) async {
+    final retained = NativeSessionTurn(
+      sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.completed,
+      entries: [entry('a', [text('Entire earlier explanation')])],
+      readCursor: 'current-original', retainedInline: true,
+    );
+    await tester.pumpWidget(host(retained));
+    expect(find.text('Read original'), findsOneWidget);
+    expect(find.text('Entire earlier explanation'), findsNothing);
+    await tester.tap(find.text('Assistant message — previously loaded snapshot'));
+    await tester.pump();
+    expect(find.text('Entire earlier explanation'), findsOneWidget);
+    expect(find.text('Preview only — content exceeds inline budget'), findsOneWidget);
+  });
+
   test('entry identity, not identical text, controls deduplication', () {
     final value = turn([
       entry('a', [text('old snapshot')]),
@@ -56,12 +87,8 @@ void main() {
     expect(value.entries.map((item) => item.id), ['a', 'b', 'c']);
     expect(value.entries.first.blocks.single.text, 'same text');
     expect(value.answerEntry?.id, 'c');
-    expect(value.answerText, 'same text');
-    expect(value.processBlocks.map((item) => item.entryId), ['a', 'b']);
-    expect(value.processBlocks.map((item) => item.block.text), [
-      'same text',
-      'same text',
-    ]);
+    expect(value.answerText, 'same text\n\nsame text\n\nsame text');
+    expect(value.processBlocks, isEmpty);
   });
 
   test('process order and tool association survive final answer selection', () {
@@ -92,14 +119,13 @@ void main() {
         text('More detail'),
       ], stopReason: 'end_turn'),
     ]);
-    expect(value.answerText, 'Final answer\n\nMore detail');
+    expect(value.answerText, 'I will inspect\n\nFinal answer\n\nMore detail');
     expect(value.processBlocks.map((item) => item.block.type), [
       NativeSessionBlockType.reasoning,
-      NativeSessionBlockType.text,
       NativeSessionBlockType.toolCall,
       NativeSessionBlockType.toolResult,
     ]);
-    expect(value.processBlocks.skip(2).map((item) => item.block.callId), [
+    expect(value.processBlocks.skip(1).map((item) => item.block.callId), [
       'call-1',
       'call-1',
     ]);

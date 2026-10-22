@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.14-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.15-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,9 +51,9 @@
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
 
-## 8.7.14 修复：OMP 历史分页与 Relay 准确性
+## 8.7.15 新功能：可靠的 OMP Mobile 回合
 
-Linux OMP 现在按字节大小分页读取大型原生历史，并在分页间完整保留超大原文条目；同时修复 Relay agent 字段，并准确区分错误类型。Mac 原有 OMP 路由保持不变。[版本说明](../docs/releases/v8.7.14.md)。
+Linux OMP Mobile 现在会在同一会话的增量更新中保留此前回复正文，并就地折叠工具推理。运行中发送通过持久化 FIFO 串行处理；排队消息保持可见，但不会 steer 活跃回合；断线结果未知时会先 held，不再盲目重放。本版同时包含 8.7.14 的 Relay 与大型历史修复，Mac legacy 路由保持不变。[版本说明](../docs/releases/v8.7.15.md)。
 
 ## 8.7.13 新功能：Linux OMP Mobile Collab
 
@@ -302,9 +302,9 @@ ccb update mobile
 <details>
 <summary><b>Mobile App 详情、安全边界和源码</b></summary>
 
-CCB 8.7.14 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
+CCB 8.7.15 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.14 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.14/ccb-mobile-v8.7.14.apk)
+- [下载 CCB Mobile v8.7.15 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -393,9 +393,17 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 ## 新版本记录
 
 <details open>
-<summary><b>v8.7.14</b> - OMP 历史分页与 Relay 修复</summary>
+<summary><b>v8.7.15</b> - 可靠的 OMP Mobile 回合</summary>
 
-Linux OMP 大型原生历史改为按字节分页，并在分页间完整保留超大原文条目；同时修复 Relay agent 字段并准确区分错误类型。Mac 原有 OMP 路由保持不变。
+同一会话增量更新会保留此前回复正文并就地折叠工具推理；运行中发送通过持久化 FIFO 串行处理。排队消息保持可见但不会 steer 活跃回合；断线结果未知时先 held，不再盲目重放。本版包含 8.7.14 的 Linux Relay 与大型历史修复，Mac legacy 路由保持不变。
+
+[完整中英文说明](../docs/releases/v8.7.15.md)。
+</details>
+
+<details>
+<summary><b>v8.7.14</b> - 未完成的预发布版（Android 发布取消）</summary>
+
+此未完成预发布版包含的 Linux OMP 历史分页与 Relay 修复现已并入 8.7.15；未发布 Android 版本。
 
 [完整中英文说明](../docs/releases/v8.7.14.md)。
 </details>

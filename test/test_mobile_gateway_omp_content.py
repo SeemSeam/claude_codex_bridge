@@ -57,6 +57,27 @@ def test_pages_budget_actual_ascii_relay_bytes_and_never_skip_items():
     assert pager.page(items[:1], scope=SCOPE, revision=1, limit=50, cursor=None)['items'][0] is items[0]
 
 
+def test_long_queued_input_uses_shared_budget_and_generic_original():
+    pager = OmpContentPager()
+    queued = {'id': 'original-key', 'agent': 'mobile', 'kind': 'user_message',
+              'body': '中文😀' * 50000, 'state': 'queued', 'source': 'mobile/collab',
+              'queue_position': 3}
+    page = pager.page([queued], scope=SCOPE, revision=1, limit=50, cursor=None)
+    preview = page['items'][0]
+    assert ascii_size(envelope(page)) <= PAGE_BYTES
+    assert 'native_turn' not in preview
+    assert preview['state'] == 'queued'
+    assert preview['queue_position'] == 3
+    cursor = preview['read_cursor']
+    chunks = []
+    while cursor:
+        content = pager.content([queued], scope=SCOPE, revision=1, cursor=cursor)
+        assert ascii_size(envelope({'native_content': content})) <= PAGE_BYTES
+        chunks.append(content['text'])
+        cursor = content['next_cursor']
+    assert json.loads(''.join(chunks)) == queued
+
+
 def test_original_roundtrip_hash_utf8_boundaries_and_complete_tools(tmp_path):
     text = '中文😀\\\n' * 60000
     records = [

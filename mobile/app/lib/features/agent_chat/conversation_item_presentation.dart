@@ -39,6 +39,28 @@ class ConversationBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (item.readCursor != null) {
+      final chinese = CcbMobileLocalizations.of(context).isChinese;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildText(context, item.body),
+          TextButton(
+            key: const ValueKey('conversation-read-original'),
+            onPressed:
+                contentLoader == null
+                    ? null
+                    : () => showNativeOriginalReader(
+                      context,
+                      cursor: item.readCursor!,
+                      loader: contentLoader!,
+                    ),
+            child: Text(chinese ? '阅读原文' : 'Read original'),
+          ),
+        ],
+      );
+    }
     final turn = item.nativeTurn;
     if (turn != null &&
         (item.kind == CcbConversationItemKind.agentReply ||
@@ -107,17 +129,23 @@ class ConversationStateChip extends StatelessWidget {
     required super.key,
     required this.state,
     this.collab = false,
+    this.needsReview = false,
   });
 
   final CcbConversationDeliveryState state;
   final bool collab;
+  final bool needsReview;
 
   @override
   Widget build(BuildContext context) {
     return Chip(
       visualDensity: VisualDensity.compact,
       label: Text(
-        collab && state == CcbConversationDeliveryState.unconfirmed
+        needsReview
+            ? (CcbMobileLocalizations.of(context).isChinese
+                ? '需要复核'
+                : 'Needs review')
+            : collab && state == CcbConversationDeliveryState.unconfirmed
             ? (CcbMobileLocalizations.of(context).isChinese
                 ? '原生准入未确认'
                 : 'Admission unconfirmed')
@@ -330,6 +358,7 @@ IconData conversationIcon(CcbConversationItemKind kind) {
 String conversationStateLabel(CcbConversationDeliveryState state) {
   return switch (state) {
     CcbConversationDeliveryState.pending => 'Pending',
+    CcbConversationDeliveryState.queued => 'Queued',
     CcbConversationDeliveryState.sent => 'Sent',
     CcbConversationDeliveryState.failed => 'Failed',
     CcbConversationDeliveryState.unconfirmed => 'Check pane',

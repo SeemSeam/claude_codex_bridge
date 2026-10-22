@@ -12,9 +12,9 @@ notifications, local/Tailnet gateway access, and file transfer.
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.14 release APK:
+CCB Mobile v8.7.15 release APK:
 
-- [Download ccb-mobile-v8.7.14.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.14/ccb-mobile-v8.7.14.apk)
+- [Download ccb-mobile-v8.7.15.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.15/ccb-mobile-v8.7.15.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
@@ -78,10 +78,17 @@ companion, confirms host readback, and does not edit project configuration or
 restart the agent. Busy sessions, desktop drafts and stale session/model
 revisions reject changes; observable mutation races report an unknown outcome.
 
-Upstream Collab v3 does not provide request-level prompt admission receipts.
-Mobile therefore preserves an unconfirmed delivery state and does not replay
-prompts on reconnect. Session/generation fences and retained idempotency keys
-prevent cross-session delivery and duplicate handoffs. Terminal shortcuts remain
+Linux OMP accepts consecutive mobile sends into its persisted, session-fenced FIFO.
+Queued user messages remain visible after refresh/restart, with explicit Queued,
+unconfirmed, sent or failed delivery state; held inputs show Needs review and are
+never silently resent into another session. Queue acceptance does not reset the
+running turn's status. Exact native entry association preserves the original
+idempotency-key identity without matching message text. Long queued bodies share
+the same bounded inline/original-reader budget as native history.
+Upstream Collab v3 does not provide request-level prompt admission receipts;
+unconfirmed delivery is retained until exact native evidence is available.
+Session/generation fences and retained idempotency keys prevent cross-session
+delivery and duplicate handoffs. Terminal shortcuts remain
 available only in Open Terminal; interactive approvals and remote session
 branching are not implemented by this connection.
 

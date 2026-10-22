@@ -121,6 +121,8 @@ def _project_records(records, session_id, latest_id, clean_text):
         if role not in {'user', 'assistant', 'tool'}:
             continue
         entry = {'id': record['id'], 'role': role, 'blocks': _blocks(message, role, clean_text)}
+        if record.get('streaming') is True:
+            entry['streaming'] = True
         reason = _stop_reason(message) if role == 'assistant' else ''
         if reason:
             entry['stop_reason'] = reason
@@ -186,6 +188,7 @@ def project_omp_snapshot(snapshot: dict, *, clean_text: Callable[[str], str]) ->
             records[stream_id] = (len(records) + 1, {
                 'type': 'message', 'id': stream_id, 'parentId': leaf,
                 'message': streaming,
+                'streaming': True,
             })
             leaf = stream_id
     session_id, turns = _project_records(records, session_id, leaf, clean_text)

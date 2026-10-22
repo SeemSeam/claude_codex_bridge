@@ -106,7 +106,9 @@ def main():
             assert snapshot and snapshot.get('ready') and snapshot.get('connected'), 'Actual upstream TUI Collab did not become ready'
             assert snapshot['session_id'], 'Missing actual native session identity'
             assert snapshot['state'].get('isStreaming') is False
-            assert not (collab / 'attempts.jsonl').exists(), 'Smoke must never submit a model prompt'
+            journal = collab / 'attempts.jsonl'
+            records = [json.loads(line) for line in journal.read_text().splitlines() if line.strip()] if journal.exists() else []
+            assert records == [], 'Smoke must never submit a model prompt'
             models = client.get_models(root, 'smoke')
             rows = [row for row in models['models'] if row['provider'] == 'ccb-local-smoke']
             assert {row['id'] for row in rows} == {'first', 'second'}
@@ -122,7 +124,8 @@ def main():
                 assert changed['thinking_level'] == thinking
                 models = client.get_models(root, 'smoke')
                 assert models['model'] == changed['model']
-            assert not (collab / 'attempts.jsonl').exists(), 'Model selection must not submit a prompt'
+            records = [json.loads(line) for line in journal.read_text().splitlines() if line.strip()] if journal.exists() else []
+            assert records == [], 'Model selection must not submit a prompt'
         finally:
             client.close_all()
             process.terminate()

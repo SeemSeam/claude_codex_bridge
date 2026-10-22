@@ -1,6 +1,12 @@
 # Changelog
 
-## v8.7.14 (2026-10-22)
+## v8.7.15 (2026-10-22)
+
+- Incrementally merge same-branch OMP history and preserve all visible assistant prose, loaded older pages and disclosure state instead of replacing the current view.
+- Accept running-session messages into a bounded durable FIFO with visible queued/held status, exact native input identity, one-at-a-time dispatch and no unknown replay.
+- Include the Relay large-history repair from the incomplete v8.7.14 prerelease; [full bilingual notes](docs/releases/v8.7.15.md).
+
+## v8.7.14 (incomplete prerelease; publication paused)
 
 - Bound Linux OMP conversation pages by serialized bytes below the CCB Relay limit; oversized turns expose versioned, UTF-8-safe original-content pages rather than dropping tool history.
 - Return correlated Relay payload-limit errors instead of request timeouts, and distinguish conversation-load failures from actual OMP host disconnection.

@@ -147,8 +147,13 @@ class OmpContentPager:
         preview = {key: value[:256] if isinstance(value, str) else value
                    for key, value in item.items()
                    if key in {'id', 'agent', 'session_id', 'kind', 'title', 'format',
-                              'source', 'state', 'started_at', 'completed_at', 'duration_ms'}
+                              'source', 'state', 'started_at', 'completed_at', 'duration_ms',
+                              'queue_position', 'delivery_reason'}
                    and isinstance(value, (str, int, float, bool, type(None)))}
+        if not item.get('native_turn'):
+            preview.update(body=str(item.get('body') or '')[:512] + '\n\n[Content preview; read original]',
+                           attachments=[], read_cursor=cursor, read_reason=REASON)
+            return preview
         native = item.get('native_turn') or {}
         preview.update(body=str(item.get('body') or '')[:512] + '\n\n[Content preview; read original]',
                        attachments=[], native_turn={

@@ -413,6 +413,20 @@ void main() {
       isNot(liveId),
     );
 
+    // Finishing the UI turn is not itself proof that the real guest observed
+    // the ordered start/stop and durable input binding. Wait for host FIFO
+    // reconciliation before asking the native model companion to mutate.
+    Map<String, dynamic> settledQueue = {};
+    final settleDeadline = DateTime.now().add(const Duration(seconds: 20));
+    do {
+      settledQueue = (await tester.runAsync(() => _fixture('stats')))!;
+      if ((settledQueue['pending_inputs'] as List).isEmpty) break;
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    } while (DateTime.now().isBefore(settleDeadline));
+    expect(settledQueue['pending_inputs'], isEmpty,
+      reason:'Native FIFO must reconcile start/stop before model change: $settledQueue');
+
     final oldControl =
         (await tester.runAsync(
           () => repository.getAgentProviderControl(
@@ -565,6 +579,106 @@ void main() {
     });
     await tester.runAsync(() => _fixture('screenshot', {'name': 'reconnect'}));
 
+    // Three real UI sends while the first model-free native turn is running.
+    // The host—not the fixture controls—must own FIFO admission and dispatch.
+    await tester.runAsync(() => _fixture('automatic_live'));
+    await send('Fixture FIFO first question', 4);
+    await tester.runAsync(() => _fixture('intermediate'));
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any(
+      (bubble) => jsonEncode(bubble.item.nativeTurn?.toJson()).contains('Fixture intermediate continuation 4')));
+    final firstFifoReply = _replies(tester).singleWhere(
+      (bubble) => jsonEncode(bubble.item.nativeTurn?.toJson()).contains('Fixture intermediate continuation 4')).item.id;
+    await send('Fixture FIFO second question', 4);
+    await send('Fixture FIFO third question', 4);
+    final queuedUi = tester.widgetList<ConversationBubble>(find.byType(ConversationBubble))
+      .where((bubble) => bubble.item.body == 'Fixture FIFO second question' || bubble.item.body == 'Fixture FIFO third question')
+      .map((bubble) => bubble.item).toList();
+    expect(queuedUi, hasLength(2));
+    expect(queuedUi.map((item) => item.state), everyElement(CcbConversationDeliveryState.queued));
+    final queuedIds = {for (final item in queuedUi) item.body:item.id};
+    await tester.runAsync(() => _fixture('screenshot', {'name':'fifo-queued'}));
+    controller.refreshLatest();
+    await _until(tester, () => queuedIds.entries.every((entry) =>
+      tester.widgetList<ConversationBubble>(find.byType(ConversationBubble)).any(
+        (bubble) => bubble.item.id == entry.value && bubble.item.body == entry.key && bubble.item.state == CcbConversationDeliveryState.queued)));
+
+    Future<void> waitForDispatch(int count) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      Map<String, dynamic> stats = {};
+      do {
+        stats = (await tester.runAsync(() => _fixture('stats')))!;
+        if (stats['prompts'] == count) break;
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      } while (DateTime.now().isBefore(deadline));
+      expect(stats['prompts'], count);
+      expect(stats['active_prompts'], 1);
+      expect(stats['max_active_prompts'], 1);
+    }
+    await tester.runAsync(() => _fixture('finish'));
+    await waitForDispatch(5);
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any(
+      (bubble) => bubble.item.id == firstFifoReply && bubble.item.body.contains('Fixture durable turn 4')));
+    final retainedFirst = _replies(tester).singleWhere((bubble) => bubble.item.id == firstFifoReply).item;
+    expect(jsonEncode(retainedFirst.nativeTurn!.toJson()), contains('Fixture live turn 4'));
+    expect(jsonEncode(retainedFirst.nativeTurn!.toJson()), contains('Fixture intermediate continuation 4'));
+    await tester.runAsync(() => _fixture('finish'));
+    await waitForDispatch(6);
+    await tester.runAsync(() => _fixture('finish'));
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((bubble) => bubble.item.body.contains('Fixture durable turn 6')));
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((bubble) =>
+      bubble.item.id == firstFifoReply &&
+      bubble.item.nativeTurn?.turnId == retainedFirst.nativeTurn!.turnId &&
+      bubble.item.body.contains('Fixture durable turn 4')),
+      reason:'First FIFO bubble presentation identity survives completion and refresh');
+    await tester.runAsync(() async {
+      final all = <CcbConversationItem>[];
+      String? cursor;
+      do {
+        final page = await repository.getAgentConversation(
+          projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,cursor:cursor);
+        all.addAll(page.items);
+        cursor = page.nextCursor;
+      } while (cursor != null);
+      for (final entry in queuedIds.entries) {
+        final item = all.singleWhere((item) => item.body == entry.key);
+        expect(item.id, entry.value);
+        expect(item.state, CcbConversationDeliveryState.sent);
+      }
+      // Workspace bubbles may carry a stable presentation alias. Repository
+      // history retains the canonical native identity, not that widget alias.
+      final retained = all.singleWhere((item) =>
+        item.kind == CcbConversationItemKind.agentReply &&
+        item.nativeTurn?.turnId == retainedFirst.nativeTurn!.turnId &&
+        item.nativeTurn?.sessionId == retainedFirst.nativeTurn!.sessionId);
+      expect(jsonEncode(retained.nativeTurn!.toJson()), contains('Fixture live turn 4'));
+      expect(jsonEncode(retained.nativeTurn!.toJson()), contains('Fixture intermediate continuation 4'));
+      expect(retained.body, contains('Fixture durable turn 4'));
+      expect(all.any((item) => item.body == 'Fixture initial native snapshot'), isTrue);
+      final stats = await _fixture('stats');
+      expect(all.map((item) => item.id).toSet().length, all.length,
+        reason:'FIFO refresh and older pagination must not duplicate native turns');
+      if (_relayUrl.isNotEmpty) {
+        final initialIds = ((stats['history'] as Map)['ids'] as List).cast<String>();
+        expect(all.map((item) => item.id), containsAll(initialIds),
+          reason:'All original large-history turns survive FIFO updates and pagination');
+      }
+      expect(stats['active_prompts'], 0);
+      expect(stats['max_active_prompts'], 1);
+      final order = (stats['dispatch_order'] as List).skip(3).toList();
+      expect(order, hasLength(3));
+      for (var index = 0; index < 3; index++) {
+        expect(jsonEncode(order[index]), contains(['Fixture FIFO first question','Fixture FIFO second question','Fixture FIFO third question'][index]));
+      }
+      await _fixture('fifo-proof', {'dispatch_ordinals':[4,5,6], 'max_active_prompts':1,
+        'retained_reply_id':firstFifoReply,'queued_ids':queuedIds});
+    });
+    await tester.runAsync(() => _fixture('screenshot', {'name':'fifo-complete'}));
+
     // An actual lifecycle notification exercises the product observer and timer.
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -592,7 +706,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     final finalStats = (await tester.runAsync(() => _fixture('stats')))!;
     expect(finalStats['terminal_calls'], 0);
-    expect(finalStats['prompts'], 3);
+    expect(finalStats['prompts'], 6);
     expect(finalStats['changes'], 1);
     if (_relayUrl.isNotEmpty) {
       expect(finalStats['max_conversation_bytes'], lessThanOrEqualTo(192 * 1024));

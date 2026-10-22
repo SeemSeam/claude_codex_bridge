@@ -1148,6 +1148,12 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
     required CcbConversationItem replacement,
   }) {
     final agentName = agent.name;
+    // Queue admission is not a new running turn and must not clear the turn
+    // already being observed while OMP drains its server-side FIFO.
+    if (isOmpCollabAgent(agent) &&
+        replacement.state != CcbConversationDeliveryState.sent) {
+      return;
+    }
     if (replacement.state == CcbConversationDeliveryState.sent) {
       _updateAwaitingForSubmission(
         agent: agent,

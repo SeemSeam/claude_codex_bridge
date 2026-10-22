@@ -12,6 +12,7 @@ class CcbAgentConversation {
     this.ompSessionId,
     this.ompGeneration,
     this.nativeContent,
+    this.branchId,
   });
 
   final String projectId;
@@ -23,6 +24,7 @@ class CcbAgentConversation {
   final String? ompSessionId;
   final String? ompGeneration;
   final NativeContentPage? nativeContent;
+  final String? branchId;
 
   factory CcbAgentConversation.fromJson(Map<String, Object?> json) {
     final conversation = _map(json['conversation']);
@@ -48,6 +50,7 @@ class CcbAgentConversation {
           source['transport'] == 'collab'
               ? _optionalText(source['generation']?.toString())
               : null,
+      branchId: _optionalText(source['branch_id']),
       nativeContent:
           source['native_content'] is Map
               ? NativeContentPage.fromJson(_map(source['native_content']))
@@ -67,6 +70,7 @@ class CcbAgentConversation {
       if (ompSessionId != null) 'transport': 'collab',
       if (ompSessionId != null) 'session_id': ompSessionId,
       if (ompGeneration != null) 'generation': ompGeneration,
+      if (branchId != null) 'branch_id': branchId,
       if (nativeContent != null) 'native_content': nativeContent!.toJson(),
     };
   }
