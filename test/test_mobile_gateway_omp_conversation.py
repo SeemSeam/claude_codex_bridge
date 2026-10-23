@@ -221,3 +221,58 @@ def test_omp_authoritative_empty_branch_does_not_show_old_entries():
         'state': {'leafId': None, 'isStreaming': False},
     }
     assert project_omp_snapshot(snapshot, clean_text=lambda text: text)[1] == []
+
+
+def test_native_window_crosses_metadata_pages_without_split_turn():
+    from mobile_gateway.omp_conversation import load_omp_turn_window
+    records = [_message('u', None, 'user', 'question')]
+    for index in range(17000):
+        records.append({'id': f'm{index}', 'parentId': records[-1]['id'], 'type': 'custom'})
+    records.append(_message('a', records[-1]['id'], 'assistant', 'answer', stopReason='stop'))
+    calls = []
+
+    def fetch(cursor):
+        end = len(records) if cursor is None else int(cursor)
+        calls.append(end)
+        start = max(0, end - 128)
+        return {'session_id': 's', 'generation': 'g', 'branch_id': 'b',
+                'entries': list(reversed(records[start:end])), 'start_cursor': str(end),
+                'next_cursor': str(start) if start else None, 'entry_chunks': []}
+
+    _, window, replay, older = load_omp_turn_window(fetch)
+    assert [record['id'] for record in window] == ['u', 'a']
+    assert window[-1]['parentId'] == 'u'
+    assert older is None
+    assert len(calls) > 128
+    records.append(_message('new', 'a', 'user', 'append'))
+    assert load_omp_turn_window(fetch, replay)[1] == window
+
+
+def test_native_window_reconstructs_chunked_records_and_retains_intermediate_text():
+    import base64
+    from mobile_gateway.omp_conversation import load_omp_turn_window, project_omp_snapshot
+    user = _message('u', None, 'user', 'question')
+    call = _message('call', 'u', 'assistant', 'intermediate', stopReason='tool_use')
+    result = _message('result', 'call', 'toolResult', '中文😀' * 100000)
+    final = _message('final', 'result', 'assistant', 'final', stopReason='stop')
+    encoded = json.dumps(result, ensure_ascii=False).encode()
+    pages = [{'entries': [final]}]
+    for offset in range(0, len(encoded), 64000):
+        pages.append({'entries': [], 'entry_chunks': [{
+            'entry_id': 'result', 'encoding': 'base64', 'offset': offset,
+            'total_bytes': len(encoded), 'data': base64.b64encode(encoded[offset:offset + 64000]).decode()}]})
+    pages.append({'entries': [call, user]})
+
+    def fetch(cursor):
+        index = 0 if cursor is None else int(cursor)
+        return {'session_id': 's', 'generation': 'g', 'branch_id': 'b',
+                'start_cursor': str(index), 'next_cursor': str(index + 1) if index + 1 < len(pages) else None,
+                **pages[index]}
+
+    _, records, _, older = load_omp_turn_window(fetch)
+    assert records == [user, call, result, final]
+    assert older is None
+    _, turns = project_omp_snapshot({'entries': records}, clean_text=lambda text: text)
+    assert turns[0].turn_id == 'u'
+    assert turns[0].entries[0]['blocks'][0]['text'] == 'intermediate'
+    assert turns[0].entries[1]['blocks'][0]['text'] == result['message']['content']

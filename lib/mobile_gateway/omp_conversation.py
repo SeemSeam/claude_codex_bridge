@@ -7,6 +7,122 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Callable
+import base64
+import json
+
+from .omp_content import OmpContentError, OmpContentPager
+
+HISTORY_PREFIX = 'omp-history-v1.'
+HISTORY_CONTENT_PREFIX = 'omp-history-content-v1.'
+
+
+def history_cursor(scope, position, end=None, content=None):
+    prefix = HISTORY_CONTENT_PREFIX if content is not None else HISTORY_PREFIX
+    fields = [OmpContentPager._scope_version(scope), position, end, content]
+    return prefix + base64.urlsafe_b64encode(json.dumps(
+        fields, separators=(',', ':')).encode()).decode().rstrip('=')
+
+
+def parse_history_cursor(cursor, scope):
+    try:
+        prefix = HISTORY_CONTENT_PREFIX if cursor.startswith(HISTORY_CONTENT_PREFIX) else HISTORY_PREFIX
+        if not cursor.startswith(prefix) or len(cursor) > 32768:
+            raise ValueError()
+        encoded = cursor[len(prefix):]
+        fields = json.loads(base64.b64decode(encoded + '=' * (-len(encoded) % 4),
+                                            altchars=b'-_', validate=True))
+        if not isinstance(fields, list) or len(fields) != 4:
+            raise ValueError()
+        fence, position, end, content = fields
+        if (not isinstance(position, dict) or set(position) != {'cursor', 'skip', 'turns'}
+                or not isinstance(position['cursor'], str) or type(position['skip']) is not int
+                or type(position['turns']) is not int or not 1 <= position['turns'] <= 100
+                or position['skip'] < 0 or end is not None and (type(end) is not int or end < 0)
+                or content is not None and not isinstance(content, str)):
+            raise ValueError()
+    except (ValueError, TypeError, UnicodeError, KeyError) as exc:
+        raise OmpContentError('invalid history cursor') from exc
+    if fence != OmpContentPager._scope_version(scope):
+        raise OmpContentError('stale history cursor', 409)
+    return position, end, content
+
+
+def load_omp_turn_window(fetch, position=None, *, turns=1):
+    """Read a bounded user-anchored window, crossing bounded native pages.
+
+    Positions replay a signed native start cursor plus a record offset, never
+    a mutable replica index. Oversized record chunks are decoded only here.
+    """
+    page = fetch(None if position is None else position['cursor'])
+    first = page
+    turns = turns if position is None else position['turns']
+    start = {'cursor': page['start_cursor'], 'skip': 0 if position is None else position['skip'],
+             'turns': turns}
+    skip = start['skip']
+    records = []
+    chunks = bytearray()
+    chunk_id = None
+    pages = 1
+
+    def retain(record):
+        message = record.get('message')
+        if isinstance(message, dict) or _is_user_record(record):
+            records.append(record)
+        elif records:
+            # The signed native chain proves this exact omitted edge. Collapse
+            # metadata immediately, retaining neither its payload nor its IDs.
+            records[-1] = {**records[-1], 'parentId': record.get('parentId')}
+
+    while True:
+        entries = page.get('entries', [])
+        if skip > len(entries):
+            raise OmpContentError('stale history cursor', 409)
+        for index, record in enumerate(entries[skip:], skip):
+            retain(record)
+            if _is_user_record(record):
+                turns -= 1
+                if turns == 0 or pages >= 2:
+                    after = ({'cursor': page['start_cursor'], 'skip': index + 1, 'turns': start['turns']}
+                             if index + 1 < len(entries) or page.get('entry_chunks') else
+                             {'cursor': page['next_cursor'], 'skip': 0, 'turns': start['turns']}
+                             if page.get('next_cursor') else None)
+                    return first, list(reversed(records)), start, after
+        skip = 0
+        for chunk in page.get('entry_chunks', []):
+            if chunk.get('encoding') != 'base64' or chunk.get('offset') != len(chunks):
+                raise OmpContentError('invalid native history chunk', 502)
+            if chunk_id is not None and chunk_id != chunk['entry_id']:
+                raise OmpContentError('invalid native history chunk', 502)
+            chunk_id = chunk['entry_id']
+            chunks.extend(base64.b64decode(chunk['data'], validate=True))
+            if len(chunks) == chunk['total_bytes']:
+                record = json.loads(chunks)
+                if record.get('id') != chunk_id:
+                    raise OmpContentError('invalid native history chunk', 502)
+                retain(record)
+                chunks.clear()
+                chunk_id = None
+                if _is_user_record(record):
+                    turns -= 1
+                    if turns == 0 or pages >= 2:
+                        after = ({'cursor': page['next_cursor'], 'skip': 0, 'turns': start['turns']}
+                                 if page.get('next_cursor') else None)
+                        return first, list(reversed(records)), start, after
+        if not page.get('next_cursor'):
+            if chunks:
+                raise OmpContentError('incomplete native history chunk', 502)
+            return first, list(reversed(records)), start, None
+        page = fetch(page['next_cursor'])
+        pages += 1
+        if any(page.get(key) != first.get(key) for key in ('session_id', 'generation', 'branch_id')):
+            raise OmpContentError('stale history cursor', 409)
+
+
+def _is_user_record(record):
+    message = record.get('message') or {}
+    return (record.get('type') == 'custom_message' and record.get('customType') == 'collab-prompt'
+            or message.get('role') == 'user'
+            or message.get('role') == 'custom' and message.get('customType') == 'collab-prompt')
 
 
 def _text(value: object) -> str:

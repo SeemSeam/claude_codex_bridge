@@ -399,23 +399,13 @@ class AgentChatController {
         oldTurn.turnId != newTurn.turnId) {
       return next;
     }
-    if (newTurn.readCursor != null) {
-      // Retained content remains reachable, explicitly as an older snapshot,
-      // not misrepresented as the current oversized original.
-      final retained =
-          oldTurn.entries.where((entry) => !entry.streaming).toList();
-      if (retained.isEmpty) return next;
-      return next.copyWith(
-        nativeTurn: NativeSessionTurn(
-          sessionId: newTurn.sessionId,
-          turnId: newTurn.turnId,
-          status: newTurn.status,
-          entries: retained,
-          readCursor: newTurn.readCursor,
-          reason: newTurn.reason,
-          retainedInline: true,
-        ),
-      );
+    // A bounded window is an authoritative replacement, never accumulated
+    // history. Likewise do not seed a complete refresh with an old window.
+    if (newTurn.inlineWindow ||
+        newTurn.readCursor != null ||
+        oldTurn.inlineWindow ||
+        oldTurn.readCursor != null) {
+      return next;
     }
     final entries = <String, NativeSessionEntry>{
       for (final entry in oldTurn.entries)

@@ -125,6 +125,17 @@ class OmpCollabClient:
     def get_snapshot(self, project_root: Path, agent: str) -> dict:
         return self._request(project_root, agent, "snapshot")
 
+    def get_history_page(self, project_root: Path, agent: str, *, cursor: str | None = None,
+                         limit: int = 128, max_bytes: int = 262144,
+                         expected_session_id: str | None = None,
+                         expected_generation: object = None) -> dict:
+        if (not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 128
+                or not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or not 4096 <= max_bytes <= 262144
+                or (cursor is not None and (not isinstance(cursor, str) or not 1 <= len(cursor) <= 16384))):
+            raise OmpCollabError("Invalid OMP history page", 409)
+        return self._request(project_root, agent, "history", cursor=cursor, limit=limit, max_bytes=max_bytes,
+                             expected_session_id=expected_session_id, expected_generation=expected_generation)
+
     def submit(self, project_root: Path, agent: str, body: str, idempotency_key: str, *,
                expected_session_id: str | None = None, expected_generation: object = None) -> dict:
         if not isinstance(body, str) or not body.strip() or not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 256:

@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.17-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.18-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -50,6 +50,12 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
+
+## 8.7.18 新功能：OMP Mobile 稳定长历史与有界最新气泡
+
+OMP Mobile 通过有界原生父链分页稳定读取长历史；历史查询失败不再重置健康的 WebSocket 或清除已加载内容。超长回复在气泡中保留结构化最新内容，最多 24 KiB、8 条记录、24 个块；完整原文仍可通过次级阅读入口查看。请同时升级服务端与 App，已有 OMP 进程在空闲时正常重启加载；不要中断忙碌 Agent 或清空历史。
+
+[Full bilingual notes](../docs/releases/v8.7.18.md).
 
 ## 8.7.17 新功能：OMP 回复收据与业务处理分离
 
@@ -312,7 +318,7 @@ ccb update mobile
 
 CCB 8.7.16 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.17 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.17/ccb-mobile-v8.7.17.apk)
+- [下载 CCB Mobile v8.7.18 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.18/ccb-mobile-v8.7.18.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -399,6 +405,16 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <a id="release-notes"></a>
 
 ## 新版本记录
+
+<details open>
+<summary><b>v8.7.18</b> - Stable OMP Mobile history / 稳定长历史</summary>
+
+OMP Mobile now paginates stable long history through bounded native parent-chain pages. History-query errors preserve a healthy WebSocket and already-loaded content. Oversized replies keep a structured latest-content bubble capped at 24 KiB, 8 entries and 24 blocks; complete originals remain available as a secondary reader. Upgrade both the server and app, then restart existing OMP processes normally when idle; do not interrupt busy agents or discard history.
+
+OMP Mobile 通过有界原生父链分页稳定读取长历史；历史查询失败不再重置健康的 WebSocket 或清除已加载内容。超长回复在气泡中保留结构化最新内容，最多 24 KiB、8 条记录、24 个块；完整原文仍可通过次级阅读入口查看。请同时升级服务端与 App，已有 OMP 进程在空闲时正常重启加载；不要中断忙碌 Agent 或清空历史。
+
+[Full bilingual notes](../docs/releases/v8.7.18.md).
+</details>
 
 <details open>
 <summary><b>v8.7.17</b> - OMP reply receipts / OMP 回复收据</summary>

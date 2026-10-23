@@ -55,6 +55,30 @@ def test_snapshot_real_owner_binding(tmp_path):
     client.close_all()
 
 
+def test_history_page_preserves_fences_cursors_and_chunk_payload(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    page = {'session_id': 'native', 'generation': 'owner:1', 'entries': [],
+            'entry_chunks': [{'entry_id': 'large', 'offset': 0, 'total_bytes': 999999,
+                              'encoding': 'base64', 'data': 'e30='}],
+            'start_cursor': 'before', 'next_cursor': 'after', 'has_more': True}
+    thread, requests = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': page})
+    client = OmpCollabClient()
+    assert client.get_history_page(tmp_path, 'a', cursor='before', limit=64, max_bytes=65536,
+                                   expected_session_id='native', expected_generation='owner:1') == page
+    thread.join(2)
+    assert requests == [{'operation': 'history', 'actor': 'a', 'launch_session_id': 'launch',
+                         'cursor': 'before', 'limit': 64, 'max_bytes': 65536,
+                         'expected_session_id': 'native', 'expected_generation': 'owner:1'}]
+
+
+@pytest.mark.parametrize('fields', [{'limit': 129}, {'limit': True}, {'max_bytes': 4095},
+                                   {'max_bytes': 262145}, {'cursor': ''}, {'cursor': 1}])
+def test_history_page_rejects_unbounded_requests_before_connecting(tmp_path, fields):
+    with pytest.raises(OmpCollabError, match='Invalid OMP history page') as error:
+        OmpCollabClient().get_history_page(tmp_path, 'a', **fields)
+    assert error.value.status_code == 409
+
+
 def test_wrong_provider_never_connects(tmp_path):
     _, session, data = _binding(tmp_path)
     data['provider'] = 'pi'

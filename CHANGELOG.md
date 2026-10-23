@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.7.18 (2026-10-23)
+
+- Keep healthy OMP Mobile Collab connections alive when history queries fail; report history errors separately from owner/transport failures instead of repeated leave/rejoin cycles.
+- Page native history through indexed parent-chain queries with session/branch-fenced, append-stable cursors and lossless oversized-record chunks. Retain only a bounded recent Collab replica; older messages and complete tool/text originals remain readable on demand.
+- Preserve loaded phone history across live appends and reject old cursors after genuine branch changes. Local Android emulator qualification uses the real native host, generated bridge, gateway and encrypted Relay, without paid inference or changes to live nozeli sessions.
+- Oversized OMP replies now keep a readable structured latest-content window inside the conversation bubble instead of clearing entries and showing only a 512-character prefix. Bound the serialized item to 24 KiB, at most 8 entries / 24 blocks, prioritize recent assistant prose, retain bounded tool/reasoning snippets, and replace the window on refresh without accumulating stale content. Complete originals remain available separately.
+- Fence native history/live-replica append races, retain exact input identities, and preserve complete original content. Update server and Android app together; normally restart idle OMP Agents to load the new native bridge. [Full bilingual notes](docs/releases/v8.7.18.md).
+
 ## v8.7.17 (2026-10-22)
 
 - Add bounded, owner-bound native OMP `reply_deliver` / `reply_status` ingress so returned replies do not wait behind an entire long-running business turn. Deliver `ccb-reply` as an aside at a safe step boundary.

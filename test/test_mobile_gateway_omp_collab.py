@@ -25,7 +25,21 @@ class FakeTransport:
         self.calls.append(('snapshot', root, agent))
         if self.error:
             raise self.error
-        return self.snapshot
+        return {**self.snapshot, 'entries': self.snapshot['entries'][-128:]}
+
+    def get_history_page(self, root, agent, *, cursor=None, limit=128, max_bytes=262144,
+                         expected_session_id=None, expected_generation=None):
+        import json
+        self.calls.append(('history', root, agent))
+        if self.error:
+            raise self.error
+        records = self.snapshot['entries']
+        anchor, end = json.loads(cursor) if cursor else (len(records), len(records))
+        start = max(0, end - limit)
+        return {**self.snapshot, 'entries': list(reversed(records[start:end])),
+                'start_cursor': json.dumps([anchor, end]), 'entry_chunks': [],
+                'next_cursor': json.dumps([anchor, start]) if start else None,
+                'anchor_leaf_id': records[anchor - 1]['id'] if anchor else None}
 
     def submit(self, root, agent, body, key, *, expected_session_id, expected_generation):
         self.calls.append(('submit', root, agent, body, key, expected_session_id, expected_generation))
@@ -174,7 +188,7 @@ def test_omp_conversation_always_obtains_ready_live_snapshot(tmp_path, monkeypat
     assert first['conversation']['revision'] == 1
     assert second['conversation']['revision'] == 2
     assert second['conversation']['transport'] == 'collab'
-    assert len(transport.calls) == 2
+    assert [call[0] for call in transport.calls] == ['snapshot', 'history', 'snapshot', 'history']
     transport.snapshot['ready'] = False
     with pytest.raises(MobileGatewayError) as error:
         service.agent_conversation_payload('project', agent='mobile', query=query, headers=service.test_headers)
@@ -484,3 +498,84 @@ def test_omp_invalid_conversation_cursor_is_bad_request(tmp_path, monkeypatch, c
         service.agent_conversation_payload('project', agent='mobile',
             query={'namespace_epoch': ['4'], 'cursor': [cursor]}, headers=service.test_headers)
     assert error.value.status_code == 400
+
+
+def test_native_history_traverses_large_session_without_replica_projection(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    records = []
+    for index in range(14010):
+        parent = records[-1]['id'] if records else None
+        records.extend([
+            {'type': 'message', 'id': f'u{index}', 'parentId': parent,
+             'message': {'role': 'user', 'content': f'question {index}'}},
+            {'type': 'message', 'id': f'a{index}', 'parentId': f'u{index}',
+             'message': {'role': 'assistant', 'content': f'answer {index} ' + 'x' * 3700,
+                         'stopReason': 'stop'}},
+        ])
+    transport.snapshot.update(entries=records, branch_id='branch',
+                              state={'leafId': records[-1]['id'], 'isStreaming': False})
+    import json
+    assert len(json.dumps(records).encode()) > 48 * 1024 * 1024
+    query = {'namespace_epoch': ['4'], 'limit': ['50']}
+    seen = set()
+    first_cursor = None
+    while True:
+        page = service.agent_conversation_payload(
+            'project', agent='mobile', query=query, headers=service.test_headers)['conversation']
+        assert page['items']
+        for item in page['items']:
+            assert item['id'] not in seen
+            seen.add(item['id'])
+            if item['kind'] == 'agent_reply':
+                assert item['native_turn']['status'] == 'completed'
+        cursor = page.get('next_cursor')
+        if first_cursor is None:
+            first_cursor = cursor
+        if cursor is None:
+            break
+        query['cursor'] = [cursor]
+    assert len(seen) == len(records)
+    records.append({'type': 'message', 'id': 'appended', 'parentId': records[-1]['id'],
+                    'message': {'role': 'user', 'content': 'new'}})
+    transport.snapshot['state']['leafId'] = 'appended'
+    query['cursor'] = [first_cursor]
+    replay = service.agent_conversation_payload(
+        'project', agent='mobile', query=query, headers=service.test_headers)['conversation']
+    assert replay['items']
+    assert all(item['id'] in seen for item in replay['items'])
+    transport.snapshot['branch_id'] = 'other-branch'
+    with pytest.raises(MobileGatewayError) as error:
+        service.agent_conversation_payload(
+            'project', agent='mobile', query=query, headers=service.test_headers)
+    assert error.value.status_code == 409
+
+
+def test_history_append_race_does_not_merge_stale_stream_or_pending(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    old = {'type': 'message', 'id': 'old', 'parentId': None,
+           'message': {'role': 'user', 'content': 'old question'}}
+    appended = {'type': 'message', 'id': 'new', 'parentId': 'old',
+                'message': {'role': 'user', 'content': 'new question'}}
+    transport.snapshot.update(
+        entries=[old], branch_id='branch',
+        state={'leafId': 'old', 'isStreaming': True},
+        streaming_message={'role': 'assistant', 'content': 'stale stream'}, stream_id='stream',
+        pending_inputs=[{'idempotency_key': 'receipt', 'body': 'new question',
+                         'state': 'sent', 'entry_id': 'new',
+                         'session_id': 'native', 'generation': 'instance:1'}],
+    )
+    original_history = transport.get_history_page
+
+    def appended_history(*args, **kwargs):
+        transport.snapshot['entries'] = [old, appended]
+        return original_history(*args, **kwargs)
+
+    monkeypatch.setattr(transport, 'get_history_page', appended_history)
+    conversation = service.agent_conversation_payload(
+        'project', agent='mobile', query={'namespace_epoch': ['4']},
+        headers=service.test_headers)['conversation']
+    items = conversation['items']
+    assert [item['body'] for item in items] == ['old question', 'new question']
+    assert [item['id'] for item in items].count('receipt') == 1
+    assert items[-1]['id'] == 'receipt'
+    assert all(item['kind'] == 'user_message' for item in items)

@@ -20,7 +20,13 @@ CcbConversationItem overflowReply() => CcbConversationItem.fromJson({
     'session_id': 'session',
     'turn_id': 'turn',
     'status': 'running',
-    'entries': [],
+    'inline_window': true,
+    'entries': [
+      {
+        'id': 'latest', 'role': 'assistant',
+        'blocks': [{'type': 'text', 'text': 'Readable latest answer'}],
+      },
+    ],
     'read_cursor': 'page0',
     'reason': 'Content exceeds inline budget; read original',
   },
@@ -62,7 +68,12 @@ void main() {
   testWidgets('oversized user input retains an explicit original reader', (
     tester,
   ) async {
-    final json = overflowReply().toJson()..['kind'] = 'user_message';
+    final json = overflowReply().toJson()
+      ..['kind'] = 'user_message'
+      ..['body'] = 'Latest request tail'
+      ..remove('native_turn')
+      ..['read_cursor'] = 'page0'
+      ..['read_reason'] = 'Recent content only; earlier content omitted';
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -79,6 +90,8 @@ void main() {
         ),
       ),
     );
+    expect(find.text('Latest request tail'), findsOneWidget);
+    expect(find.text('No assistant answer'), findsNothing);
     await tester.tap(find.text('Read original'));
     await tester.pumpAndSettle();
     expect(find.text('Full user request'), findsOneWidget);
@@ -89,6 +102,8 @@ void main() {
       final item = overflowReply().copyWith(body: 'Copied preview');
       final restored = CcbConversationItem.fromJson(item.toJson());
       expect(restored.nativeTurn!.readCursor, 'page0');
+      expect(restored.nativeTurn!.inlineWindow, isTrue);
+      expect(restored.nativeTurn!.answerText, 'Readable latest answer');
       expect(
         restored.nativeTurn!.reason,
         'Content exceeds inline budget; read original',
@@ -137,8 +152,9 @@ void main() {
       expect(calls, isEmpty);
       expect(find.text('Running'), findsOneWidget);
       expect(find.text('Completed'), findsNothing);
-      expect(find.text('Bounded preview'), findsOneWidget);
-      expect(find.textContaining('Preview only'), findsOneWidget);
+      expect(find.text('Readable latest answer'), findsOneWidget);
+      expect(find.text('Bounded preview'), findsNothing);
+      expect(find.text(const NativeTurnLabels().latestWindow), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('native-read-original')));
       await tester.pumpAndSettle();
       final read = <String>[];

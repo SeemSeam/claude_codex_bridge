@@ -9,11 +9,17 @@ authorize a received receipt with delivery_id/body_sha256. Owner-private fsynced
 intents hold ambiguous attempts across restarts, never replaying them.
 Admission and native processing have separate lifetimes, so busy owners can
 admit multiple aside messages without interruption.
+
+Native history v1 walks only the active parent chain with getEntry/getLeafId.
+Signed ancestry_page/history_page cursors bind an immutable anchor to the owner,
+runtime, session and branch generation; appends preserve them, tree/session
+changes invalidate them. Pages carry bounded raw records or base64 JSON byte
+chunks for oversized records, including non-message metadata without omission.
 """
 
 IMPORTS = '''import { createServer, createConnection } from "node:net";
 import { chmodSync, lstatSync, unlinkSync } from "node:fs";
-import { createHash as replyCreateHash } from "node:crypto";
+import { createHash as replyCreateHash, createHmac as historyHmac, randomBytes as historyRandomBytes } from "node:crypto";
 import { open as replyOpen } from "node:fs/promises";
 import { openSync as replyOpenSync, closeSync as replyCloseSync, fstatSync as replyFstatSync,
   readFileSync as replyReadSync, writeSync as replyWriteSync, fsyncSync as replyFsyncSync,
@@ -27,6 +33,98 @@ BRIDGE = r'''
   const editorPath = process.env.CCB_OMP_COMPOSER_SOCKET || "";
   let modelControlBusy = false;
   const modelAttempts = new Map<string, { signature: string, result: Promise<any> }>();
+  let historyGeneration = 0;
+  // One chunked record, never a session replica. Records above this retained
+  // byte budget remain readable but are serialized transiently for each page.
+  let historySerialized: { session: string, generation: number, entry: any, bytes: Buffer } | null = null;
+  const historySerializedBudget = 32 * 1024 * 1024;
+  const historySecret = historyRandomBytes(32);
+  const historySign = (text: string) => historyHmac("sha256", historySecret).update(text).digest("base64url");
+  const historyCursor = (value: any) => {
+    const text = Buffer.from(JSON.stringify(value)).toString("base64url");
+    return text + "." + historySign(text);
+  };
+  const historyPage = (request: any, ctx: any, base: any) => {
+    const fail = (error: string, status_code = 409) => ({ ...base, error, status_code });
+    const manager = ctx.sessionManager;
+    if (!base.session_id || request.runtime_instance_id !== runtimeInstanceId || request.session_id !== base.session_id)
+      return fail("OMP history binding changed; refresh");
+    if (typeof manager?.getEntry !== "function" || typeof manager?.getLeafId !== "function")
+      return fail("OMP native history unavailable", 503);
+    const limit = request.limit ?? 128;
+    const budget = request.max_bytes ?? 262144;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 128 ||
+        !Number.isInteger(budget) || budget < 4096 || budget > 262144)
+      return fail("Invalid OMP history page budget", 400);
+    const kind = request.operation;
+    let position: any = { s: base.session_id, g: historyGeneration, k: kind,
+      a: base.leaf_id, n: base.leaf_id, o: 0 };
+    if (request.cursor != null) {
+      if (typeof request.cursor !== "string" || request.cursor.length > 4096)
+        return fail("Invalid OMP history cursor");
+      const parts = request.cursor.split(".");
+      if (parts.length !== 2 || historySign(parts[0]) !== parts[1])
+        return fail("Invalid OMP history cursor");
+      try { position = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")); }
+      catch { return fail("Invalid OMP history cursor"); }
+      if (position.s !== base.session_id || position.g !== historyGeneration || position.k !== kind)
+        return fail("OMP history branch changed; refresh");
+    }
+    const result: any = { ...base, anchor_leaf_id: position.a,
+      branch_id: runtimeInstanceId + ":" + historyGeneration, branch_generation: historyGeneration,
+      ...(kind === "ancestry_page" ? { parent_links: [] } : { entries: [], entry_chunks: [] }),
+      start_cursor: historyCursor(position), next_cursor: null, has_more: false };
+    // Account for the UTF-8 envelope, both opaque cursors and base64 expansion,
+    // including the terminating newline. Only serialize each raw entry once.
+    let payloadBytes = 0;
+    let count = 0;
+    const envelopeBytes = (next: any) => Buffer.byteLength(JSON.stringify({ ...result,
+      ...(kind === "ancestry_page" ? { parent_links: [] } : { entries: [], entry_chunks: [] }),
+      has_more: next.n != null, next_cursor: next.n != null ? historyCursor(next) : null }), "utf8") + 1;
+    while (position.n != null && count < limit) {
+      const entry = manager.getEntry(position.n);
+      if (!entry || entry.id !== position.n) return fail("OMP history chain unavailable; refresh");
+      const next = { ...position, n: entry.parentId ?? null, o: 0 };
+      if (kind === "ancestry_page") {
+        const link = [entry.id, entry.parentId ?? null];
+        const size = Buffer.byteLength(JSON.stringify(link), "utf8") + (count ? 1 : 0);
+        if (envelopeBytes(next) + payloadBytes + size > budget) break;
+        result.parent_links.push(link);
+        payloadBytes += size;
+      } else {
+        const cached = historySerialized;
+        const bytes = cached?.session === base.session_id && cached.generation === historyGeneration && cached.entry === entry
+          ? cached.bytes : Buffer.from(JSON.stringify(entry), "utf8");
+        const size = bytes.length + (count ? 1 : 0);
+        if (position.o > 0 || envelopeBytes(next) + size > budget) {
+          if (count > 0) break;
+          if (bytes.length <= historySerializedBudget)
+            historySerialized = { session: base.session_id, generation: historyGeneration, entry, bytes };
+          else historySerialized = null;
+          const chunk = { entry_id: entry.id, encoding: "base64", offset: position.o,
+            total_bytes: bytes.length, data: "" };
+          const partial = { ...position, o: bytes.length };
+          const overhead = Math.max(envelopeBytes(partial), envelopeBytes(next)) +
+            Buffer.byteLength(JSON.stringify(chunk), "utf8");
+          const length = Math.min(bytes.length - position.o, Math.floor((budget - overhead) / 4) * 3);
+          if (length <= 0) return fail("OMP history page envelope exceeds budget", 400);
+          chunk.data = bytes.subarray(position.o, position.o + length).toString("base64");
+          result.entry_chunks.push(chunk);
+          position.o += length;
+          if (position.o === bytes.length) { position = next; historySerialized = null; }
+          break;
+        }
+        if (envelopeBytes(next) + payloadBytes + size > budget) break;
+        result.entries.push(entry);
+        payloadBytes += size;
+      }
+      position = next;
+      count++;
+    }
+    result.has_more = position.n != null;
+    result.next_cursor = result.has_more ? historyCursor(position) : null;
+    return result;
+  };
   // Admission is serialized, not native processing: sendMessage may resolve
   // only after an entire business turn. Never put that promise on this tail.
   let replyAdmission = Promise.resolve();
@@ -231,20 +329,15 @@ BRIDGE = r'''
     }
     const ctx = editorContext;
     const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
-    const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId, pid: process.pid, leaf_id: ctx?.sessionManager?.getLeafId?.() ?? null };
+    const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId, pid: process.pid,
+      leaf_id: ctx?.sessionManager?.getLeafId?.() ?? null,
+      branch_id: runtimeInstanceId + ":" + historyGeneration, branch_generation: historyGeneration };
     if (request?.actor !== actor || request?.launch_session_id !== launchSessionId ||
         !ctx?.hasUI || typeof ctx.ui?.getEditorText !== "function" ||
         typeof ctx.ui?.setEditorText !== "function" || typeof ctx.isIdle !== "function") {
       return { ...base, state: "unknown", reason: "editor_binding_unavailable" };
     }
-    if (request.operation === "ancestry") {
-      const entries = ctx.sessionManager?.getEntries?.();
-      if (!Array.isArray(entries) || entries.length > 16384)
-        return { ...base, error: "OMP ancestry exceeds mobile budget", status_code: 503 };
-      // Collab deliberately omits custom metadata records. Export identities
-      // only, never their private contents, so active parent chains remain exact.
-      return { ...base, parent_links: entries.map((entry: any) => [entry.id, entry.parentId ?? null]) };
-    }
+    if (["ancestry_page", "history_page"].includes(request.operation)) return historyPage(request, ctx, base);
     if (request.operation === "models") return { ...base, ...modelSnapshot(ctx) };
     if (request.operation === "set_model") {
       const current = modelSnapshot(ctx);
@@ -304,6 +397,8 @@ BRIDGE = r'''
     return { ...base, state: ctx.ui.getEditorText() === "" ? "empty" : "nonempty" };
   };
   pi.on("session_start", async (_event: any, ctx: any) => {
+    historyGeneration++;
+    historySerialized = null;
     editorContext = ctx;
     if (!editorPath || editorServer) return;
     // A killed process leaves its socket behind. Only remove an unchanged,
@@ -357,6 +452,7 @@ BRIDGE = r'''
     server.unref();
     editorServer = server;
   });
-  pi.on("session_switch", async (_event: any, ctx: any) => { editorContext = ctx; });
-  pi.on("session_shutdown", async () => { editorContext = null; editorServer?.close(); });
+  for (const event of ["session_switch", "session_branch", "session_tree"] as const)
+    pi.on(event, async (_event: any, ctx: any) => { historyGeneration++; historySerialized = null; editorContext = ctx; });
+  pi.on("session_shutdown", async () => { historyGeneration++; historySerialized = null; editorContext = null; editorServer?.close(); });
 '''

@@ -22,6 +22,7 @@ class NativeTurnLabels {
     this.message = 'Assistant message',
     this.readOriginal = 'Read original',
     this.preview = 'Preview only — content exceeds inline budget',
+    this.latestWindow = 'Showing recent content only; earlier content or long passages omitted',
     this.previous = 'Previous',
     this.next = 'Next',
     this.close = 'Close',
@@ -44,6 +45,7 @@ class NativeTurnLabels {
   final String message;
   final String readOriginal;
   final String preview;
+  final String latestWindow;
   final String previous;
   final String next;
   final String close;
@@ -113,10 +115,14 @@ class NativeTurnBody extends StatelessWidget {
           ),
         ),
         if (turn.hasPendingTools) Text(labels.pendingTools),
-        if (turn.readCursor != null) ...[
+        if (turn.inlineWindow)
+          Text(labels.latestWindow)
+        else if (turn.readCursor != null) ...[
           Text(labels.preview),
-          if (previewText.isNotEmpty)
+          if (answer.isEmpty && previewText.isNotEmpty)
             SelectionArea(child: textBuilder(context, previewText)),
+        ],
+        if (turn.readCursor != null)
           TextButton(
             key: const ValueKey('native-read-original'),
             onPressed:
@@ -130,23 +136,7 @@ class NativeTurnBody extends StatelessWidget {
                     ),
             child: Text(labels.readOriginal),
           ),
-        ],
-        if (turn.retainedInline)
-          _Disclosure(
-            key: ValueKey((turn.sessionId, turn.turnId, 'retained-inline')),
-            title: '${labels.message} — previously loaded snapshot',
-            builder:
-                (context) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (answer.isNotEmpty)
-                      SelectionArea(child: textBuilder(context, answer)),
-                    for (final item in process) _processBlock(context, item),
-                  ],
-                ),
-          ),
-        if (!turn.retainedInline && process.isNotEmpty)
+        if (process.isNotEmpty)
           _Disclosure(
             key: ValueKey((turn.sessionId, turn.turnId, 'process')),
             title: labels.process,
@@ -159,9 +149,9 @@ class NativeTurnBody extends StatelessWidget {
                   ],
                 ),
           ),
-        if (!turn.retainedInline && answer.isNotEmpty)
+        if (answer.isNotEmpty)
           SelectionArea(child: textBuilder(context, answer))
-        else if (turn.readCursor == null && !turn.retainedInline)
+        else if (turn.readCursor == null)
           Text(labels.noAnswer),
       ],
     );
@@ -190,7 +180,9 @@ class NativeTurnBody extends StatelessWidget {
           return SelectionArea(child: textBuilder(context, block.text ?? ''));
         }
         final content = [
-          if (block.input != null)
+          if (block.input is String)
+            block.input! as String
+          else if (block.input != null)
             const JsonEncoder.withIndent('  ').convert(block.input),
           if (block.text != null) block.text!,
         ].join('\n\n');

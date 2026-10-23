@@ -122,7 +122,7 @@ class NativeSessionTurn {
     required List<NativeSessionEntry> entries,
     this.readCursor,
     this.reason,
-    this.retainedInline = false,
+    this.inlineWindow = false,
   }) : entries = _deduplicate(entries);
 
   static const schemaVersion = 1;
@@ -132,7 +132,8 @@ class NativeSessionTurn {
   final List<NativeSessionEntry> entries;
   final String? readCursor;
   final String? reason;
-  final bool retainedInline;
+  /// Entries are a bounded recent window, not a complete turn history.
+  final bool inlineWindow;
 
   factory NativeSessionTurn.fromJson(Map<String, Object?> json) {
     if (json['schema_version'] != schemaVersion) {
@@ -158,7 +159,7 @@ class NativeSessionTurn {
               .toList(),
       readCursor: json['read_cursor'] as String?,
       reason: json['reason'] as String?,
-      retainedInline: json['retained_inline'] == true,
+      inlineWindow: json['inline_window'] == true,
     );
   }
 
@@ -170,7 +171,7 @@ class NativeSessionTurn {
     'entries': entries.map((entry) => entry.toJson()).toList(),
     if (readCursor != null) 'read_cursor': readCursor,
     if (reason != null) 'reason': reason,
-    if (retainedInline) 'retained_inline': true,
+    if (inlineWindow) 'inline_window': true,
   };
 
   /// Latest assistant text entry, for callers needing the final native identity.
@@ -219,7 +220,8 @@ class NativeSessionTurn {
   /// Match results only to preceding calls with the same native call ID.
   /// Anonymous calls cannot be guessed complete from unrelated tool output.
   bool get hasPendingTools {
-    if (retainedInline) return false;
+    // A bounded window may omit the result of an included call.
+    if (inlineWindow) return false;
     final pending = <String, int>{};
     var anonymousCalls = 0;
     for (final entry in entries) {
@@ -247,10 +249,10 @@ class NativeSessionTurn {
     return anonymousCalls > 0 || pending.isNotEmpty;
   }
 
-  /// A persisted message's stop reason (including tool_use) never completes
-  /// a turn. Even explicit completion cannot hide an unfinished tool call.
+  /// Full histories cannot report completion with unfinished calls. A bounded
+  /// window instead uses the authoritative status because results may be omitted.
   NativeSessionStatus get effectiveStatus {
-    if (retainedInline) return status;
+    if (inlineWindow) return status;
     if (status != NativeSessionStatus.completed) return status;
     if (hasPendingTools) return NativeSessionStatus.unknown;
     for (final entry in entries.reversed) {

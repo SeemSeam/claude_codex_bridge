@@ -62,19 +62,59 @@ void main() {
     expect(find.text('detail'), findsOneWidget);
   });
 
-  testWidgets('inline to original keeps previous text reachable and labeled stale', (tester) async {
-    final retained = NativeSessionTurn(
+  testWidgets('bounded latest answer and process stay readable beside original', (tester) async {
+    final window = NativeSessionTurn(
       sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.completed,
-      entries: [entry('a', [text('Entire earlier explanation')])],
-      readCursor: 'current-original', retainedInline: true,
+      entries: [entry('a', [
+        text('Latest explanation'),
+        const NativeSessionBlock(type: NativeSessionBlockType.toolCall,
+          name: 'read', callId: 'c', input: 'path: recent.txt'),
+      ], stopReason: 'tool_use')],
+      readCursor: 'current-original', inlineWindow: true,
     );
-    await tester.pumpWidget(host(retained));
+    await tester.pumpWidget(host(window));
     expect(find.text('Read original'), findsOneWidget);
-    expect(find.text('Entire earlier explanation'), findsNothing);
-    await tester.tap(find.text('Assistant message — previously loaded snapshot'));
+    expect(find.text('Latest explanation'), findsOneWidget);
+    expect(find.text('Completed'), findsOneWidget);
+    expect(find.text('Tool execution unfinished'), findsNothing);
+    expect(find.text(const NativeTurnLabels().latestWindow), findsOneWidget);
+    expect(find.textContaining('previously loaded snapshot'), findsNothing);
+    await tester.tap(find.text('Execution process'));
     await tester.pump();
-    expect(find.text('Entire earlier explanation'), findsOneWidget);
-    expect(find.text('Preview only — content exceeds inline budget'), findsOneWidget);
+    await tester.tap(find.text('Tool call · read · c'));
+    await tester.pump();
+    expect(find.text('path: recent.txt'), findsOneWidget);
+    expect(find.text('"path: recent.txt"'), findsNothing);
+    await tester.pumpWidget(host(NativeSessionTurn(
+      sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.running,
+      entries: [entry('b', [text('Newer explanation')])],
+      readCursor: 'new-original', inlineWindow: true,
+    )));
+    expect(find.text('Latest explanation'), findsNothing);
+    expect(find.text('Newer explanation'), findsOneWidget);
+    expect(find.text('Running'), findsOneWidget);
+    expect(find.text(const NativeTurnLabels().latestWindow), findsOneWidget);
+  });
+
+  testWidgets('window notice is localizable and original link is optional', (tester) async {
+    await tester.pumpWidget(host(NativeSessionTurn(
+      sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.running,
+      entries: [entry('a', [text('Recent answer')])], inlineWindow: true,
+    ), labels: const NativeTurnLabels(latestWindow: '仅显示近期内容')));
+    expect(find.text('仅显示近期内容'), findsOneWidget);
+    expect(find.text('Recent answer'), findsOneWidget);
+    expect(find.byKey(const ValueKey('native-read-original')), findsNothing);
+  });
+
+  test('inline window flag is optional and round trips with its cursor', () {
+    final json = turn([entry('a', [text('answer')])]).toJson();
+    expect(NativeSessionTurn.fromJson(json).inlineWindow, isFalse);
+    json['inline_window'] = true;
+    json['read_cursor'] = 'original';
+    final value = NativeSessionTurn.fromJson(json);
+    expect(value.inlineWindow, isTrue);
+    expect(value.toJson()['inline_window'], isTrue);
+    expect(NativeSessionTurn.fromJson(value.toJson()).readCursor, 'original');
   });
 
   test('entry identity, not identical text, controls deduplication', () {

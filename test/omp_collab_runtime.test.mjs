@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { ManagedGuest, seal, open, createProcessGroupStopper } from '../lib/provider_backends/omp/collab_runtime.mjs';
+import { ManagedGuest, seal, open, createProcessGroupStopper, MAX_RECENT_BYTES, MAX_RECENT_ENTRIES } from '../lib/provider_backends/omp/collab_runtime.mjs';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -76,6 +76,71 @@ test('failed owner refresh closes an open replica and idle refresh recovers', as
   expect(recovered.ready).toBe(true);
   expect(recovered.connected).toBe(true);
   expect(recovered.generation).toBe('owner:1');
+});
+
+test('large native snapshot drains through final barrier with bounded recent replica', () => {
+  const guest = readyGuest();
+  guest.receive({ t: 'welcome', proto: 3, header: { id: 'native' }, state: { isStreaming: false } });
+  const text = 'x'.repeat(2048);
+  for (let index = 0; index < 28001; index++) {
+    guest.receive({ t: 'snapshot-chunk', entries: [{ id: String(index), parentId: index ? String(index - 1) : null,
+      type: 'message', message: { role: index % 2 ? 'assistant' : 'user', content: text } }], final: false });
+    expect(guest.bytes).toBeLessThanOrEqual(MAX_RECENT_BYTES);
+    expect(guest.entries.length).toBeLessThanOrEqual(MAX_RECENT_ENTRIES);
+  }
+  expect(guest.ready).toBe(false);
+  guest.receive({ t: 'snapshot-chunk', entries: [], final: true });
+  expect(guest.ready).toBe(true);
+  expect(guest.entries.at(-1).id).toBe('28000');
+  expect(guest.entryIndex.size).toBe(guest.entries.length);
+  expect(guest.snapshot().history_complete).toBe(false);
+  expect(guest.snapshot().recent_truncated).toBe(true);
+  guest.receive({ t: 'entry', entry: { id: '28001' } });
+  expect(guest.entries.at(-1).id).toBe('28001');
+  expect(guest.snapshot().state.leafId).toBe('28001');
+});
+
+test('ancestry page failure preserves healthy socket and reports history error', async () => {
+  const guest = readyGuest();
+  guest.binding.editor_socket = '/unused';
+  let closes = 0;
+  const ws = guest.ws = { readyState: 1, close() { closes++; } };
+  guest.sync = async () => {};
+  guest.nativePage = async () => { throw Error('ancestry unavailable'); };
+  for (let index = 0; index < 3; index++) {
+    const snapshot = await guest.refreshSnapshot();
+    expect(snapshot.connected).toBe(true);
+    expect(snapshot.ready).toBe(true);
+    expect(snapshot.history_error).toBe('ancestry unavailable');
+    expect(guest.ws).toBe(ws);
+  }
+  expect(closes).toBe(0);
+  guest.nativePage = async () => ({ parent_links: [['latest', 'older']], branch_id: 'runtime:9', leaf_id: 'latest' });
+  const recovered = await guest.refreshSnapshot();
+  expect(recovered.history_error).toBeNull();
+  expect(recovered.state.leafId).toBe('latest');
+  expect(recovered.branch_id).toBe('runtime:9');
+});
+
+test('history forwards bounded native pages and byte chunks without claiming recent replica complete', async () => {
+  const guest = readyGuest();
+  guest.sync = async () => {};
+  const chunk = { entry_id: 'large', encoding: 'base64', offset: 0, total_bytes: 9999999, data: 'e30=' };
+  guest.nativePage = async (operation, request) => {
+    expect(operation).toBe('history_page');
+    expect(request.cursor).toBe('next');
+    return { entries: [], entry_chunks: [chunk], branch_id: 'runtime:9', leaf_id: 'latest',
+      anchor_leaf_id: 'anchor', start_cursor: 'start', next_cursor: 'continue', has_more: true };
+  };
+  const page = await guest.history({ cursor: 'next', limit: 128, expected_session_id: 'native', expected_generation: 'owner:1' });
+  expect(page.entry_chunks).toEqual([chunk]);
+  expect(page.has_more).toBe(true);
+  expect(page.history_complete).toBe(false);
+  expect(page.start_cursor).toBe('start');
+  expect(page.next_cursor).toBe('continue');
+  expect(guest.entries).toHaveLength(0);
+  await expect(guest.history({ expected_session_id: 'wrong' })).rejects.toThrow('conversation changed');
+  await expect(guest.history({ limit: 129 })).rejects.toThrow('Invalid OMP history page');
 });
 
 test('group stopper awaits escalation after wrapper exits and is idempotent', async () => {

@@ -51,10 +51,11 @@ void main() {
 
     test('durable text survives snapshots while absent stream partial is removed', () {
       final controller = AgentChatController();
-      void apply(List<NativeSessionEntry> entries, {String? cursor}) {
+      void apply(List<NativeSessionEntry> entries, {String? cursor, bool window = false}) {
         final item = _agentReply(id: 'turn', body: 'preview').copyWith(
           nativeTurn: NativeSessionTurn(sessionId: 's', turnId: 'u',
-            status: NativeSessionStatus.running, entries: entries, readCursor: cursor));
+            status: NativeSessionStatus.running, entries: entries,
+            readCursor: cursor, inlineWindow: window));
         controller.applyRemoteConversation(agentName: 'lead',
           conversation: _nativeConversation([item]), shouldScroll: false);
       }
@@ -63,11 +64,27 @@ void main() {
       var value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
       expect(value.entries.map((entry) => entry.id), ['a', 'b', 'c']);
       expect(value.answerText, 'first\n\nsecond\n\nsecond');
-      apply([], cursor: 'original');
+      apply([_nativeEntry('latest', 'latest answer')], cursor: 'original', window: true);
       value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
       expect(value.readCursor, 'original');
-      expect(value.retainedInline, isTrue);
-      expect(value.answerText, 'first\n\nsecond\n\nsecond');
+      expect(value.inlineWindow, isTrue);
+      expect(value.entries.map((entry) => entry.id), ['latest']);
+      expect(value.answerText, 'latest answer');
+      for (var index = 0; index < 12; index++) {
+        apply([_nativeEntry('window-$index', 'answer $index')],
+          cursor: 'original-$index', window: true);
+        value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
+        expect(value.entries.map((entry) => entry.id), ['window-$index']);
+        expect(value.answerText, 'answer $index');
+        expect(value.readCursor, 'original-$index');
+      }
+      apply([_nativeEntry('complete', 'complete refresh')]);
+      value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
+      expect(value.inlineWindow, isFalse);
+      expect(value.entries.map((entry) => entry.id), ['complete']);
+      apply([_nativeEntry('following', 'following update')]);
+      value = controller.remoteConversationFor('lead')!.items.single.nativeTurn!;
+      expect(value.entries.map((entry) => entry.id), ['complete', 'following']);
     });
 
     test('owns message ids and per-agent transient flags', () {

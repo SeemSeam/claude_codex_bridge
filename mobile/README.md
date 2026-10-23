@@ -10,6 +10,27 @@ CCB and provider CLIs run on the server; the mobile app is a controller for
 project discovery, agent switching, terminal access, Markdown reading,
 notifications, local/Tailnet gateway access, and file transfer.
 
+## v8.7.18: stable OMP history and bounded latest bubbles / 稳定长历史与有界最新气泡
+
+OMP Mobile reads complete user-anchored turns from bounded native parent-chain pages rather than requiring a full in-memory conversation replica. Native pages contain at most 128 records and 256 KiB; oversized records use lossless byte chunks, and the existing original reader pages complete Unicode text and tool results. The live bridge retains at most 512 recent entries / 4 MiB. History-query errors preserve a healthy connection and loaded phone content; owner or transport failures remain explicit. Append-stable cursors are fenced to the native session and branch, so a real branch switch cannot merge unrelated history.
+
+OMP Mobile 改为按原生父链分页读取完整回合，不再要求先复制全部历史。每页最多 128 条、256 KiB，超大记录分块无损读取，完整 Unicode 正文与工具结果继续通过原文阅读器分页查看。实时桥只保留最多 512 条 / 4 MiB 近期记录；历史查询失败不会关闭健康连接或清除手机已加载内容。游标支持同分支追加，并在真实会话/分支切换时失效，避免串历史。
+
+Oversized reply bubbles display a bounded structured latest-content window: at most 8 entries / 24 blocks and 24 KiB of serialized ASCII JSON including the original-content cursor. Latest assistant prose is prioritized (up to 8,000 characters, reduced when byte limits require); recent tool/reasoning snippets are bounded to 1,500 characters each. Refresh replaces this window under the same bubble identity rather than accumulating older windows. Complete originals are unchanged. User inputs retain a bounded readable tail.
+
+超长回复不再只剩“超出内联限制”提示：气泡直接显示有界的最新正文及可折叠工具/推理信息，最多 8 条记录、24 个块，含原文游标的实际序列化内容不超过 24 KiB。优先保留最新正文（最多 8,000 字符，字节预算不足时缩短），工具/推理单块最多 1,500 字符；同一气泡刷新时替换窗口，不累积旧窗口，完整原文不变。
+
+Bounded-bubble verification: 101 Python regressions, 21 runtime tests and 62 targeted Flutter tests passed; Flutter analysis reported no issues. Android API 35 with real encrypted Relay/native host passed oversized bubble text/process rendering, same-bubble live tail ONE→TWO replacement, complete original hash, long-history traversal, branch isolation and FIFO. Evidence: `~/.local/state/ccb-mobile-bounded-bubble-vm-pass/`.
+
+Upgrade both the server gateway and mobile app to v8.7.18. Existing OMP processes load the new native bridge after a normal restart when idle; do not restart busy agents or discard history to apply it.
+
+Local Android API 35 emulator qualification passed through the real encrypted Relay, native OMP 18.12.6 host and generated bridge: 28,702 records, 141,678,063 raw history bytes, 63,257,173 replicated message bytes, and a 19,001-record metadata gap. All 200 conversation items were read across 99 pages; the 987,082-byte Unicode/tool original matched its SHA-256 after 31 content pages. Injected history failures preserved the live connection and loaded content without additional join/leave notices; append replay, genuine branch isolation, FIFO and foreground/background lifecycle checks passed. Native pages stayed within 262,144 bytes. Evidence: `~/.local/state/ccb-mobile-history-wire-vm-evidence/`. This is isolated emulator validation, not proof of activation in the live nozeli process.
+
+请同时升级服务端 gateway 与手机 App 至 v8.7.18。已有 OMP 进程需在安全空闲时正常重启以加载新原生桥；不要为升级中断忙碌 Agent 或清空历史。
+
+[Full bilingual notes](../docs/releases/v8.7.18.md).
+
+
 ## v8.7.17: OMP reply receipts / OMP 回复收据
 
 OMP reply delivery uses bounded, owner-bound native `reply_deliver` / `reply_status` calls. A `ccb-reply` arrives as an aside at a safe step boundary; only its persisted native `custom_message` counts as a receipt and releases the mailbox. This does not mean the agent has finished subsequent business processing. The composer and active ask anchor are preserved, no concurrent turn starts, and ambiguous sends are queried instead of replayed. Existing OMP processes load the new extension after a normal idle restart; do not restart a busy session.
@@ -20,9 +41,9 @@ OMP 回复采用有界、绑定归属的原生 `reply_deliver` / `reply_status` 
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.17 release APK:
+CCB Mobile v8.7.18 release APK:
 
-- [Download ccb-mobile-v8.7.17.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.17/ccb-mobile-v8.7.17.apk)
+- [Download ccb-mobile-v8.7.18.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.18/ccb-mobile-v8.7.18.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
@@ -115,11 +136,11 @@ checks history above 2 MiB and an oversized single turn, and verifies original
 content UTF-8 byte offsets and SHA-256 without increasing the 512 KiB Relay cap.
 
 OMP inline pages use a conservative 192 KiB serialized budget. Oversized turns
-show a preview and explicit Read original action; originals are returned in
-versioned UTF-8-safe pages of at most 32 KiB. Changed session/generation/content
-invalidates the read cursor instead of mixing snapshots. Both the server repair
-and the updated app are required; installing the APK alone does not fix an old
-server's oversized responses.
+show a structured latest-content bubble capped at 24 KiB, 8 entries and 24 blocks;
+the secondary Read original action opens complete content in versioned UTF-8-safe
+pages of at most 32 KiB. Changed session/generation/content invalidates the read
+cursor instead of mixing snapshots. Both the updated server and app are required;
+installing the APK alone does not fix an old server's oversized responses.
 
 `CCB_MOBILE_TEST_BUILD=1 flutter build apk --debug` uses the separate
 `io.ccb.mobile.ccb_mobile.relaytest` application ID so repair test builds do not

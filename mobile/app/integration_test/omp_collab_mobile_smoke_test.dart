@@ -20,6 +20,7 @@ import 'package:ccb_mobile/transport/relay_socket_gateway_transport.dart';
 const _url = String.fromEnvironment('OMP_FIXTURE_URL');
 const _token = String.fromEnvironment('OMP_FIXTURE_TOKEN');
 const _relayUrl = String.fromEnvironment('OMP_RELAY_URL');
+const _longHistory = bool.fromEnvironment('OMP_FIXTURE_LONG');
 
 // Scenario controls generate explicit fixture content, not model-quality proof.
 // All user-visible data uses the production repository over HTTP or encrypted RELAY.
@@ -147,12 +148,20 @@ void main() {
       ),
     );
     String? originalId;
-    if (_relayUrl.isNotEmpty) {
+    final initialHistoryIds = <String>{};
+    if (_relayUrl.isNotEmpty || _longHistory) {
       await tester.runAsync(() async {
         final history = (await _fixture('stats'))['history'] as Map<String, dynamic>;
-        expect(history['snapshot_bytes'], greaterThan(2 * 1024 * 1024));
+        expect(history['raw_history_bytes'], greaterThan(2 * 1024 * 1024));
+        if (_longHistory) {
+          expect(history['raw_history_bytes'], greaterThan(48 * 1024 * 1024));
+          expect(history['wire_history_bytes'], greaterThan(48 * 1024 * 1024));
+          expect(history['entry_count'], greaterThan(28000));
+          expect(history['max_metadata_gap'], greaterThan(16384));
+        }
         originalId = history['original_id'] as String;
         final ids = <String>{};
+        final bodies = <String>[];
         final cursors = <String>{};
         CcbConversationItem? original;
         String? cursor;
@@ -165,14 +174,25 @@ void main() {
           for (final item in page.items) {
             expect(ids.add(item.id), isTrue, reason: 'history must not duplicate ${item.id}');
             if (item.id == originalId) original = item;
+            bodies.add(item.body);
           }
           cursor = page.nextCursor;
           if (cursor != null) expect(cursors.add(cursor), isTrue);
         } while (cursor != null);
         expect(historyPages, greaterThan(1));
-        expect(ids, unorderedEquals(history['ids'] as List));
+        expect(ids.length, history['item_count']);
+        final sortedIds = ids.toList()..sort();
+        expect(sha256.convert(utf8.encode(sortedIds.join('\n'))).toString(), history['ids_sha256']);
+        initialHistoryIds.addAll(ids);
+        expect(bodies, contains('Fixture initial native snapshot'));
+        if (_longHistory) {
+          expect(bodies, contains('Fixture earliest history answer'));
+          expect(bodies, contains('Fixture middle history answer'));
+        }
         expect(original, isNotNull);
-        expect(original!.nativeTurn!.entries, isEmpty);
+        expect(original!.nativeTurn!.entries, isNotEmpty);
+        expect(original.nativeTurn!.toJson()['inline_window'], isTrue);
+        expect(original.nativeTurn!.answerText, contains('Fixture oversized complete'));
         cursor = original.nativeTurn!.readCursor;
         expect(cursor, isNotNull);
         final content = BytesBuilder(copy: false);
@@ -254,6 +274,13 @@ void main() {
       if (!tester.widget<ConversationBubble>(bubble).expanded && expand.evaluate().isNotEmpty) {
         await _tap(tester, expand);
       }
+      final readable = tester.widget<ConversationBubble>(bubble).item.nativeTurn!;
+      expect(readable.entries, isNotEmpty);
+      expect(readable.answerText, contains('Fixture oversized complete'));
+      expect(readable.processBlocks.any((block) => block.block.name == 'read'), isTrue);
+      await tester.ensureVisible(bubble);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.runAsync(() => _fixture('screenshot', {'name': 'bounded-bubble'}));
       final read = find.descendant(of: bubble,
         matching: find.byKey(const ValueKey('native-read-original')));
       await _tap(tester, read);
@@ -274,6 +301,17 @@ void main() {
       await _until(tester, () => originalText.evaluate().isNotEmpty && visibleOriginal() == firstPage);
       await _tap(tester, find.byKey(const ValueKey('native-original-close')));
       await _until(tester, () => find.byKey(const ValueKey('native-original-reader')).evaluate().isEmpty);
+      final olderBefore = (await tester.runAsync(() => _fixture('stats')))!['older_page_reads'] as int;
+      var loadedOlder = false;
+      for (var attempt = 0; attempt < 8 && !loadedOlder; attempt++) {
+        await tester.drag(find.byKey(const ValueKey('agent-chat-timeline')), const Offset(0, 1600));
+        await tester.pump(const Duration(milliseconds: 400));
+        final stats = (await tester.runAsync(() => _fixture('stats')))!;
+        loadedOlder = (stats['older_page_reads'] as int) > olderBefore;
+      }
+      expect(loadedOlder, isTrue, reason:'A genuine Android timeline drag loads an older repository page');
+      await tester.runAsync(() => _fixture('screenshot', {'name':'history'}));
+      controller.refreshLatest();
     }
     final before = (await tester.runAsync(() => _fixture('stats')))!;
 
@@ -349,16 +387,34 @@ void main() {
           tester,
         ).singleWhere((b) => b.item.body == 'Fixture live turn 1').item.id;
     await tester.runAsync(() => _fixture('screenshot', {'name': 'live'}));
+    await tester.runAsync(() => _fixture('large-live-one'));
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((b) =>
+      b.item.nativeTurn?.answerText.contains('BOUNDED LIVE LATEST ONE') == true));
+    var boundedLive = _replies(tester).singleWhere((b) =>
+      b.item.nativeTurn?.answerText.contains('BOUNDED LIVE LATEST ONE') == true);
+    expect(boundedLive.item.id, liveId);
+    expect(boundedLive.item.nativeTurn!.toJson()['inline_window'], isTrue);
+    expect(utf8.encode(jsonEncode(boundedLive.item.toJson())).length, lessThan(32 * 1024));
+    await tester.runAsync(() => _fixture('large-live-two'));
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((b) =>
+      b.item.nativeTurn?.answerText.contains('BOUNDED LIVE LATEST TWO') == true));
+    boundedLive = _replies(tester).singleWhere((b) =>
+      b.item.nativeTurn?.answerText.contains('BOUNDED LIVE LATEST TWO') == true);
+    expect(boundedLive.item.id, liveId);
+    expect(boundedLive.item.nativeTurn!.answerText, isNot(contains('BOUNDED LIVE LATEST ONE')));
+    await tester.runAsync(() => _fixture('screenshot', {'name': 'bounded-bubble'}));
     await tester.runAsync(() => _fixture('finish'));
     await _until(
       tester,
       () =>
-          _replies(tester).any((b) => b.item.body == 'Fixture durable turn 1'),
+          _replies(tester).any((b) => b.item.nativeTurn?.answerText.contains('Fixture durable turn 1') == true),
     );
     final durable =
         _replies(
           tester,
-        ).where((b) => b.item.body == 'Fixture durable turn 1').toList();
+        ).where((b) => b.item.nativeTurn?.answerText.contains('Fixture durable turn 1') == true).toList();
     expect(durable, hasLength(1));
     expect(
       durable.single.item.id,
@@ -393,7 +449,7 @@ void main() {
       () => _replies(tester).any((b) => b.item.body == 'Fixture live turn 2'),
     );
     expect(
-      _replies(tester).where((b) => b.item.body == 'Fixture durable turn 1'),
+      _replies(tester).where((b) => b.item.nativeTurn?.answerText.contains('Fixture durable turn 1') == true),
       hasLength(1),
     );
     await tester.runAsync(() => _fixture('finish'));
@@ -662,9 +718,8 @@ void main() {
       final stats = await _fixture('stats');
       expect(all.map((item) => item.id).toSet().length, all.length,
         reason:'FIFO refresh and older pagination must not duplicate native turns');
-      if (_relayUrl.isNotEmpty) {
-        final initialIds = ((stats['history'] as Map)['ids'] as List).cast<String>();
-        expect(all.map((item) => item.id), containsAll(initialIds),
+      if (initialHistoryIds.isNotEmpty) {
+        expect(all.map((item) => item.id), containsAll(initialHistoryIds),
           reason:'All original large-history turns survive FIFO updates and pagination');
       }
       expect(stats['active_prompts'], 0);
@@ -677,6 +732,51 @@ void main() {
       await _fixture('fifo-proof', {'dispatch_ordinals':[4,5,6], 'max_active_prompts':1,
         'retained_reply_id':firstFifoReply,'queued_ids':queuedIds});
     });
+    await tester.runAsync(() async {
+      final first = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,limit:2);
+      final olderCursor = first.nextCursor;
+      expect(olderCursor, isNotNull);
+      final older = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,cursor:olderCursor,limit:2);
+      final before = await _fixture('stats');
+      final notices = jsonEncode(before['notices']);
+      await _fixture('history-error');
+      await expectLater(repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4), throwsA(anything));
+      final failed = await _fixture('stats');
+      expect(failed['connected'], isTrue);
+      expect(failed['ready'], isTrue);
+      expect(jsonEncode(failed['notices']), notices,
+        reason:'Native ancestry/history failure must not cycle healthy guest WS');
+      expect(failed['history_error'], isNotNull);
+      expect(failed['joined_count'], before['joined_count']);
+      expect(failed['left_count'], before['left_count']);
+      await _fixture('screenshot', {'name':'history-error'});
+      await _fixture('history-recover');
+      final recovered = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4);
+      expect(recovered.items, isNotEmpty);
+      final healthy = await _fixture('stats');
+      expect(healthy['connected'], isTrue);
+      expect(healthy['history_error'], isNull);
+      expect(healthy['joined_count'], before['joined_count']);
+      expect(healthy['left_count'], before['left_count']);
+      expect(jsonEncode(healthy['notices']), notices,
+        reason:'History recovery must not emit native joined/left notices');
+      await _fixture('append-history');
+      final replay = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,cursor:olderCursor,limit:2);
+      expect(replay.items.map((item)=>item.id), orderedEquals(older.items.map((item)=>item.id)),
+        reason:'An old page is immutable across native append');
+      expect(replay.items.map((item)=>item.body), orderedEquals(older.items.map((item)=>item.body)));
+      await _fixture('history-proof', {'notices_before':before['notices'],
+        'notices_after':healthy['notices'],'retained_page_ids':replay.items.map((item)=>item.id).toList(),
+        'connected_during_error':failed['connected']});
+    });
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((bubble)=>bubble.item.body=='Fixture append history answer'));
+    await tester.runAsync(() => _fixture('screenshot', {'name':'history-recovered'}));
     await tester.runAsync(() => _fixture('screenshot', {'name':'fifo-complete'}));
 
     // An actual lifecycle notification exercises the product observer and timer.
@@ -708,11 +808,32 @@ void main() {
     expect(finalStats['terminal_calls'], 0);
     expect(finalStats['prompts'], 6);
     expect(finalStats['changes'], 1);
-    if (_relayUrl.isNotEmpty) {
+    expect(finalStats['max_native_page_bytes'], lessThanOrEqualTo(262144));
+    expect(finalStats['native_pages'], greaterThan(0));
+    if (_relayUrl.isNotEmpty || _longHistory) {
       expect(finalStats['max_conversation_bytes'], lessThanOrEqualTo(192 * 1024));
       expect(finalStats['content_reads'], greaterThan(16));
     }
     await tester.runAsync(() => _fixture('screenshot', {'name': 'final'}));
+    await tester.runAsync(() async {
+      final old = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,limit:2);
+      expect(old.nextCursor, isNotNull);
+      await _fixture('branch-history');
+      await expectLater(repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4,cursor:old.nextCursor), throwsA(anything));
+      final branch = await repository.getAgentConversation(
+        projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4);
+      expect(branch.items.map((item)=>item.body), contains('Fixture isolated branch answer'));
+      expect(branch.items.any((item)=>initialHistoryIds.contains(item.id)), isFalse);
+      expect(branch.items.any((item)=>item.body.contains('Fixture durable')), isFalse);
+      expect(branch.nextCursor, isNull);
+      await _fixture('branch-proof', {'branch_ids':branch.items.map((item)=>item.id).toList(),
+        'old_cursor_rejected':true});
+    });
+    controller.refreshLatest();
+    await _until(tester, () => _replies(tester).any((bubble)=>bubble.item.body=='Fixture isolated branch answer'));
+    await tester.runAsync(() => _fixture('screenshot', {'name':'history-branch'}));
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });

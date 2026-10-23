@@ -87,6 +87,7 @@ class ConversationBody extends StatelessWidget {
                   message: '中间回复',
                   readOriginal: '阅读原文',
                   preview: '仅为预览 — 内容超出内联大小限制',
+                  latestWindow: '仅显示近期内容；较早内容或较长段落已省略',
                   previous: '上一页',
                   next: '下一页',
                   close: '关闭',

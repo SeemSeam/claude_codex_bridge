@@ -110,7 +110,7 @@ class OmpContentPager:
             while end < len(data) and data[end] & 0xc0 == 0x80:
                 end -= 1
 
-    def page(self, items, *, scope, revision, limit, cursor):
+    def page(self, items, *, scope, revision, limit, cursor, wrap_content_cursor=None):
         try:
             end = len(items) if cursor is None else int(cursor)
             if end < 0 or end > len(items):
@@ -131,7 +131,10 @@ class OmpContentPager:
                     break
             if size > INLINE_ITEM_BYTES:
                 _, version = self._document(item, scope, revision)
-                item = self._preview(item, self._cursor(scope, item['id'], version, 0))
+                read_cursor = self._cursor(scope, item['id'], version, 0)
+                if wrap_content_cursor is not None:
+                    read_cursor = wrap_content_cursor(read_cursor)
+                item = self._preview(item, read_cursor)
                 size = ascii_size(item)
             if used + size + 1 > PAGE_BYTES:
                 break
@@ -143,23 +146,120 @@ class OmpContentPager:
 
     @staticmethod
     def _preview(item, cursor):
-        # An allowlist prevents giant attachment/unknown fields bypassing budget.
-        preview = {key: value[:256] if isinstance(value, str) else value
+        """Project a recent readable window; the cursor still names the full item.
+
+        Measure the final ASCII JSON, including the caller's wrapped cursor.
+        Entry/block identity is never shortened: an entry whose metadata cannot
+        fit is omitted instead. Text is always a tail except tool input, whose
+        JSON prefix keeps argument names readable without copying a giant dict.
+        """
+        preview = {key: value[:256] if isinstance(value, str) and key != 'id' else value
                    for key, value in item.items()
                    if key in {'id', 'agent', 'session_id', 'kind', 'title', 'format',
                               'source', 'state', 'started_at', 'completed_at', 'duration_ms',
                               'queue_position', 'delivery_reason'}
                    and isinstance(value, (str, int, float, bool, type(None)))}
-        if not item.get('native_turn'):
-            preview.update(body=str(item.get('body') or '')[:512] + '\n\n[Content preview; read original]',
-                           attachments=[], read_cursor=cursor, read_reason=REASON)
+        preview.update(body='', attachments=[])
+
+        def fit_text(target, key, text, budget=INLINE_ITEM_BYTES, *, tail=True):
+            target[key] = ''
+            if ascii_size(preview) > budget:
+                return False
+            low, high = 0, len(text)
+            while low < high:
+                middle = (low + high + 1) // 2
+                target[key] = text[-middle:] if tail else text[:middle]
+                if ascii_size(preview) <= budget:
+                    low = middle
+                else:
+                    high = middle - 1
+            target[key] = (text[-low:] if tail else text[:low]) if low else ''
+            return True
+
+        native = item.get('native_turn')
+        if not native or item.get('kind') == 'user_message':
+            preview.update(read_cursor=cursor, read_reason=REASON)
+            if not fit_text(preview, 'body', str(item.get('body') or '')[-8000:]):
+                raise OmpContentError('original content cursor exceeds inline budget', 502)
             return preview
-        native = item.get('native_turn') or {}
-        preview.update(body=str(item.get('body') or '')[:512] + '\n\n[Content preview; read original]',
-                       attachments=[], native_turn={
-                           'schema_version': 1, 'session_id': preview.get('session_id'),
-                           'turn_id': str(native.get('turn_id') or '')[:256],
-                           'status': str(native.get('status') or '')[:256],
-                           'transport': 'collab', 'entries': [],
-                           'read_cursor': cursor, 'reason': REASON})
+
+        window = {key: native[key] for key in
+                  ('schema_version', 'session_id', 'turn_id', 'status', 'transport',
+                   'stop_reason', 'streaming') if key in native}
+        window.update(inline_window=True, entries=[], read_cursor=cursor,
+                      reason='Recent inline window; earlier entries or long text omitted. '
+                             'Read original for complete content.')
+        preview['native_turn'] = window
+        if ascii_size(preview) > INLINE_ITEM_BYTES:
+            raise OmpContentError('original content cursor exceeds inline budget', 502)
+
+        entries = native.get('entries') or []
+        # Find prose independently of the process window: a long stream of tool
+        # events must not push the latest assistant answer out of the bubble.
+        primary = None
+        recent = []
+        for entry_index in range(len(entries) - 1, -1, -1):
+            entry = entries[entry_index]
+            blocks = entry.get('blocks') or []
+            for block_index in range(len(blocks) - 1, -1, -1):
+                block = blocks[block_index]
+                position = (entry_index, block_index)
+                if len(recent) < 24:
+                    recent.append(position)
+                if (primary is None and entry.get('role') == 'assistant'
+                        and block.get('type') == 'text' and block.get('text')):
+                    primary = position
+            if primary is not None and len(recent) == 24:
+                break
+
+        selected = {}
+        chosen_blocks = {}
+        positions = ([primary] if primary is not None else [])
+        positions += [position for position in recent if position != primary]
+        for position in positions:
+            if len(chosen_blocks) == 24:
+                break
+            entry_index, block_index = position
+            if entry_index not in selected and len(selected) == 8:
+                continue
+            before_block = ascii_size(preview)
+            entry = entries[entry_index]
+            source = entry['blocks'][block_index]
+            block = {key: source[key] for key in
+                     ('type', 'call_id', 'name', 'is_error') if key in source}
+            field = 'input' if source.get('type') == 'tool_call' else 'text'
+            value = source.get(field, '')
+            if field == 'input' and not isinstance(value, str):
+                chunks = []
+                length = 0
+                for chunk in json.JSONEncoder(ensure_ascii=False).iterencode(value):
+                    chunks.append(chunk[:1500 - length])
+                    length += len(chunks[-1])
+                    if length >= 1500:
+                        break
+                text = ''.join(chunks)
+            else:
+                text = str(value or '')[-(8000 if position == primary else 1500):]
+            added_entry = entry_index not in selected
+            if added_entry:
+                selected[entry_index] = {key: entry[key] for key in
+                                         ('id', 'role', 'status', 'stop_reason', 'streaming')
+                                         if key in entry}
+            chosen_blocks[position] = block
+
+            def arrange():
+                for index, projected in selected.items():
+                    projected['blocks'] = [chosen_blocks[key] for key in sorted(chosen_blocks)
+                                           if key[0] == index]
+                window['entries'] = [selected[index] for index in sorted(selected)]
+
+            arrange()
+            # Leave room for recent tool context even with heavily escaped prose.
+            budget = (INLINE_ITEM_BYTES - 10000 if position == primary and len(positions) > 1
+                      else min(INLINE_ITEM_BYTES, before_block + 3000))
+            if not fit_text(block, field, text, budget, tail=field != 'input'):
+                del chosen_blocks[position]
+                if added_entry:
+                    del selected[entry_index]
+                arrange()
         return preview

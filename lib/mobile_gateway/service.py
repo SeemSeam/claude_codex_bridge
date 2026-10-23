@@ -56,8 +56,10 @@ from .notifications import (
     MobileNotificationStore,
     encode_sse_event,
 )
-from .omp_conversation import project_omp_snapshot
-from .omp_content import OmpContentError, OmpContentPager, PREFIX as OMP_CONTENT_CURSOR_PREFIX
+from .omp_conversation import (
+    project_omp_snapshot, load_omp_turn_window, history_cursor, parse_history_cursor,
+)
+from .omp_content import OmpContentError, OmpContentPager
 from .pairing import MobileGatewayPairingError, MobileGatewayPairingStore
 from .push import MobilePushDispatcher, PushSender
 from .project_activity import MobileGatewayProjectActivityStore
@@ -1358,22 +1360,71 @@ class MobileGatewayService:
             if 'cursor' in query and cursor is None:
                 raise MobileGatewayError('cursor must not be empty', status_code=400)
             snapshot = _omp_collab_snapshot(self._omp_collab, project.project_root, str(target['agent']))
-            items = _omp_native_conversation_items(
-                project.project_root, project_id=project.project_id, agent=str(target['agent']),
-                mobile_files_dir=self._mobile_files_dir(), snapshot=snapshot,
-            )
+            # The live replica is bounded and supplies only state/stream metadata.
+            # Historical records come from the native parent-chain page API.
             scope = (project.project_id, str(target['agent']), int(target['namespace_epoch']),
                      snapshot['session_id'], snapshot['generation'], snapshot.get('branch_id'))
             try:
-                if cursor is not None and cursor.startswith(OMP_CONTENT_CURSOR_PREFIX):
+                position, end, original = (parse_history_cursor(cursor, scope)
+                                           if cursor is not None else (None, None, None))
+
+                def fetch(native_cursor):
+                    try:
+                        return self._omp_collab.get_history_page(
+                            project.project_root, str(target['agent']), cursor=native_cursor,
+                            limit=128, max_bytes=262144,
+                            expected_session_id=snapshot['session_id'],
+                            expected_generation=snapshot['generation'],
+                        )
+                    except Exception as exc:
+                        raise _omp_collab_gateway_error(exc) from exc
+
+                native, records, replay, older = load_omp_turn_window(
+                    fetch, position, turns=max(1, limit // 2),
+                )
+                if native.get('branch_id') != snapshot.get('branch_id'):
+                    raise OmpContentError('stale history cursor', 409)
+                window = {**snapshot, 'entries': records, 'parent_links': [],
+                          'state': {**_map(snapshot.get('state')),
+                                    'leafId': records[-1]['id'] if records else None}}
+                live_leaf = _map(snapshot.get('state')).get('leafId')
+                latest = native.get('anchor_leaf_id') == live_leaf
+                # Even an initial history request can race a newer native leaf.
+                # Never graft stale streams or queued bodies onto that history.
+                if cursor is not None:
+                    latest = latest and bool(records) and records[-1]['id'] == live_leaf
+                if not latest:
+                    # Exact receipt-to-entry bindings remain valid across appends;
+                    # retain those identities without rendering stale pending rows.
+                    window['input_bindings'] = [
+                        *snapshot.get('input_bindings', []),
+                        *(row for row in snapshot.get('pending_inputs', [])
+                          if isinstance(row, dict) and row.get('entry_id')),
+                    ]
+                    window.update(streaming_message=None, stream_id=None, pending_inputs=[])
+                    window['state'].update(isStreaming=False, isAborting=False, queuedMessageCount=0)
+                items = _omp_native_conversation_items(
+                    project.project_root, project_id=project.project_id, agent=str(target['agent']),
+                    mobile_files_dir=self._mobile_files_dir(), snapshot=window,
+                )
+                if original is not None:
                     content = self._omp_content_pager.content(
-                        items, scope=scope, revision=snapshot['revision'], cursor=cursor,
+                        items, scope=scope, revision=snapshot['revision'], cursor=original,
                     )
+                    if content.get('next_cursor'):
+                        content['next_cursor'] = history_cursor(
+                            scope, replay, content=content['next_cursor'])
                     page = {'items': [], 'native_content': content}
                 else:
                     page = self._omp_content_pager.page(
-                        items, scope=scope, revision=snapshot['revision'], limit=limit, cursor=cursor,
+                        items, scope=scope, revision=snapshot['revision'], limit=limit,
+                        cursor=str(end) if end is not None else None,
+                        wrap_content_cursor=lambda value: history_cursor(scope, replay, content=value),
                     )
+                    page['next_cursor'] = (
+                        history_cursor(scope, replay, end=int(page['next_cursor']))
+                        if page['next_cursor'] is not None else
+                        history_cursor(scope, older) if older is not None else None)
             except OmpContentError as exc:
                 raise MobileGatewayError(str(exc), status_code=exc.status_code) from exc
             response = self._agent_conversation_response(
