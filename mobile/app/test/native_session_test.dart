@@ -73,7 +73,7 @@ void main() {
       readCursor: 'current-original', inlineWindow: true,
     );
     await tester.pumpWidget(host(window));
-    expect(find.text('Read original'), findsOneWidget);
+    expect(find.text('Complete content'), findsOneWidget);
     expect(find.text('Latest explanation'), findsOneWidget);
     expect(find.text('Completed'), findsOneWidget);
     expect(find.text('Tool execution unfinished'), findsNothing);

@@ -55,8 +55,10 @@ class ConversationBody extends StatelessWidget {
                       context,
                       cursor: item.readCursor!,
                       loader: contentLoader!,
+                      textBuilder: _buildText,
+                      labels: _readerLabels(context),
                     ),
-            child: Text(chinese ? '阅读原文' : 'Read original'),
+            child: Text(chinese ? '查看完整内容' : 'Complete content'),
           ),
         ],
       );
@@ -70,35 +72,40 @@ class ConversationBody extends StatelessWidget {
         textBuilder: _buildText,
         contentLoader: contentLoader,
         previewText: item.body,
-        labels:
-            CcbMobileLocalizations.of(context).isChinese
-                ? const NativeTurnLabels(
-                  process: '执行过程',
-                  reasoning: '思考',
-                  toolCall: '工具调用',
-                  toolResult: '工具结果',
-                  running: '运行中',
-                  completed: '已完成',
-                  failed: '失败',
-                  aborted: '已中止',
-                  unknown: '状态未知',
-                  pendingTools: '工具执行尚未完成',
-                  noAnswer: '本轮尚无正文回复',
-                  message: '中间回复',
-                  readOriginal: '阅读原文',
-                  preview: '仅为预览 — 内容超出内联大小限制',
-                  latestWindow: '仅显示近期内容；较早内容或较长段落已省略',
-                  previous: '上一页',
-                  next: '下一页',
-                  close: '关闭',
-                  retry: '重试',
-                  loadFailed: '无法加载原文，内容可能已变更。请关闭后刷新会话。',
-                )
-                : const NativeTurnLabels(),
+        labels: _readerLabels(context),
       );
     }
     return _buildText(context, item.body);
   }
+
+  NativeTurnLabels _readerLabels(BuildContext context) =>
+      CcbMobileLocalizations.of(context).isChinese
+          ? const NativeTurnLabels(
+            process: '执行过程',
+            reasoning: '思考',
+            toolCall: '工具调用',
+            toolResult: '工具结果',
+            running: '运行中',
+            completed: '已完成',
+            failed: '失败',
+            aborted: '已中止',
+            unknown: '状态未知',
+            pendingTools: '工具执行尚未完成',
+            noAnswer: '本轮尚无正文回复',
+            message: '中间回复',
+            readOriginal: '查看完整内容',
+            preview: '仅为预览 — 内容超出内联大小限制',
+            latestWindow: '仅显示近期内容；较早内容或较长段落已省略',
+            previous: '上一页',
+            next: '下一页',
+            close: '关闭',
+            retry: '重试',
+            page: '页码',
+            continuedBefore: '接续上一页',
+            continuedAfter: '下一页继续',
+            loadFailed: '无法加载完整内容，内容可能已变更。请关闭后刷新会话。',
+          )
+          : const NativeTurnLabels();
 
   Widget _buildText(BuildContext context, String text) {
     if (shouldRenderConversationMarkdown(item)) {

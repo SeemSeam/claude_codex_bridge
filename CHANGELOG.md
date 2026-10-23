@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Replace raw JSON original-content pages with bounded semantic content pages and a full-screen “Complete content” reader. Render assistant prose as Markdown, with reasoning and tools independently folded, instead of exposing serialized record fields or byte offsets.
+- Preserve exact projected source blocks across Unicode-safe pages, including code-fence continuation rendering; keep immutable version/branch fences, current-page-only reader memory, and visible load errors without mixing content versions.
+
 ## v8.7.18 (2026-10-23)
 
 - Keep healthy OMP Mobile Collab connections alive when history queries fail; report history errors separately from owner/transport failures instead of repeated leave/rejoin cycles.

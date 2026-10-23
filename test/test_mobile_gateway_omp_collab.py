@@ -482,6 +482,24 @@ def test_omp_original_content_uses_authenticated_conversation_and_fences(tmp_pat
     assert response['conversation']['items'] == []
     assert 'next_cursor' not in response['conversation']
     assert response['conversation']['native_content']['next_cursor']
+    content = response['conversation']['native_content']
+    assert content['schema_version'] == 2
+    assert content['page_index'] == 0
+    assert content['total_blocks'] == 1
+    fragments = []
+    while True:
+        fragments.extend(block['text'] for block in content['blocks'])
+        assert all(block['entry_id'] == 'a' and block['type'] == 'text'
+                   for block in content['blocks'])
+        if not content['next_cursor']:
+            break
+        next_page = service.agent_conversation_payload('project', agent='mobile',
+            query={'namespace_epoch': ['4'], 'cursor': [content['next_cursor']]},
+            headers=service.test_headers)['conversation']['native_content']
+        assert next_page['page_index'] == content['page_index'] + 1
+        assert next_page['version'] == content['version']
+        content = next_page
+    assert ''.join(fragments) == '中文😀' * 100000
     with pytest.raises(MobileGatewayError) as error:
         service.agent_conversation_payload('project', agent='mobile', query=query, headers={})
     assert error.value.status_code == 401
@@ -491,7 +509,7 @@ def test_omp_original_content_uses_authenticated_conversation_and_fences(tmp_pat
     assert error.value.status_code == 409
 
 
-@pytest.mark.parametrize('cursor', ['', 'not-a-cursor', 'omp-content-v1.%%%'])
+@pytest.mark.parametrize('cursor', ['', 'not-a-cursor', 'omp-content-v1.%%%', 'omp-content-v2.%%%'])
 def test_omp_invalid_conversation_cursor_is_bad_request(tmp_path, monkeypatch, cursor):
     service, _, _ = gateway(tmp_path, monkeypatch)
     with pytest.raises(MobileGatewayError) as error:

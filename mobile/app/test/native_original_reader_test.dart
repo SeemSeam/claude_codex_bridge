@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:ccb_mobile/features/agent_chat/conversation_bubble.dart';
 import 'package:ccb_mobile/features/agent_chat/conversation_item_presentation.dart';
@@ -8,6 +7,15 @@ import 'package:ccb_mobile/models/ccb_conversation_item.dart';
 import 'package:ccb_mobile/native_session/native_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
+NativeContentPage page(String text, {int index = 0, String version = 'v',
+  String? next, bool before = false, bool after = false}) => NativeContentPage(
+  blocks: [NativeContentBlock(entryId: 'entry', blockIndex: 0,
+    role: 'assistant', type: 'text', text: text,
+    continuedBefore: before, continuedAfter: after)],
+  pageIndex: index, totalBlocks: 1, version: version, nextCursor: next,
+);
 
 CcbConversationItem overflowReply() => CcbConversationItem.fromJson({
   'id': 'large',
@@ -46,6 +54,101 @@ Widget host(Future<NativeContentPage> Function(String) loader) => MaterialApp(
 );
 
 void main() {
+  testWidgets('duplicate source fragments show a load error instead of duplicate widget keys', (tester) async {
+    await tester.pumpWidget(host((_) async => const NativeContentPage(
+      pageIndex: 0, totalBlocks: 1, version: 'duplicate', blocks: [
+        NativeContentBlock(entryId: 'same', blockIndex: 0, role: 'assistant',
+          type: 'text', text: 'First fragment', continuedAfter: true),
+        NativeContentBlock(entryId: 'same', blockIndex: 0, role: 'assistant',
+          type: 'text', text: 'Second fragment', continuedBefore: true),
+      ],
+    )));
+    await tester.tap(find.byKey(const ValueKey('native-read-original')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Content could not load'), findsOneWidget);
+    expect(find.text('First fragment', findRichText: true), findsNothing);
+    expect(find.text('Second fragment', findRichText: true), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('native-original-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('native-original-reader')), findsNothing);
+  });
+  testWidgets('split fenced code remains Markdown and paging ignores rapid taps', (tester) async {
+    final pending = Completer<NativeContentPage>();
+    var nextCalls = 0;
+    await tester.pumpWidget(host((cursor) async {
+      if (cursor != 'page0') { nextCalls++; return pending.future; }
+      return const NativeContentPage(pageIndex: 0, totalBlocks: 1, version: 'code',
+        nextCursor: 'page1', blocks: [NativeContentBlock(entryId: 'code',
+          blockIndex: 0, role: 'assistant', type: 'text',
+          text: '```dart\nfinal first = "中文🙂";\n', continuedAfter: true,
+          renderSuffix: '\n```')]);
+    }));
+    await tester.tap(find.byKey(const ValueKey('native-read-original')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('final first', findRichText: true), findsOneWidget);
+    expect(find.text('Continues on next page'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('native-original-next')));
+    await tester.tap(find.byKey(const ValueKey('native-original-next')));
+    await tester.pump();
+    expect(nextCalls, 1);
+    pending.complete(const NativeContentPage(pageIndex: 1, totalBlocks: 1,
+      version: 'code', blocks: [NativeContentBlock(entryId: 'code', blockIndex: 0,
+        role: 'assistant', type: 'text', text: 'final second = 42;\n```',
+        continuedBefore: true, renderPrefix: '```dart\n')]));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('final second', findRichText: true), findsOneWidget);
+    expect(find.textContaining('final first', findRichText: true), findsNothing);
+    expect(find.text('Continued from previous page'), findsOneWidget);
+    expect(find.text('Page 2'), findsOneWidget);
+  });
+  testWidgets('complete content renders Markdown and independent execution disclosures', (tester) async {
+    await tester.pumpWidget(host((_) async => const NativeContentPage(
+      pageIndex: 0, totalBlocks: 4, version: 'v', blocks: [
+        NativeContentBlock(entryId: 'a', blockIndex: 0, role: 'assistant',
+          type: 'text', text: '# Readable answer\n\n**Important** [reference](https://example.com)\n\n```dart\nfinal answer = 42;\n```'),
+        NativeContentBlock(entryId: 'a', blockIndex: 1, role: 'assistant',
+          type: 'reasoning', text: 'Private execution explanation'),
+        NativeContentBlock(entryId: 'a', blockIndex: 2, role: 'assistant',
+          type: 'tool_call', name: 'shell', text: 'command: echo hello'),
+        NativeContentBlock(entryId: 't', blockIndex: 0, role: 'tool',
+          type: 'tool_result', text: 'hello\n  formatted output'),
+      ],
+    )));
+    await tester.tap(find.byKey(const ValueKey('native-read-original')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.text('Readable answer', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Important reference', findRichText: true), findsOneWidget);
+    expect(find.textContaining('final answer = 42;', findRichText: true), findsOneWidget);
+    expect(find.text('Private execution explanation', findRichText: true), findsNothing);
+    expect(find.text('command: echo hello'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('native-content-execution-a-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('command: echo hello'), findsOneWidget);
+    expect(find.text('hello\n  formatted output'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('native-content-execution-t-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('hello\n  formatted output'), findsOneWidget);
+    expect(find.text('Private execution explanation', findRichText: true), findsNothing);
+  });
+
+  for (final invalid in ['version', 'index', 'continuation']) {
+    testWidgets('reader rejects changed $invalid without replacing current content', (tester) async {
+      await tester.pumpWidget(host((cursor) async => cursor == 'page0'
+        ? page('First immutable page', next: 'page1', after: true)
+        : page('Invalid second page', index: invalid == 'index' ? 2 : 1,
+            version: invalid == 'version' ? 'changed' : 'v',
+            before: invalid != 'continuation')));
+      await tester.tap(find.byKey(const ValueKey('native-read-original')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('native-original-next')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Content could not load'), findsOneWidget);
+      expect(find.text('First immutable page', findRichText: true), findsOneWidget);
+      expect(find.text('Invalid second page', findRichText: true), findsNothing);
+    });
+  }
   testWidgets('queued original remains readable without native turn ownership', (tester) async {
     final item = CcbConversationItem.fromJson({
       'id': 'queue-key', 'agent': 'demo', 'kind': 'user_message',
@@ -57,13 +160,11 @@ void main() {
     expect(restored.readCursor, 'queue-page');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: ConversationBody(
       item: restored,
-      contentLoader: (_) async => const NativeContentPage(
-        text: 'Complete queued request', offset: 0, totalBytes: 23, version: 'v',
-      ),
+      contentLoader: (_) async => page('Complete queued request'),
     ))));
     await tester.tap(find.byKey(const ValueKey('conversation-read-original')));
     await tester.pumpAndSettle();
-    expect(find.text('Complete queued request'), findsOneWidget);
+    expect(find.text('Complete queued request', findRichText: true), findsOneWidget);
   });
   testWidgets('oversized user input retains an explicit original reader', (
     tester,
@@ -80,21 +181,16 @@ void main() {
           body: ConversationBody(
             item: CcbConversationItem.fromJson(json),
             contentLoader:
-                (_) async => const NativeContentPage(
-                  text: 'Full user request',
-                  offset: 0,
-                  totalBytes: 17,
-                  version: 'v',
-                ),
+                (_) async => page('Full user request'),
           ),
         ),
       ),
     );
     expect(find.text('Latest request tail'), findsOneWidget);
     expect(find.text('No assistant answer'), findsNothing);
-    await tester.tap(find.text('Read original'));
+    await tester.tap(find.text('Complete content'));
     await tester.pumpAndSettle();
-    expect(find.text('Full user request'), findsOneWidget);
+    expect(find.text('Full user request', findRichText: true), findsOneWidget);
   });
   test(
     'overflow fields survive item copies and conversation serialization',
@@ -115,17 +211,11 @@ void main() {
           'agent': 'demo',
           'namespace_epoch': 1,
           'items': [],
-          'native_content': {
-            'text': '中文🙂\n',
-            'next_cursor': null,
-            'offset': 0,
-            'total_bytes': 11,
-            'version': 'v',
-          },
+          'native_content': page('中文🙂\n').toJson(),
         },
       });
       final copy = CcbAgentConversation.fromJson(conversation.toJson());
-      expect(copy.nativeContent!.text, '中文🙂\n');
+      expect(copy.nativeContent!.blocks.single.text, '中文🙂\n');
       expect(copy.nativeContent!.version, 'v');
       expect(copy.nativeContent!.nextCursor, isNull);
     },
@@ -139,36 +229,31 @@ void main() {
       Future<NativeContentPage> load(String cursor) async {
         calls.add(cursor);
         final index = int.parse(cursor.substring(4));
-        return NativeContentPage(
-          text: texts[index],
-          offset: utf8.encode(texts.take(index).join()).length,
-          totalBytes: utf8.encode(texts.join()).length,
-          version: 'immutable',
-          nextCursor: index == 2 ? null : 'page${index + 1}',
-        );
+        return page(texts[index], index: index, version: 'immutable',
+          next: index == 2 ? null : 'page${index + 1}',
+          before: index > 0, after: index < 2);
       }
 
       await tester.pumpWidget(host(load));
       expect(calls, isEmpty);
       expect(find.text('Running'), findsOneWidget);
       expect(find.text('Completed'), findsNothing);
-      expect(find.text('Readable latest answer'), findsOneWidget);
+      expect(find.text('Readable latest answer', findRichText: true), findsOneWidget);
       expect(find.text('Bounded preview'), findsNothing);
       expect(find.text(const NativeTurnLabels().latestWindow), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('native-read-original')));
       await tester.pumpAndSettle();
       final read = <String>[];
       for (var index = 0; index < texts.length; index++) {
-        final text =
-            tester
-                .widget<SelectableText>(
-                  find.byKey(const ValueKey('native-original-text')),
-                )
-                .data!;
+        final text = tester.widget<MarkdownBody>(
+          find.descendant(of: find.byKey(const ValueKey('native-original-reader')),
+            matching: find.byType(MarkdownBody)),
+        ).data;
+        expect(find.text(texts[index].trim(), findRichText: true), findsOneWidget);
         read.add(text);
         expect(text, texts[index]);
         for (var other = 0; other < texts.length; other++) {
-          if (other != index) expect(find.text(texts[other]), findsNothing);
+          if (other != index) expect(find.text(texts[other].trim(), findRichText: true), findsNothing);
         }
         if (index != texts.length - 1) {
           await tester.tap(find.byKey(const ValueKey('native-original-next')));
@@ -187,22 +272,20 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('native-original-previous')));
       await tester.pumpAndSettle();
-      expect(find.text(texts[1]), findsOneWidget);
+      expect(find.text(texts[1].trim(), findRichText: true), findsOneWidget);
       expect(calls.last, 'page1');
-      await tester.longPress(
-        find.byKey(const ValueKey('native-original-text')),
-      );
+      await tester.longPress(find.text(texts[1].trim(), findRichText: true));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('native-original-close')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('native-original-text')), findsNothing);
+      expect(find.byKey(const ValueKey('native-original-reader')), findsNothing);
       for (final text in texts) {
         expect(find.text(text), findsNothing);
       }
       await tester.tap(find.byKey(const ValueKey('native-read-original')));
       await tester.pumpAndSettle();
       expect(calls.last, 'page0');
-      expect(find.text(texts.first), findsOneWidget);
+      expect(find.text(texts.first.trim(), findRichText: true), findsOneWidget);
       expect(
         tester
             .widget<TextButton>(
@@ -226,7 +309,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('native-read-original')));
     await tester.pumpAndSettle();
     expect(calls, 1);
-    expect(find.textContaining('Original could not load'), findsOneWidget);
+    expect(find.textContaining('Content could not load'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
     expect(calls, 1);
     expect(find.byKey(const ValueKey('native-original-close')), findsOneWidget);
@@ -242,12 +325,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('native-original-close')));
     await tester.pumpAndSettle();
     pending.complete(
-      const NativeContentPage(
-        text: 'late',
-        offset: 0,
-        totalBytes: 4,
-        version: 'v',
-      ),
+      page('late'),
     );
     await tester.pumpAndSettle();
     expect(find.text('late'), findsNothing);

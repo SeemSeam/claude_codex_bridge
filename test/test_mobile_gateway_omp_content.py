@@ -31,6 +31,45 @@ def envelope(page):
         'project_id': 'project', 'agent': 'mobile', 'namespace_epoch': 4, **page}}
 
 
+def read_blocks(pager, items, cursor, revision=1):
+    """Reconstruct semantic source blocks just as a paged consumer would."""
+    blocks = []
+    page_index = 0
+    while cursor:
+        page = pager.content(items, scope=SCOPE, revision=revision, cursor=cursor)
+        assert page['schema_version'] == 2
+        assert page['page_index'] == page_index
+        assert 'text' not in page and 'offset' not in page and 'total_bytes' not in page
+        assert sum(len(block['text'].encode('utf-8')) for block in page['blocks']) <= CONTENT_BYTES
+        identities = [(block['entry_id'], block['block_index']) for block in page['blocks']]
+        assert len(identities) == len(set(identities))
+        payload = envelope({'items': [], 'native_content': page})
+        assert ascii_size(payload) <= PAGE_BYTES
+        assert len(RelayInnerMessage(kind='response', request_id='req-budget-0001',
+                                    payload=payload).to_bytes()) <= PAGE_BYTES
+        for fragment in page['blocks']:
+            block = dict(fragment)
+            continued_before = block.pop('continued_before')
+            continued_after = block.pop('continued_after')
+            assert isinstance(block.pop('render_prefix'), str)
+            assert isinstance(block.pop('render_suffix'), str)
+            if continued_before:
+                assert blocks[-1]['continued_after']
+                assert {k: v for k, v in blocks[-1].items() if k not in {'text', 'continued_after'}} == {
+                    k: v for k, v in block.items() if k != 'text'}
+                blocks[-1]['text'] += block['text']
+                blocks[-1]['continued_after'] = continued_after
+            else:
+                if blocks:
+                    assert not blocks[-1]['continued_after']
+                blocks.append({**block, 'continued_after': continued_after})
+        cursor = page['next_cursor']
+        page_index += 1
+    assert all(not block.pop('continued_after') for block in blocks)
+    assert len(blocks) == page['total_blocks']
+    return blocks
+
+
 def test_pages_budget_actual_ascii_relay_bytes_and_never_skip_items():
     pager = OmpContentPager()
     items = [item(str(i), '中文😀' * (1200 if i % 2 else 2)) for i in range(70)]
@@ -74,16 +113,12 @@ def test_long_queued_input_uses_shared_budget_and_generic_original():
     assert 0 < len(preview['body']) <= 8000
     assert ascii_size(preview) <= INLINE_ITEM_BYTES
     cursor = preview['read_cursor']
-    chunks = []
-    while cursor:
-        content = pager.content([queued], scope=SCOPE, revision=1, cursor=cursor)
-        assert ascii_size(envelope({'native_content': content})) <= PAGE_BYTES
-        chunks.append(content['text'])
-        cursor = content['next_cursor']
-    assert json.loads(''.join(chunks)) == queued
+    blocks = read_blocks(pager, [queued], cursor)
+    assert blocks == [{'entry_id': queued['id'], 'block_index': 0, 'role': 'user',
+                       'type': 'text', 'text': queued['body']}]
 
 
-def test_original_roundtrip_hash_utf8_boundaries_and_complete_tools(tmp_path):
+def test_semantic_content_hash_utf8_boundaries_and_complete_tools(tmp_path):
     text = '中文😀\\\n' * 60000
     records = [
         {'type': 'message', 'id': 'user', 'parentId': None,
@@ -107,21 +142,19 @@ def test_original_roundtrip_hash_utf8_boundaries_and_complete_tools(tmp_path):
     pager = OmpContentPager()
     page = pager.page(originals, scope=SCOPE, revision=1, limit=50, cursor=None)
     cursor = page['items'][-1]['native_turn']['read_cursor']
-    chunks = []
-    while cursor:
-        content = pager.content(originals, scope=SCOPE, revision=1, cursor=cursor)
-        chunk = content['text'].encode('utf-8')
-        assert 0 < len(chunk) <= CONTENT_BYTES
-        assert content['offset'] == sum(map(len, chunks))
-        assert content['total_bytes'] == len(expected)
-        assert content['version'] == hashlib.sha256(expected).hexdigest()
-        assert ascii_size(envelope({'items': [], 'native_content': content})) <= PAGE_BYTES
-        RelayInnerMessage(kind='response', request_id='req-budget-0001',
-                          payload=envelope({'items': [], 'native_content': content})).to_bytes()
-        chunks.append(chunk)
-        cursor = content['next_cursor']
-    assert b''.join(chunks) == expected
-    assert json.loads(b''.join(chunks)) == originals[-1]
+    first = pager.content(originals, scope=SCOPE, revision=1, cursor=cursor)
+    assert first['version'] == hashlib.sha256(expected).hexdigest()
+    blocks = read_blocks(pager, originals, cursor)
+    assert [block['type'] for block in blocks] == ['text', 'reasoning', 'tool_call', 'tool_result']
+    assert [block['entry_id'] for block in blocks] == ['final', 'call', 'call', 'result']
+    assert [block['block_index'] for block in blocks] == [0, 0, 1, 0]
+    # Native projection trims prose/reasoning/result whitespace before paging;
+    # tool arguments retain the original string, including its final newline.
+    assert [block['text'] for block in blocks] == [
+        text.rstrip(), text.rstrip(), json.dumps({'code': text}, ensure_ascii=False, indent=2), text.rstrip()]
+    assert blocks[2]['call_id'] == 'c'
+    assert blocks[2]['name'] == 'read'
+    assert blocks[3]['role'] == 'tool'
 
 
 @pytest.mark.parametrize('position,value', [(0, 'other'), (1, 'other'), (2, 5),
@@ -145,32 +178,36 @@ def test_content_rejects_changed_deleted_and_invalid_cursor():
         with pytest.raises(OmpContentError) as error:
             pager.content(changed, scope=SCOPE, revision=2, cursor=cursor)
         assert error.value.status_code == 409
-    for invalid in ('', 'omp-content-v1.', 'omp-content-v1.%%%'):
+    for invalid in ('', 'omp-content-v1.', 'omp-content-v2.', 'omp-content-v2.%%%'):
         with pytest.raises(OmpContentError) as error:
             pager.content(items, scope=SCOPE, revision=1, cursor=invalid)
         assert error.value.status_code == 400
 
 
-def test_content_rejects_offsets_inside_utf8_and_out_of_range():
+def test_content_rejects_invalid_block_positions_and_tampering():
     pager = OmpContentPager()
     items = [item('a', '中文😀' * 50000)]
-    data, version = pager._document(items[0], SCOPE, 1)
-    continuation = next(i for i, value in enumerate(data) if value & 0xc0 == 0x80)
-    for offset in (-1, continuation, len(data) + 1):
-        cursor = pager._cursor(SCOPE, 'a', version, offset)
+    blocks, version, _ = pager._document(items[0], SCOPE, 1)
+    for index, offset in ((-1, 0), (len(blocks), 0), (0, -1), (0, len(blocks[0]['text']) + 1)):
+        cursor = pager._cursor(SCOPE, 'a', version, index, offset)
         with pytest.raises(OmpContentError) as error:
             pager.content(items, scope=SCOPE, revision=1, cursor=cursor)
         assert error.value.status_code == 400
+    cursor = pager._cursor(SCOPE, 'a', version, 0)
+    tampered = cursor[:-4] + ('AAAA' if cursor[-4:] != 'AAAA' else 'BBBB')
+    with pytest.raises(OmpContentError) as error:
+        pager.content(items, scope=SCOPE, revision=1, cursor=tampered)
+    assert error.value.status_code == 400
 
 
-def test_content_extreme_escaping_stays_within_ascii_page_budget():
+@pytest.mark.parametrize('text', ['漢' * 100000, '\x00' * 100000, '😀' * 100000])
+def test_extreme_escaping_stays_within_actual_ascii_page_budget(text):
     pager = OmpContentPager()
-    items = [item('a', '漢' * 100000)]
-    page = pager.page(items, scope=SCOPE, revision=1, limit=50, cursor=None)
-    content = pager.content(items, scope=SCOPE, revision=1,
-                           cursor=page['items'][0]['native_turn']['read_cursor'])
-    assert len(content['text'].encode('utf-8')) <= CONTENT_BYTES
-    assert ascii_size(envelope({'items': [], 'native_content': content})) <= PAGE_BYTES
+    original = {'id': 'generic', 'kind': 'agent_reply', 'body': text}
+    preview = pager.page([original], scope=SCOPE, revision=1, limit=1, cursor=None)['items'][0]
+    blocks = read_blocks(pager, [original], preview['read_cursor'])
+    assert blocks == [{'entry_id': 'generic', 'block_index': 0, 'role': 'assistant',
+                       'type': 'text', 'text': text}]
 
 
 def test_giant_metadata_and_attachments_do_not_escape_inline_budget():
@@ -186,7 +223,9 @@ def test_giant_metadata_and_attachments_do_not_escape_inline_budget():
     assert 'unexpected' not in projected
     cursor = projected['native_turn']['read_cursor']
     content = pager.content([original], scope=SCOPE, revision=1, cursor=cursor)
-    assert content['total_bytes'] > 1400000
+    assert content['total_blocks'] == 3
+    assert content['blocks'][0]['text'] == 'small'
+    assert content['blocks'][0]['type'] == 'reasoning'
 
 
 def test_oversized_window_keeps_latest_answer_and_readable_recent_tool_context():
@@ -328,3 +367,109 @@ def test_oversized_native_user_keeps_tail_and_complete_original():
     content = pager.content([original], scope=SCOPE, revision=1, cursor=projected['read_cursor'])
     expected = json.dumps(original, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
     assert content['version'] == hashlib.sha256(expected).hexdigest()
+    blocks = read_blocks(pager, [original], projected['read_cursor'])
+    assert blocks == [{'entry_id': original['id'], 'block_index': 0, 'role': 'user',
+                       'type': 'text', 'text': original['body']}]
+
+
+def test_markdown_paragraph_and_fenced_code_fragments_preserve_exact_content():
+    text = '# Answer\n\n' + 'paragraph text ' * 200 + '\n\n```python\n' + (
+        'print("中文😀")\n' * 9000) + '```\n\nFinal paragraph.\n'
+    original = {'id': 'markdown', 'kind': 'agent_reply', 'body': text}
+    pager = OmpContentPager()
+    preview = pager.page([original], scope=SCOPE, revision=1, limit=1, cursor=None)['items'][0]
+    cursor = preview['read_cursor']
+    first = pager.content([original], scope=SCOPE, revision=1, cursor=cursor)
+    assert first['blocks'][0]['continued_before'] is False
+    assert first['blocks'][0]['continued_after'] is True
+    assert first['blocks'][0]['text'].endswith('\n')
+    second = pager.content([original], scope=SCOPE, revision=1, cursor=first['next_cursor'])
+    assert second['blocks'][0]['continued_before'] is True
+    assert second['blocks'][0]['continued_after'] is True
+    assert first['blocks'][0]['render_suffix'] == '\n```'
+    assert second['blocks'][0]['render_prefix'] == '```python\n'
+    assert second['blocks'][0]['render_suffix'] == '\n```'
+    blocks = read_blocks(pager, [original], cursor)
+    assert len(blocks) == 1
+    assert blocks[0]['text'] == text
+
+
+def test_paragraph_split_emits_source_block_only_once_per_page():
+    paragraph = 'a' * 20000 + '\n\n'
+    text = paragraph + 'b' * 20000 + '\n\n' + 'c' * 20000
+    original = {'id': 'paragraphs', 'kind': 'agent_reply', 'body': text}
+    pager = OmpContentPager()
+    _, version, _ = pager._document(original, SCOPE, 1)
+    cursor = pager._cursor(SCOPE, original['id'], version, 0)
+    first = pager.content([original], scope=SCOPE, revision=1, cursor=cursor)
+    assert len(first['blocks']) == 1
+    assert first['blocks'][0]['text'] == paragraph
+    assert first['blocks'][0]['continued_after'] is True
+    second = pager.content([original], scope=SCOPE, revision=1, cursor=first['next_cursor'])
+    assert len(second['blocks']) == 1
+    assert second['blocks'][0]['continued_before'] is True
+    assert second['blocks'][0]['text'] == 'b' * 20000 + '\n\n'
+    assert read_blocks(pager, [original], cursor)[0]['text'] == text
+
+
+
+@pytest.mark.parametrize('boundary', ['opening', 'closing'])
+def test_exact_page_fence_boundary_needs_no_synthetic_markup(boundary):
+    if boundary == 'opening':
+        text = 'a' * (CONTENT_BYTES - 2) + '\n\n```python\n' + 'code\n' * 10000 + '```\n'
+    else:
+        opener, closer = '```python\n', '\n```\n'
+        text = opener + 'x' * (CONTENT_BYTES - len(opener) - len(closer)) + closer + 'after\n' * 10000
+    original = {'id': 'fence-boundary', 'kind': 'agent_reply', 'body': text}
+    pager = OmpContentPager()
+    _, version, _ = pager._document(original, SCOPE, 1)
+    cursor = pager._cursor(SCOPE, original['id'], version, 0)
+    first = pager.content([original], scope=SCOPE, revision=1, cursor=cursor)
+    assert len(first['blocks'][0]['text'].encode('utf-8')) == CONTENT_BYTES
+    assert first['blocks'][0]['render_suffix'] == ''
+    second = pager.content([original], scope=SCOPE, revision=1, cursor=first['next_cursor'])
+    assert second['blocks'][0]['render_prefix'] == ''
+    assert read_blocks(pager, [original], cursor)[0]['text'] == text
+
+@pytest.mark.parametrize('opener,render_opener', [
+    ('```python ' + 'metadata' * 20000, '```python'),
+    ('```' + 'oversizedlanguage' * 10000, '```'),
+    ('`' * 100000, '`' * 64),
+])
+def test_oversized_fence_opening_line_keeps_bounded_render_context(opener, render_opener):
+    closing = '`' * (len(opener) if not opener.strip('`') else 3)
+    text = opener + '\nprint("中文😀")\n' + closing + '\n'
+    original = {'id': 'long-fence', 'kind': 'agent_reply', 'body': text}
+    pager = OmpContentPager()
+    _, version, _ = pager._document(original, SCOPE, 1)
+    cursor = pager._cursor(SCOPE, original['id'], version, 0)
+    first = pager.content([original], scope=SCOPE, revision=1, cursor=cursor)
+    assert '\n' not in first['blocks'][0]['text']
+    render_delimiter = render_opener[:len(render_opener) - len(render_opener.lstrip('`'))]
+    assert first['blocks'][0]['render_suffix'] == '\n' + render_delimiter
+    second = pager.content([original], scope=SCOPE, revision=1, cursor=first['next_cursor'])
+    assert second['blocks'][0]['render_prefix'] == render_opener + '\n'
+    assert len(second['blocks'][0]['render_prefix']) <= 129
+    assert read_blocks(pager, [original], cursor)[0]['text'] == text
+
+
+def test_semantic_order_multiple_answers_execution_and_no_body_duplicate():
+    original = item('ordered', 'DUPLICATED BODY MUST NOT APPEAR')
+    original['native_turn']['entries'] = [
+        {'id': 'early', 'role': 'assistant', 'blocks': [
+            {'type': 'reasoning', 'text': 'plan'},
+            {'type': 'text', 'text': 'first prose'},
+            {'type': 'tool_call', 'name': 'read', 'input': {'path': '/tmp/a'}}]},
+        {'id': 'result', 'role': 'tool', 'blocks': [
+            {'type': 'tool_result', 'text': 'failed', 'is_error': True, 'call_id': 'c'}]},
+        {'id': 'last', 'role': 'assistant', 'blocks': [{'type': 'text', 'text': 'final prose'}]},
+    ]
+    pager = OmpContentPager()
+    _, version, _ = pager._document(original, SCOPE, 1)
+    blocks = read_blocks(pager, [original], pager._cursor(SCOPE, original['id'], version, 0))
+    assert [block['text'] for block in blocks] == [
+        'first prose', 'final prose', 'plan', '{\n  "path": "/tmp/a"\n}', 'failed']
+    assert [(block['entry_id'], block['block_index']) for block in blocks] == [
+        ('early', 1), ('last', 0), ('early', 0), ('early', 2), ('result', 0)]
+    assert blocks[-1]['is_error'] is True
+    assert blocks[-1]['call_id'] == 'c'

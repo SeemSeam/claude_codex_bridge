@@ -10,6 +10,15 @@ CCB and provider CLIs run on the server; the mobile app is a controller for
 project discovery, agent switching, terminal access, Markdown reading,
 notifications, local/Tailnet gateway access, and file transfer.
 
+## Unreleased: readable complete content / 可读完整内容
+
+“Complete content” replaces the raw JSON original viewer with a full-screen Markdown reader. Assistant prose is shown first; reasoning, tool calls and tool results are independently folded. Server content schema v2 sends semantic fragments with stable block identities, continuation markers and immutable versions, never the original serialized item envelope. Pages carry at most 32 KiB of source text within the existing 192 KiB response budget; the phone retains only the current page and refetches previous pages by fenced cursor. Split Markdown code fences receive display-only context without modifying source text. Update gateway and app together; schema v1 JSON slices are deliberately not rendered as fallback.
+
+“查看完整内容”改为全屏 Markdown 阅读页，正文优先，思考、工具调用及结果独立折叠，不再展示 JSON 包装字段、转义换行或字节偏移。服务端 v2 协议按语义块分页，保持块身份、续页标记及不可变版本；单页原始文本最多 32 KiB，仍受 192 KiB 响应预算限制。手机只保留当前页，上一页通过绑定游标重新读取；代码围栏跨页使用仅用于显示的上下文，不改变源文字。网关和 App 需一起升级，不以原始 JSON 分片作为兼容显示。
+
+Qualification: 105 targeted Python tests, 21 runtime tests and 54 targeted Flutter tests passed; Flutter analysis reported no issues. Android API 35, actual OMP 18.12.6 native host and encrypted Relay passed the full long-history workflow, readable Markdown/code rendering, independent execution disclosures, next/previous navigation and close. The fixture traversed 202 history items and reconstructed six semantic blocks across 29 content pages with exact projected-source text hashes. Evidence: `~/.local/state/ccb-mobile-complete-content-vm-final/`. Source changes only; not installed or published.
+
+
 ## v8.7.18: stable OMP history and bounded latest bubbles / 稳定长历史与有界最新气泡
 
 OMP Mobile reads complete user-anchored turns from bounded native parent-chain pages rather than requiring a full in-memory conversation replica. Native pages contain at most 128 records and 256 KiB; oversized records use lossless byte chunks, and the existing original reader pages complete Unicode text and tool results. The live bridge retains at most 512 recent entries / 4 MiB. History-query errors preserve a healthy connection and loaded phone content; owner or transport failures remain explicit. Append-stable cursors are fenced to the native session and branch, so a real branch switch cannot merge unrelated history.

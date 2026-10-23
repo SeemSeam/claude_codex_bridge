@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:ccb_mobile/features/agent_chat/conversation_bubble.dart';
+import 'package:ccb_mobile/features/agent_chat/conversation_timeline.dart';
 import 'package:ccb_mobile/features/agent_chat/selected_agent_workspace.dart';
 import 'package:ccb_mobile/features/provider_control/provider_control_sheet.dart';
 import 'package:ccb_mobile/models/ccb_agent_conversation.dart';
@@ -148,6 +150,7 @@ void main() {
       ),
     );
     String? originalId;
+    String? readableId;
     final initialHistoryIds = <String>{};
     if (_relayUrl.isNotEmpty || _longHistory) {
       await tester.runAsync(() async {
@@ -160,6 +163,7 @@ void main() {
           expect(history['max_metadata_gap'], greaterThan(16384));
         }
         originalId = history['original_id'] as String;
+        readableId = history['readable_id'] as String;
         final ids = <String>{};
         final bodies = <String>[];
         final cursors = <String>{};
@@ -195,35 +199,64 @@ void main() {
         expect(original.nativeTurn!.answerText, contains('Fixture oversized complete'));
         cursor = original.nativeTurn!.readCursor;
         expect(cursor, isNotNull);
-        final content = BytesBuilder(copy: false);
+        final fragments = <String, BytesBuilder>{};
+        final metadata = <String, Map<String, dynamic>>{};
+        final order = <String>[];
+        final finished = <String>{};
         final contentCursors = <String>{};
         var contentPages = 0;
+        final expectedBlocks = (history['semantic_blocks'] as List).cast<Map<String, dynamic>>();
         do {
           expect(contentCursors.add(cursor!), isTrue);
           final page = await repository.getAgentConversation(
             projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4, cursor: cursor);
           expect(page.items, isEmpty);
           final chunk = page.nativeContent!;
-          final bytes = utf8.encode(chunk.text);
-          expect(bytes.length, lessThanOrEqualTo(32 * 1024));
-          expect(chunk.offset, content.length);
-          expect(chunk.totalBytes, history['original_bytes']);
-          expect(chunk.version, history['original_sha256']);
-          content.add(bytes);
+          expect(chunk.toJson()['schema_version'], 2);
+          expect(chunk.pageIndex, contentPages);
+          expect(chunk.totalBlocks, expectedBlocks.length);
+          expect(chunk.version, history['original_version']);
+          expect(chunk.blocks, isNotEmpty);
+          var pageBytes = 0;
+          for (final block in chunk.blocks) {
+            if (block.type == 'tool_call' || block.type == 'tool_result') {
+              expect(block.name, 'read');
+              expect(block.callId, 'fixture-oversize-call');
+            }
+            if (block.type == 'tool_result') expect(block.isError, isFalse);
+            final key = '${block.entryId}:${block.blockIndex}';
+            final bytes = utf8.encode(block.text);
+            pageBytes += bytes.length;
+            expect(finished, isNot(contains(key)), reason: 'completed block must never repeat');
+            expect(block.continuedBefore, fragments.containsKey(key));
+            if (!fragments.containsKey(key)) {
+              order.add(key);
+              fragments[key] = BytesBuilder(copy: false);
+              metadata[key] = {'entry_id':block.entryId, 'block_index':block.blockIndex,
+                'role':block.role, 'type':block.type};
+            } else {
+              expect(key, order.last, reason: 'continued fragments must stay contiguous');
+            }
+            fragments[key]!.add(bytes);
+            if (!block.continuedAfter) finished.add(key);
+          }
+          expect(pageBytes, lessThanOrEqualTo(32 * 1024));
           cursor = chunk.nextCursor;
           contentPages++;
         } while (cursor != null);
-        final bytes = content.takeBytes();
-        expect(bytes.length, history['original_bytes']);
-        expect(sha256.convert(bytes).toString(), history['original_sha256']);
-        final decoded = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-        expect(decoded['id'], originalId);
-        expect(utf8.decode(bytes), contains('Fixture oversized tool result'));
-        expect(utf8.decode(bytes), contains('原文🌍 café é'));
+        expect(finished.length, expectedBlocks.length);
+        final reconstructed = <Map<String, dynamic>>[];
+        for (final key in order) {
+          final bytes = fragments[key]!.takeBytes();
+          reconstructed.add({...metadata[key]!, 'bytes':bytes.length,
+            'sha256':sha256.convert(bytes).toString()});
+        }
+        // Exact per-source-block hashes prove Unicode fidelity, answer-first order,
+        // and that item.body was not duplicated beside native assistant prose.
+        expect(reconstructed, expectedBlocks);
         expect(contentPages, greaterThan(16));
         await _fixture('proof', {'history_pages':historyPages, 'history_items':ids.length,
-          'original_pages':contentPages, 'original_bytes':bytes.length,
-          'original_sha256':sha256.convert(bytes).toString()});
+          'content_pages':contentPages, 'semantic_blocks':reconstructed});
       });
     }
     final view = await tester.runAsync(
@@ -266,10 +299,33 @@ void main() {
     );
     await tester.runAsync(() => _fixture('screenshot', {'name': 'initial'}));
     if (originalId != null) {
-      final bubble = find.byWidgetPredicate((widget) =>
-        widget is ConversationBubble && widget.item.id == originalId);
-      await _until(tester, () => bubble.evaluate().isNotEmpty,
-        reason: 'oversized native turn is reachable in latest UI page');
+      Future<Finder> reachBubble(String id) async {
+        final target = find.byWidgetPredicate((widget) =>
+          widget is ConversationBubble && widget.item.id == id);
+        ConversationTimeline timeline() => tester.widget<ConversationTimeline>(find.byType(ConversationTimeline));
+        for (var attempt = 0; attempt < 12 && target.evaluate().isEmpty; attempt++) {
+          final current = timeline();
+          final targetIndex = current.items.indexWhere((item) => item.id == id);
+          final visibleIndices = tester.widgetList<ConversationBubble>(find.byType(ConversationBubble))
+            .map((bubble) => current.items.indexWhere((item) => item.id == bubble.item.id))
+            .where((index) => index >= 0).toList()..sort();
+          // Missing IDs require older pages. Already loaded newer IDs may be
+          // below the current viewport after reading an earlier oversized turn.
+          final newer = targetIndex >= 0 && visibleIndices.isNotEmpty && targetIndex > visibleIndices.last;
+          await tester.drag(find.byKey(const ValueKey('agent-chat-timeline')),
+            Offset(0, newer ? -1600 : 1600));
+          await tester.pump(const Duration(milliseconds: 100));
+          await _until(tester, () {
+            final state = timeline();
+            return !state.isLoading && state.controller.hasClients &&
+              !state.controller.position.isScrollingNotifier.value;
+          }, reason: 'history load and genuine timeline scroll settle before locating $id');
+        }
+        expect(target, findsOneWidget,
+          reason: 'signed item $id is reachable through bounded UI history pages');
+        return target;
+      }
+      final bubble = await reachBubble(originalId!);
       final expand = find.byKey(ValueKey('conversation-expand-$originalId'));
       if (!tester.widget<ConversationBubble>(bubble).expanded && expand.evaluate().isNotEmpty) {
         await _tap(tester, expand);
@@ -283,24 +339,81 @@ void main() {
       await tester.runAsync(() => _fixture('screenshot', {'name': 'bounded-bubble'}));
       final read = find.descendant(of: bubble,
         matching: find.byKey(const ValueKey('native-read-original')));
+      final expandedBeforeReader = tester.widget<ConversationBubble>(bubble).expanded;
       await _tap(tester, read);
-      final originalText = find.byKey(const ValueKey('native-original-text'));
-      await _until(tester, () => originalText.evaluate().isNotEmpty);
-      String visibleOriginal() {
-        final widget = tester.widget(originalText);
-        return widget is SelectableText ? widget.data ?? '' : (widget as Text).data ?? '';
-      }
+      final reader = find.byKey(const ValueKey('native-original-reader'));
+      final markdown = find.descendant(of: reader, matching: find.byType(MarkdownBody));
+      String visibleOriginal() => [
+        ...tester.widgetList<MarkdownBody>(markdown).map((body) => body.data),
+        ...tester.widgetList<SelectableText>(find.descendant(of: reader,
+          matching: find.byType(SelectableText))).map((text) => text.data ?? ''),
+      ].join();
+      await _until(tester, () => markdown.evaluate().isNotEmpty);
       final firstPage = visibleOriginal();
-      expect(firstPage, contains('Fixture oversized original'));
+      expect(firstPage, contains('Fixture oversized original\n'));
+      expect(firstPage, contains('## Readable Markdown'));
+      expect(firstPage, isNot(contains('"native_turn"')));
+      expect(firstPage, isNot(contains(r'\n')));
+      final rendered = find.descendant(of: reader, matching: find.byType(RichText));
+      final painted = [
+        ...tester.widgetList<RichText>(rendered).map((text) => text.text.toPlainText()),
+        ...tester.widgetList<SelectableText>(find.descendant(of: reader,
+          matching: find.byType(SelectableText))).map((text) =>
+            text.textSpan?.toPlainText() ?? text.data ?? ''),
+      ].join('\n');
+      expect(painted, contains('Readable Markdown'));
+      expect(painted, isNot(contains('## Readable Markdown')));
+      expect(painted, isNot(contains('**Unicode proof**')));
+      expect(painted, contains('original line one'));
       await tester.runAsync(() => _fixture('screenshot', {'name':'original'}));
+      expect(tester.widget<TextButton>(find.byKey(const ValueKey('native-original-previous'))).onPressed, isNull);
       await _tap(tester, find.byKey(const ValueKey('native-original-next')));
-      await _until(tester, () => originalText.evaluate().isNotEmpty && visibleOriginal() != firstPage);
-      expect(utf8.encode(visibleOriginal()).length, lessThanOrEqualTo(32 * 1024));
+      await _until(tester, () => visibleOriginal().contains('原文🌍') && visibleOriginal() != firstPage);
+      // Exact source-byte limits are checked in repository reconstruction above;
+      // Markdown fence context is display-only and may add rendering bytes.
+      expect(markdown, findsOneWidget);
+      expect(visibleOriginal(), isNot(contains('Fixture oversized original')),
+        reason: 'reader retains only the active bounded page, not previous page text');
+      expect(find.textContaining('Continued'), findsWidgets);
       await tester.runAsync(() => _fixture('screenshot', {'name':'original-next'}));
       await _tap(tester, find.byKey(const ValueKey('native-original-previous')));
-      await _until(tester, () => originalText.evaluate().isNotEmpty && visibleOriginal() == firstPage);
+      await _until(tester, () => markdown.evaluate().isNotEmpty && visibleOriginal() == firstPage);
+      expect(tester.widget<ConversationBubble>(bubble).expanded, expandedBeforeReader,
+        reason: 'reading pages must preserve bubble expansion state');
       await _tap(tester, find.byKey(const ValueKey('native-original-close')));
       await _until(tester, () => find.byKey(const ValueKey('native-original-reader')).evaluate().isEmpty);
+      final readableBubble = await reachBubble(readableId!);
+      final readableExpand = find.byKey(ValueKey('conversation-expand-$readableId'));
+      if (!tester.widget<ConversationBubble>(readableBubble).expanded && readableExpand.evaluate().isNotEmpty) {
+        await _tap(tester, readableExpand);
+      }
+      await _tap(tester, find.descendant(of: readableBubble,
+        matching: find.byKey(const ValueKey('native-read-original'))));
+      await _until(tester, () => find.descendant(of: reader,
+        matching: find.byType(MarkdownBody)).evaluate().isNotEmpty);
+      expect(visibleOriginal(), contains('## Fixture readable answer'));
+      expect(visibleOriginal(), isNot(contains('Fixture readable reasoning')));
+      expect(visibleOriginal(), isNot(contains('fixture-readable.txt')));
+      expect(visibleOriginal(), isNot(contains('Fixture readable tool result')));
+      final disclosures = find.descendant(of: reader, matching: find.byWidgetPredicate((widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key! as ValueKey<String>).value.startsWith('native-content-execution-')));
+      expect(disclosures, findsNWidgets(3));
+      for (var index = 0; index < 3; index++) {
+        final disclosure = disclosures.at(index);
+        await _tap(tester, find.descendant(of: disclosure, matching: find.byType(TextButton)));
+        final displayed = visibleOriginal();
+        expect(displayed, contains([
+          'Fixture readable reasoning\nCheck the source',
+          '"path": "fixture-readable.txt"',
+          'Fixture readable tool result\nA second readable result line.',
+        ][index]));
+        expect(displayed, isNot(contains(r'\n')));
+        expect(displayed, isNot(contains('"native_turn"')));
+        await _tap(tester, find.descendant(of: disclosure, matching: find.byType(TextButton)));
+      }
+      await _tap(tester, find.byKey(const ValueKey('native-original-close')));
+      await _until(tester, () => reader.evaluate().isEmpty);
       final olderBefore = (await tester.runAsync(() => _fixture('stats')))!['older_page_reads'] as int;
       var loadedOlder = false;
       for (var attempt = 0; attempt < 8 && !loadedOlder; attempt++) {

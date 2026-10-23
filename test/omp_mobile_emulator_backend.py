@@ -9,13 +9,13 @@ Run from repository root (after sourcing mobile/tools/mobile_toolchain_env.sh):
 --relay injects >2MiB native history, starts ProductionRelayService plus the real
 RelayHostConnector with isolated admission, keys and TLS trust, and runs the full
 Android smoke using RelaySocketGatewayTransport through adb reverse. History
-page IDs and original UTF-8 bytes/SHA256 are checked by the production repository;
+page IDs and exact semantic text/SHA256 are checked by the production repository;
 only fixture controls/stats use direct authenticated HTTP. The full smoke also
 submits three native inputs while busy and checks FIFO order, no concurrent
 prompts, stable queued IDs, and preserved intermediate/durable history.
 --long-history seeds >28,000 native entries, a >16,384 metadata-only gap and
 >48MiB of native JSON records. Repository pagination runs without a UI page loop;
-the Android UI still exercises history, original-byte reading and branch changes.
+the Android UI still exercises history, readable content and branch changes.
 Every history response comes from the generated production composer BRIDGE.
 No paid inference runs.
 All state lives in a temporary directory; fixture
@@ -43,7 +43,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'lib'))
 from mobile_gateway.service import (MobileGatewayService, MobileGatewayError,
                                     build_mobile_gateway_server, parse_listen_address,
-                                    _omp_native_conversation_items)
+                                    _omp_native_conversation_items, _clean_native_message_text)
 from provider_core.pathing import session_filename_for_agent
 from provider_backends.omp.composer_bridge import BRIDGE, IMPORTS
 
@@ -112,10 +112,19 @@ if (process.env.OMP_FIXTURE_LARGE === '1') {
     manager.appendMessage({role:'assistant',content:[{type:'text',text:`Fixture history reply ${index}: ` + 'Unicode 雪🌍 café é\n'.repeat(longHistory ? 24000 : 1100)}],stopReason:'stop',timestamp:Date.now()});
   }
   manager.appendMessage({role:'user',content:'Fixture oversized question',timestamp:Date.now()});
-  manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture oversized original\n' + '原文🌍 café é\n'.repeat(35000)},
-    {type:'toolCall',id:'fixture-oversize-call',name:'read',arguments:{path:'fixture-large.txt'}}],stopReason:'tool_use',timestamp:Date.now()});
+  manager.appendMessage({role:'assistant',content:[{type:'thinking',thinking:'Fixture oversized reasoning\nCheck Unicode without changing original text.'},
+    {type:'toolCall',id:'fixture-oversize-call',name:'read',arguments:{path:'fixture-large.txt'}},
+    {type:'text',text:'Fixture oversized original\n\n## Readable Markdown\n\n**Unicode proof** with `inline code`.\n\n```text\noriginal line one\noriginal line two\n```\n\n'},
+    {type:'text',text:'原文🌍 café é\n'.repeat(35000)}],stopReason:'tool_use',timestamp:Date.now()});
   manager.appendMessage({role:'toolResult',toolCallId:'fixture-oversize-call',toolName:'read',content:[{type:'text',text:'Fixture oversized tool result\n' + '工具🔧結果\n'.repeat(12000)}],isError:false,timestamp:Date.now()});
   manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture oversized complete'}],stopReason:'stop',timestamp:Date.now()});
+  manager.appendMessage({role:'user',content:'Fixture readable question',timestamp:Date.now()});
+  manager.appendMessage({role:'assistant',content:[
+    {type:'thinking',thinking:'Fixture readable reasoning\nCheck the source before answering.'},
+    {type:'toolCall',id:'fixture-readable-call',name:'read',arguments:{path:'fixture-readable.txt'}},
+    {type:'text',text:'## Fixture readable answer\n\n**Readable emphasis** and `inline sample`.\n\n```text\nfirst readable line\nsecond readable line\n```'}],stopReason:'tool_use',timestamp:Date.now()});
+  manager.appendMessage({role:'toolResult',toolCallId:'fixture-readable-call',toolName:'read',content:[{type:'text',text:'Fixture readable tool result\nA second readable result line.\n' + '工具🔧結果\n'.repeat(35000)}],isError:false,timestamp:Date.now()});
+  manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture readable complete'}],stopReason:'stop',timestamp:Date.now()});
 }
 manager.appendMessage({role:'user', content:'Fixture history question', timestamp:Date.now()});
 manager.appendMessage({role:'assistant', content:[{type:'text', text:'Fixture initial native snapshot'}], stopReason:'stop', timestamp:Date.now()});
@@ -257,10 +266,26 @@ const bridgeServer = net.createServer(socket => {
           if (entry.type === 'message') messageBytes += Buffer.byteLength(serializeReplicatedEntry(entry).json,'utf8');
           run = entry.type === 'message' ? 0 : run + 1; gap = Math.max(gap,run);
         }
+        const oversized = entries.findIndex(e => e.type === 'message' && e.message.role === 'assistant' &&
+          Array.isArray(e.message.content) && e.message.content.some(b => b.text?.includes('Fixture oversized original')));
+        const semanticBlocks = [];
+        if (oversized >= 0) {
+          for (const entry of entries.slice(oversized)) {
+            if (entry.type !== 'message') continue;
+            const message = entry.message;
+            if (message.role === 'user') break;
+            for (const [index, block] of message.content.entries()) {
+              const type = message.role === 'toolResult' ? 'tool_result' :
+                block.type === 'thinking' ? 'reasoning' : block.type === 'toolCall' ? 'tool_call' : 'text';
+              semanticBlocks.push({entry_id:entry.id,block_index:index,role:message.role === 'toolResult' ? 'tool' : message.role,type,
+                text:type === 'reasoning' ? block.thinking : type === 'tool_call' ? JSON.stringify(block.arguments,null,2) : block.text});
+            }
+          }
+        }
         result = {...guest.snapshot(),entries:entries.filter(e=>e.type==='message'),
           parent_links:entries.map(e=>[e.id,e.parentId??null]),
           fixture_metrics:{entry_count:entries.length,max_metadata_gap:gap,raw_history_bytes:wire,
-            wire_history_bytes:messageBytes}};
+            wire_history_bytes:messageBytes},fixture_semantic_blocks:semanticBlocks};
       }
       else if (request.operation === 'models' || request.operation === 'set_model') result = await guest.exclusive(() => guest.models(request,request.operation === 'set_model'));
       else if (request.operation === 'stats') {
@@ -454,10 +479,9 @@ def main():
                             return 200, {'recorded':True}
                         if action == 'proof':
                             proof = {key:(body or {}).get(key) for key in (
-                                'history_pages','history_items','original_pages','original_bytes','original_sha256')}
+                                'history_pages','history_items','content_pages','semantic_blocks')}
                             expected = self.history_expectations or {}
-                            if (proof['original_sha256'] != expected.get('original_sha256')
-                                    or proof['original_bytes'] != expected.get('original_bytes')
+                            if (proof['semantic_blocks'] != expected.get('semantic_blocks')
                                     or proof['history_items'] != expected.get('item_count')):
                                 raise MobileGatewayError('Integrity proof mismatch', status_code=400)
                             (args.evidence/'relay-integrity.json').write_text(json.dumps(proof,indent=2))
@@ -512,6 +536,19 @@ def main():
                     raise RuntimeError('Oversized fixture turn missing')
                 original = originals[0]
                 data = json.dumps(original, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+                semantic_blocks = []
+                for block in snapshot['fixture_semantic_blocks']:
+                    # Compare source text after the existing native projection
+                    # cleaner, independently of content pagination/rendering.
+                    source_text = block.pop('text')
+                    text = (source_text if block['type'] == 'tool_call' else
+                        _clean_native_message_text(source_text)).encode('utf-8')
+                    semantic_blocks.append({**block, 'bytes':len(text),
+                        'sha256':hashlib.sha256(text).hexdigest()})
+                # Independent source order: answers first, execution chronological.
+                semantic_blocks.sort(key=lambda block: not (block['role'] == 'assistant' and block['type'] == 'text'))
+                readable = next(item for item in items if item.get('kind') == 'agent_reply'
+                    and 'Fixture readable answer' in json.dumps(item,ensure_ascii=False))
                 metrics = snapshot['fixture_metrics']
                 history_bytes = metrics['raw_history_bytes']
                 if history_bytes <= 2 * 1024 * 1024 or len(data) <= 512 * 1024:
@@ -519,8 +556,9 @@ def main():
                 if args.long_history and (metrics['entry_count'] <= 28000 or metrics['max_metadata_gap'] <= 16384 or metrics['wire_history_bytes'] <= 48 * 1024 * 1024):
                     raise RuntimeError('Long-history fixture did not reach acceptance sizes')
                 service.history_expectations = {'item_count':len(items),
-                    'original_id':original['id'],'original_bytes':len(data), **metrics,
-                    'original_sha256':hashlib.sha256(data).hexdigest(),
+                    'original_id':original['id'],'readable_id':readable['id'], **metrics,
+                    'original_version':hashlib.sha256(data).hexdigest(),
+                    'semantic_blocks':semantic_blocks,
                     'ids_sha256':hashlib.sha256('\n'.join(sorted(item['id'] for item in items)).encode()).hexdigest()}
                 (args.evidence/'history-expectations.json').write_text(json.dumps(service.history_expectations,indent=2))
             (args.evidence/'initial-native-snapshot.json').write_text(json.dumps(bridge('snapshot'),indent=2))
