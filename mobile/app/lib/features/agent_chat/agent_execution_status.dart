@@ -1,4 +1,11 @@
+import '../../models/omp_runtime.dart';
 import '../../models/ccb_agent.dart';
+bool isOmpHostUnavailable(String? error) => error != null && (
+    error.contains('OMP Collab snapshot not ready') ||
+    error.contains('OMP Collab snapshot is not ready') ||
+    error.contains('OMP Collab is unavailable') ||
+    error.contains('host_disconnected') || error.contains('host_not_ready'));
+
 
 class AgentExecutionStatus {
   const AgentExecutionStatus({
@@ -16,7 +23,20 @@ AgentExecutionStatus agentExecutionStatus({
   required CcbAgent agent,
   required bool isAwaitingAgentResponse,
   bool hasLocalExecutionException = false,
+  OmpRuntime? ompRuntime,
 }) {
+  final runtime = ompRuntime ?? agent.ompRuntime;
+  if (runtime != null) {
+    final state = runtime.mainState;
+    return AgentExecutionStatus(
+      label: switch (state) {
+        'working' => 'Working', 'idle' => 'Idle',
+        'offline' => 'Offline', _ => 'Unknown',
+      },
+      state: state,
+      isRefreshing: false,
+    );
+  }
   final state = _normalized(agent.activityState);
   final source = _normalized(agent.activitySource);
   final reason = _normalized(agent.activityReason);

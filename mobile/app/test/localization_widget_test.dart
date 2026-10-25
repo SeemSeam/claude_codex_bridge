@@ -85,7 +85,7 @@ void main() {
             onPickFile: () {},
             onRemoveAttachment: (_) {},
             onSend: () {},
-            onSendTab: () {},
+            onQueue: () {},
             onSendEscape: () {},
           ),
         ),

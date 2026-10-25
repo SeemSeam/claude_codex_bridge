@@ -9,6 +9,11 @@ import '../models/ccb_terminal_target.dart';
 import '../models/readable_terminal_history.dart';
 import 'route_provider.dart';
 import 'terminal_transport.dart';
+abstract interface class GatewayUiResponseTransport {
+  Future<void> uiResponse({required String projectId, required String agent,
+    required int namespaceEpoch, required String expectedOmpSessionId,
+    required String expectedOmpGeneration, required int reqId, required String value});
+}
 
 abstract interface class GatewayTransport {
   GatewayHostProfile get profile;

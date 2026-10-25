@@ -19,6 +19,12 @@ notifications, local/Tailnet gateway access, and file transfer.
 Qualification: 105 targeted Python tests, 21 runtime tests and 54 targeted Flutter tests passed; Flutter analysis reported no issues. Android API 35, actual OMP 18.12.6 native host and encrypted Relay passed the full long-history workflow, readable Markdown/code rendering, independent execution disclosures, next/previous navigation and close. The fixture traversed 202 history items and reconstructed six semantic blocks across 29 content pages with exact projected-source text hashes. Evidence: `~/.local/state/ccb-mobile-complete-content-vm-final/`. Source changes only; not installed or published.
 
 
+## Unreleased: native OMP questions / OMP 原生交互问题
+
+Live Collab `ui-request` select/editor dialogs appear as a separate interactive card, with option descriptions and custom text input. Submit uses the native `ui-response` channel, not a chat prompt. Session, generation, namespace and request ID fences reject stale answers; disconnect/end clears pending requests, and uncertain delivery is never automatically retried. While a dialog is pending, ordinary prompts cannot answer it and queued prompts do not drain through it. Requests are ephemeral, not restored from phone cache. Bounded requests support up to 16 options and 512-character responses; unsupported/oversized dialogs must be answered on the desktop.
+
+手机端将 Collab 原生选择/编辑对话显示为独立可交互卡片，支持选项说明与自定义文字。提交走原生 `ui-response`，不再把选项当普通聊天消息排队。会话、代次、命名空间与请求编号共同防止旧答案误投；断线或结束清除请求，发送结果不明时不自动重试。请求不写入手机缓存。支持最多 16 个选项与 512 字符回复；超出有界限制的对话仍需桌面处理。服务端桥、gateway 与 App 需要一起更新；不要重启忙碌 Agent 来应用升级。
+
 ## v8.7.18: stable OMP history and bounded latest bubbles / 稳定长历史与有界最新气泡
 
 OMP Mobile reads complete user-anchored turns from bounded native parent-chain pages rather than requiring a full in-memory conversation replica. Native pages contain at most 128 records and 256 KiB; oversized records use lossless byte chunks, and the existing original reader pages complete Unicode text and tool results. The live bridge retains at most 512 recent entries / 4 MiB. History-query errors preserve a healthy connection and loaded phone content; owner or transport failures remain explicit. Append-stable cursors are fenced to the native session and branch, so a real branch switch cannot merge unrelated history.
@@ -107,14 +113,59 @@ The mobile app selects Collab only when the server advertises
 `provider_control.runtime_source=collab`; an OMP provider name alone is not enough.
 Existing Linux OMP processes must be restarted normally to load the supervisor.
 Unavailable Linux Collab produces an explicit disconnected banner, never a silent
-terminal/history fallback. Collab refresh is limited to the selected foreground
-agent and pauses while the app is backgrounded.
+terminal/history fallback. Explicit project views refresh native OMP activity for
+working counts; live conversation and task invalidation watches follow the selected
+foreground agent and pause while the app is backgrounded.
 
 OMP model/effort choices come from the running agent's native model registry.
 The Provider sheet switches that same session through a restricted native
 companion, confirms host readback, and does not edit project configuration or
 restart the agent. Busy sessions, desktop drafts and stale session/model
 revisions reject changes; observable mutation races report an unknown outcome.
+
+The selected OMP workspace mirrors the native status bar: current run elapsed
+time, the current working step, and Todo done/total plus the in-progress item.
+While working, these rows live inside the current reply bubble and remain visible
+even when its prose is collapsed. Idle/disconnected state stays above the timeline;
+the running state is not duplicated in a separate header.
+The native completion extension captures the run clock inside the OMP process
+and reports monotonic elapsed milliseconds; the app extrapolates with its own
+Stopwatch, not the phone's wall clock or message timestamps. Reconnecting a guest
+does not restart an already-observed native run clock. Missing clock evidence is
+explicitly unavailable, including old extensions or attachment after native start.
+OMP working bubbles do not derive a second run clock from message timestamps;
+the native status bar is the authoritative live clock.
+
+Todo counts come from committed native snapshots on the active parent chain:
+successful `todo` results and `user_todo_edit` entries, not tool arguments or text
+parsing. Read-only/failed Todo calls do not replace the plan; an explicit empty
+snapshot clears it. Completed and abandoned tasks count as closed, matching the
+native Todo HUD. Long history scans and retained item previews are bounded, while
+the counts remain exact. The current step follows native working-intent events.
+
+Normal chat shows assistant prose without Execution process or recent tool-call
+lists. Complete content remains an explicit reader for full semantic originals.
+Background agents do not make an idle main run busy. On disconnect, live time and
+step/Todo claims stop; cached metadata is not presented as current evidence.
+
+The bridge supplies `snapshot.runtime`; authenticated project-view agent records
+and conversation responses expose `omp_runtime`. Runtime metadata is capped at
+12 KiB with active work prioritized and explicit truncation; native IDs bind task
+lifecycle/progress without matching names or spawn indices. Only bounded visible
+text snippets and allowlisted progress fields are retained, not complete
+transcripts, arbitrary progress objects, tool arguments or session-file paths. Older
+history pages cannot replace a newer runtime observation. Update server and app
+together; load the new supervisor on existing OMP processes with a normal idle
+restart, never by interrupting a busy session.
+
+Collab v3 requires no extra subscription or verbosity switch. The native extension
+adds an owner-bound `inspect.status_bar`, carried to the app as
+`omp_runtime.status_bar`; elapsed/observation-only updates do not invalidate the
+conversation or force timeline scrolling. Older running extensions cannot gain
+these fields just by updating files: update server and app together, then load the
+new extension with a normal idle restart. Never interrupt a busy session to apply it.
+
+OMP 工作区现在以原生状态栏为主：本轮运行时间、当前 step、Todo 完成数（如 0/3）及进行中的任务。运行时间由 OMP 原生进程记录，手机使用单调时钟续算，不用消息时间或手机时区推测；Todo 来自当前分支已提交的原生快照，失败或只读调用不会覆盖计划，明确清空后才显示 0/0。普通聊天已移除 Execution process 和近期工具调用列表，只保留助手正文及用户主动打开的完整内容阅读入口。旧进程缺少原生字段时明确提示不可用，请更新服务端和 App 后在会话空闲时正常重启加载，不要中断忙碌会话。
 
 Linux OMP accepts consecutive mobile sends into its persisted, session-fenced FIFO.
 Queued user messages remain visible after refresh/restart, with explicit Queued,
@@ -127,8 +178,14 @@ Upstream Collab v3 does not provide request-level prompt admission receipts;
 unconfirmed delivery is retained until exact native evidence is available.
 Session/generation fences and retained idempotency keys prevent cross-session
 delivery and duplicate handoffs. Terminal shortcuts remain
-available only in Open Terminal; interactive approvals and remote session
-branching are not implemented by this connection.
+available only in Open Terminal. Native select/editor questions use the interactive
+card described above; remote session branching is not implemented.
+
+The focused Codex composer exposes **Queue / 排队** instead of a raw Tab key.
+It uploads attachments through the existing flow, sends `/queue <draft>` with
+Enter, and keeps the visible user bubble as the original message. Empty queue
+clicks send nothing. Other providers do not expose this Codex-specific action;
+OMP Collab retains its existing persisted FIFO through normal Send.
 
 Validation commands (installed OMP 18.11 sources and the Android SDK required):
 

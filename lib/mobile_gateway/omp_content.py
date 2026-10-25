@@ -98,6 +98,8 @@ class OmpContentPager:
                 text = (json.dumps(value, ensure_ascii=False, indent=2)
                         if kind == 'tool_call' and not isinstance(value, str)
                         else str(value or ''))
+                if kind == 'tool_call' and isinstance(source.get('intent'), str) and source['intent']:
+                    text = source['intent'] + '\n\n' + text
                 block = {'entry_id': entry.get('id') or f"{item['id']}:{entry_index}",
                          'block_index': block_index, 'role': entry.get('role') or 'assistant',
                          'type': kind, 'text': text}
@@ -354,6 +356,8 @@ class OmpContentPager:
             source = entry['blocks'][block_index]
             block = {key: source[key] for key in
                      ('type', 'call_id', 'name', 'is_error') if key in source}
+            if source.get('type') == 'tool_call' and isinstance(source.get('intent'), str):
+                block['intent'] = source['intent'][:512]
             field = 'input' if source.get('type') == 'tool_call' else 'text'
             value = source.get(field, '')
             if field == 'input' and not isinstance(value, str):

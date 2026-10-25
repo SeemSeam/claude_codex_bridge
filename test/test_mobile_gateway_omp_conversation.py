@@ -276,3 +276,29 @@ def test_native_window_reconstructs_chunked_records_and_retains_intermediate_tex
     assert turns[0].turn_id == 'u'
     assert turns[0].entries[0]['blocks'][0]['text'] == 'intermediate'
     assert turns[0].entries[1]['blocks'][0]['text'] == result['message']['content']
+
+
+def test_tool_intent_survives_native_projection_and_bounded_original(tmp_path):
+    from mobile_gateway.omp_content import OmpContentPager, INLINE_ITEM_BYTES, ascii_size
+    intent = '检查原生 Collab 执行进展'
+    arguments = {'path': 'large.txt', 'content': '雪🌍' * 30000}
+    records = [_message('u', None, 'user', 'inspect'),
+               _message('call', 'u', 'assistant', [{'type': 'toolCall', 'id': 'c',
+                   'name': 'read', 'intent': intent, 'arguments': arguments}], stopReason='tool_use')]
+    item = _project(tmp_path, records)[1]
+    block = item['native_turn']['entries'][0]['blocks'][0]
+    assert block['intent'] == intent
+    assert block['input'] == arguments
+    pager = OmpContentPager()
+    scope = ('project', 'mobile', 'native-session')
+    page = pager.page([item], scope=scope, revision=1, limit=1, cursor=None)
+    preview = page['items'][0]
+    assert ascii_size(preview) <= INLINE_ITEM_BYTES
+    assert preview['native_turn']['entries'][0]['blocks'][0]['intent'] == intent
+    cursor = preview['native_turn']['read_cursor']
+    text = ''
+    while cursor:
+        content = pager.content([item], scope=scope, revision=1, cursor=cursor)
+        text += ''.join(block['text'] for block in content['blocks'])
+        cursor = content['next_cursor']
+    assert text == intent + '\n\n' + json.dumps(arguments, ensure_ascii=False, indent=2)

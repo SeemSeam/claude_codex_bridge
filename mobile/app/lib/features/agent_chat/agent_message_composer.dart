@@ -23,8 +23,9 @@ class AgentMessageComposer extends StatefulWidget {
     required this.onPickFile,
     required this.onRemoveAttachment,
     required this.onSend,
-    required this.onSendTab,
+    required this.onQueue,
     required this.onSendEscape,
+    this.showQueueButton = true,
     super.key,
   });
 
@@ -43,8 +44,9 @@ class AgentMessageComposer extends StatefulWidget {
   final VoidCallback onPickFile;
   final ValueChanged<String> onRemoveAttachment;
   final VoidCallback onSend;
-  final VoidCallback onSendTab;
+  final VoidCallback onQueue;
   final VoidCallback onSendEscape;
+  final bool showQueueButton;
 
   @override
   State<AgentMessageComposer> createState() => _AgentMessageComposerState();
@@ -188,20 +190,13 @@ class _AgentMessageComposerState extends State<AgentMessageComposer> {
                   key: const ValueKey('agent-quick-key-toolbar'),
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                    IconButton(
-                      key: const ValueKey('agent-quick-key-tab'),
-                      tooltip: strings.sendTab,
-                      visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 36,
-                        height: 36,
-                      ),
-                      padding: EdgeInsets.zero,
-                      onPressed:
-                          widget.isSending || !widget.sendEnabled
-                              ? null
-                              : widget.onSendTab,
-                      icon: const Icon(Icons.keyboard_tab),
+                    if (widget.showQueueButton)
+                    TextButton.icon(
+                      key: const ValueKey('agent-queue-button'),
+                      onPressed: widget.isSending || !widget.sendEnabled
+                          ? null : widget.onQueue,
+                      icon: const Icon(Icons.playlist_add, size: 20),
+                      label: Text(strings.queueMessage),
                     ),
                     IconButton(
                       key: const ValueKey('agent-quick-key-esc'),

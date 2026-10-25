@@ -106,7 +106,7 @@ void main() {
       jsonDecode(jsonEncode(next.toJson())),
     );
     expect(
-      restored.nativeTurn!.processBlocks.last.block.text,
+      restored.nativeTurn!.entries.last.blocks.last.text,
       'More visible progress',
     );
   });
@@ -130,17 +130,13 @@ void main() {
     await show(reply());
     expect(find.text('Running'), findsOneWidget);
     expect(find.text('Tool execution unfinished'), findsOneWidget);
-    await tester.tap(find.text('Execution process'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tool call · read · call-1'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('file.txt'), findsOneWidget);
+    expect(find.textContaining('file.txt'), findsNothing);
     await show(reply(finished: true));
     await tester.pumpAndSettle();
     expect(find.byType(ConversationBubble), findsOneWidget);
     expect(find.text('Completed'), findsOneWidget);
     expect(find.text('Tool execution unfinished'), findsNothing);
-    expect(find.text('Tool result · read · call-1'), findsOneWidget);
+    expect(find.textContaining('Tool result'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

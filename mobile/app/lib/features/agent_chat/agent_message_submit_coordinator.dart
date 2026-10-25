@@ -55,7 +55,7 @@ class AgentMessageSubmitCoordinator {
     required MobileCcbRepository repository,
     TerminalTransport? terminalTransport,
     bool usePaneInput = false,
-    List<int>? paneSubmitBytes,
+    bool queueMessage = false,
     required AgentViewRefresh? refreshView,
     required AgentMessageDraftAccepted onAccepted,
     AgentMessageDeliveryUpdated? onDeliveryUpdated,
@@ -97,7 +97,7 @@ class AgentMessageSubmitCoordinator {
         repository: repository,
         terminalTransport: terminalTransport,
         usePaneInput: usePaneInput,
-        paneSubmitBytes: paneSubmitBytes,
+        queueMessage: queueMessage,
         refreshView: refreshView,
         onDeliveryUpdated: onDeliveryUpdated,
       );
@@ -116,7 +116,7 @@ class AgentMessageSubmitCoordinator {
     required MobileCcbRepository repository,
     TerminalTransport? terminalTransport,
     bool usePaneInput = false,
-    List<int>? paneSubmitBytes,
+    bool queueMessage = false,
     required AgentViewRefresh? refreshView,
     AgentMessageDraftAccepted? onAccepted,
     AgentMessageDeliveryUpdated? onDeliveryUpdated,
@@ -142,7 +142,7 @@ class AgentMessageSubmitCoordinator {
         repository: repository,
         terminalTransport: terminalTransport,
         usePaneInput: usePaneInput,
-        paneSubmitBytes: paneSubmitBytes,
+        queueMessage: queueMessage,
         refreshView: refreshView,
         onDeliveryUpdated: onDeliveryUpdated,
       );
@@ -162,7 +162,7 @@ class AgentMessageSubmitCoordinator {
     required MobileCcbRepository repository,
     required TerminalTransport? terminalTransport,
     required bool usePaneInput,
-    required List<int>? paneSubmitBytes,
+    required bool queueMessage,
     required AgentViewRefresh? refreshView,
     AgentMessageDeliveryUpdated? onDeliveryUpdated,
   }) async {
@@ -173,7 +173,7 @@ class AgentMessageSubmitCoordinator {
         view: view,
         repository: repository,
         terminalTransport: terminalTransport,
-        paneSubmitBytes: paneSubmitBytes,
+        queueMessage: queueMessage,
         refreshView: refreshView,
         onDeliveryUpdated: onDeliveryUpdated,
       );
@@ -195,7 +195,7 @@ class AgentMessageSubmitCoordinator {
     required CcbProjectView view,
     required MobileCcbRepository repository,
     required TerminalTransport? terminalTransport,
-    required List<int>? paneSubmitBytes,
+    required bool queueMessage,
     required AgentViewRefresh? refreshView,
     AgentMessageDeliveryUpdated? onDeliveryUpdated,
   }) async {
@@ -206,7 +206,7 @@ class AgentMessageSubmitCoordinator {
         message: message,
         view: view,
         refreshView: refreshView,
-        submitBytes: paneSubmitBytes ?? const [13],
+        queueMessage: queueMessage,
       );
       if (!_isMounted()) {
         return;
@@ -244,7 +244,7 @@ class AgentMessageSubmitCoordinator {
       view: view,
       refreshView: refreshView,
       paneBody: paneBody,
-      submitBytes: paneSubmitBytes ?? const [13],
+      queueMessage: queueMessage,
     );
     if (!_isMounted()) {
       return;

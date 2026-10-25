@@ -8,6 +8,8 @@ import '../../repository/mobile_ccb_repository.dart';
 import 'agent_message_composer.dart';
 import 'conversation_timeline.dart';
 import 'selected_agent_workspace_model.dart';
+import 'omp_runtime_panel.dart';
+import 'ui_request_card.dart';
 
 class NoSelectedAgentWorkspaceView extends StatelessWidget {
   const NoSelectedAgentWorkspaceView({super.key});
@@ -58,8 +60,9 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
     required this.onOpenAttachment,
     required this.onDeleteFailedMessage,
     required this.onSend,
-    required this.onSendTab,
+    required this.onQueue,
     required this.onSendEscape,
+    required this.onUiResponse,
     this.expandedItemKeyBuilder,
     this.sendEnabled = true,
     this.sendDisabledReason,
@@ -92,8 +95,9 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
   final ValueChanged<CcbMessageAttachment> onOpenAttachment;
   final ValueChanged<CcbConversationItem> onDeleteFailedMessage;
   final VoidCallback onSend;
-  final VoidCallback onSendTab;
+  final VoidCallback onQueue;
   final VoidCallback onSendEscape;
+  final Future<void> Function(String value) onUiResponse;
   final GlobalKey Function(String itemId)? expandedItemKeyBuilder;
   final bool sendEnabled;
   final String? sendDisabledReason;
@@ -103,6 +107,8 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
     return Column(
       key: const ValueKey('selected-agent-workspace'),
       children: [
+        if (model.ompRuntime != null && model.workingReplyItemId == null)
+          OmpRuntimePanel(runtime: model.ompRuntime!),
         Expanded(
           child: ListenableBuilder(
             listenable: draftFocusNode,
@@ -140,6 +146,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
                         expandedItemIds: model.expandedItemIds,
                         bottomRevealPadding: bottomRevealPadding,
                         workingItemId: model.workingReplyItemId,
+                        ompRuntime: model.ompRuntime,
                         downloadingAttachmentIds: downloadingAttachmentIds,
                         downloadedAttachmentIds: downloadedAttachmentIds,
                         onRetry: onRetry,
@@ -183,9 +190,16 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
             },
           ),
         ),
+        if (model.pendingUiRequest != null)
+          UiRequestCard(
+            key: ValueKey('ui-request-${identityHashCode(repository)}-${view.project.id}-${view.namespaceEpoch}-${model.agent.name}-${model.uiRequestScope}-${model.pendingUiRequest!.reqId}'),
+            request: model.pendingUiRequest!, onSubmit: onUiResponse,
+            stale: !sendEnabled || !model.uiRequestAvailable,
+          ),
         const SizedBox(height: 6),
         AgentMessageComposer(
           agentName: model.agent.name,
+          showQueueButton: model.agent.provider == 'codex',
           controller: draftController,
           focusNode: draftFocusNode,
           isSending: model.isSending,
@@ -200,7 +214,7 @@ class SelectedAgentWorkspaceView extends StatelessWidget {
           onPickFile: onPickFileAttachment,
           onRemoveAttachment: onRemoveAttachment,
           onSend: onSend,
-          onSendTab: onSendTab,
+          onQueue: onQueue,
           onSendEscape: onSendEscape,
         ),
       ],

@@ -185,25 +185,17 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('agent-message-composer')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+      await tester.tap(find.byKey(const ValueKey('agent-queue-button')));
       await tester.pumpAndSettle();
 
-      expect(gatewayTerminalTransport.requests, hasLength(1));
-      expect(
-        gatewayTerminalTransport.requests.single.attachCommand,
-        'gateway terminal stream test_ccb2/mobile',
-      );
-      expect(gatewayTerminalTransport.sessions.single.pasted, isEmpty);
-      expect(gatewayTerminalTransport.sessions.single.written, [
-        [9],
-      ]);
+      expect(gatewayTerminalTransport.requests, isEmpty);
+      expect(gatewayTerminalTransport.sessions, isEmpty);
 
       await tester.tap(find.byKey(const ValueKey('agent-quick-key-esc')));
       await tester.pumpAndSettle();
 
       expect(gatewayTerminalTransport.requests, hasLength(1));
       expect(gatewayTerminalTransport.sessions.single.written, [
-        [9],
         [27],
       ]);
 
@@ -220,7 +212,6 @@ void main() {
         'server route smoke',
       ]);
       expect(gatewayTerminalTransport.sessions.single.written, [
-        [9],
         [27],
         [13],
       ]);

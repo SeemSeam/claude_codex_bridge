@@ -333,7 +333,7 @@ void main() {
       final readable = tester.widget<ConversationBubble>(bubble).item.nativeTurn!;
       expect(readable.entries, isNotEmpty);
       expect(readable.answerText, contains('Fixture oversized complete'));
-      expect(readable.processBlocks.any((block) => block.block.name == 'read'), isTrue);
+      expect(readable.entries.expand((entry) => entry.blocks).any((block) => block.name == 'read'), isTrue);
       await tester.ensureVisible(bubble);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.runAsync(() => _fixture('screenshot', {'name': 'bounded-bubble'}));
@@ -499,6 +499,90 @@ void main() {
         _replies(
           tester,
         ).singleWhere((b) => b.item.body == 'Fixture live turn 1').item.id;
+    await tester.runAsync(() => _fixture('runtime-tool-start'));
+    controller.refreshLatest();
+    await _until(tester, () => find.byKey(const ValueKey('omp-runtime-step')).evaluate().isNotEmpty &&
+      tester.widget<Text>(find.byKey(const ValueKey('omp-runtime-step'))).data!.contains('Inspect streamed Collab tool output'),
+      reason: 'Main native step must match the OMP working label');
+    await tester.runAsync(() => _fixture('runtime-todo-init'));
+    controller.refreshLatest();
+    String statusLine() => tester.widget<Text>(find.byKey(const ValueKey('omp-runtime-status'))).data!;
+    String todoLine() => tester.widget<Text>(find.byKey(const ValueKey('omp-runtime-todos'))).data!;
+    int displayedSeconds() {
+      final match = RegExp(r'· (\d+):(\d+)$').firstMatch(statusLine());
+      return match == null ? -1 : int.parse(match[1]!) * 60 + int.parse(match[2]!);
+    }
+    await _until(tester, () => find.byKey(const ValueKey('omp-runtime-todos')).evaluate().isNotEmpty &&
+      todoLine().contains('0/3') && displayedSeconds() >= 0,
+      reason: 'Native run clock and Todo 0/3 must be visible');
+    expect(tester.widget<Text>(find.byKey(const ValueKey('omp-runtime-step'))).data,
+      contains('Inspect streamed Collab tool output'));
+    final clockBefore = displayedSeconds();
+    final wallClock = Stopwatch()..start();
+    await _until(tester, () => displayedSeconds() >= clockBefore + 2,
+      reason: 'Displayed run time must increase without a new message or tool event');
+    final clockAfter = displayedSeconds();
+    wallClock.stop();
+    expect((clockAfter - clockBefore - wallClock.elapsed.inSeconds).abs(), lessThanOrEqualTo(1));
+    final runningSample = (await tester.runAsync(() => repository.getAgentConversation(
+      projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4)))!;
+    final nativeBar = runningSample.ompRuntime!.toJson()['status_bar'] as Map;
+    expect(nativeBar['available'], isTrue);
+    expect(nativeBar['is_streaming'], isTrue);
+    expect((clockAfter * 1000 - (nativeBar['elapsed_ms'] as num)).abs(), lessThan(2000));
+    await tester.runAsync(() => _fixture('screenshot', {'name':'statusbar-running'}));
+    await tester.runAsync(() => _fixture('runtime-todo-done'));
+    controller.refreshLatest();
+    await _until(tester, () => todoLine().contains('1/3') && todoLine().contains('Synchronize active step'));
+    await tester.runAsync(() => _fixture('runtime-step-next'));
+    controller.refreshLatest();
+    await _until(tester, () => tester.widget<Text>(find.byKey(const ValueKey('omp-runtime-step')))
+      .data!.contains('Verify native Todo status'));
+    await tester.runAsync(() => _fixture('runtime-todo-view'));
+    await tester.runAsync(() => _fixture('runtime-todo-error'));
+    controller.refreshLatest();
+    final retainedPlan = (await tester.runAsync(() => repository.getAgentConversation(
+      projectId:'omp-fixture',agent:'mobile',namespaceEpoch:4)))!;
+    expect(((retainedPlan.ompRuntime!.toJson()['status_bar'] as Map)['todos'] as Map)['done'], 1,
+      reason:'Read-only or failed Todo tools must not replace the native committed plan');
+    await tester.runAsync(() => _fixture('statusbar-proof', {'clock_before':clockBefore,
+      'clock_after':clockAfter,'wall_elapsed_ms':wallClock.elapsedMilliseconds,
+      'native_elapsed_ms':nativeBar['elapsed_ms'],'todo_before':'0/3','todo_after':'1/3',
+      'step_before':'Inspect streamed Collab tool output','step_after':'Verify native Todo status'}));
+    expect(find.textContaining('Native progress: first chunk'), findsNothing,
+      reason:'The primary statusbar must not become a raw tool output feed');
+    await tester.runAsync(() => _fixture('runtime-task-start'));
+    controller.refreshLatest();
+    expect(find.byKey(const ValueKey('omp-runtime-panel')), findsOneWidget);
+    final liveRuntimeConversation = await tester.runAsync(() => repository.getAgentConversation(
+      projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4));
+    expect(liveRuntimeConversation!.ompRuntime!.contextUsage!.tokens, 250);
+    expect(liveRuntimeConversation.ompRuntime!.startedAt, isNotNull,
+      reason: 'Observed native agent_start supplies the running clock');
+    expect(liveRuntimeConversation.ompRuntime!.model!.id, 'one');
+    expect(liveRuntimeConversation.ompRuntime!.tasks.singleWhere((task) => task.id == 'runtime-worker').toolName, 'read');
+    expect(liveRuntimeConversation.ompRuntime!.progressAvailable, isTrue);
+    final progressTask = liveRuntimeConversation.ompRuntime!.tasks.singleWhere((task) => task.id == 'runtime-worker');
+    expect(progressTask.completionPercent, 35);
+    expect(progressTask.toolCount, 7);
+    expect(liveRuntimeConversation.ompRuntime!.agents.singleWhere((agent) => agent.id == 'runtime-registry-worker').status, 'running');
+    await _tap(tester, find.byKey(const ValueKey('omp-runtime-details')));
+    await _until(tester, () => find.textContaining('Native registry worker').evaluate().isNotEmpty);
+    Navigator.of(appContext).pop();
+    await _until(tester, () => find.byType(AlertDialog).evaluate().isEmpty);
+    await tester.runAsync(() => _fixture('screenshot', {'name': 'runtime-progress'}));
+    await tester.runAsync(() => _fixture('runtime-tool-finish'));
+    await tester.runAsync(() => _fixture('runtime-retry-start'));
+    controller.refreshLatest();
+    await tester.runAsync(() => _fixture('runtime-retry-finish'));
+    await tester.runAsync(() => _fixture('runtime-compaction-start'));
+    controller.refreshLatest();
+    final compacting = await tester.runAsync(() => repository.getAgentConversation(
+      projectId: 'omp-fixture', agent: 'mobile', namespaceEpoch: 4));
+    expect(compacting!.ompRuntime!.activities.any((activity) => activity.kind == 'compaction' && activity.status == 'running'), isTrue);
+    await tester.runAsync(() => _fixture('runtime-compaction-finish'));
+    final activeRuntimeView = await tester.runAsync(() => repository.getProjectView('omp-fixture'));
+    expect(activeRuntimeView!.agentByName('mobile')!.activityState, 'active');
     await tester.runAsync(() => _fixture('screenshot', {'name': 'live'}));
     await tester.runAsync(() => _fixture('large-live-one'));
     controller.refreshLatest();
@@ -539,21 +623,22 @@ void main() {
       isEmpty,
     );
     await tester.runAsync(() => _fixture('screenshot', {'name': 'durable'}));
+    await tester.runAsync(() => _fixture('runtime-task-finish'));
+    controller.refreshLatest();
+    final idleRuntimeView = await tester.runAsync(() => repository.getProjectView('omp-fixture'));
+    expect(idleRuntimeView!.agentByName('mobile')!.activityState, 'idle',
+      reason: 'Completed native turn must override retained generic working evidence');
 
-    // Tool output is not built until both process and tool disclosures open.
-    expect(find.textContaining('Fixture tool result 1'), findsNothing);
-    final process = find.text('Execution process');
-    await _tap(tester, process.last);
-    final resultLabel = find.textContaining('Tool result');
-    await _until(tester, () => resultLabel.evaluate().isNotEmpty);
-    await _tap(tester, resultLabel.last);
-    await _until(
-      tester,
-      () => find.textContaining('Fixture tool result 1').evaluate().isNotEmpty,
-    );
-    await tester.runAsync(() => _fixture('screenshot', {'name': 'tools'}));
-    await _tap(tester, process.last);
-    expect(find.textContaining('Fixture tool result 1'), findsNothing);
+    await _until(tester, () => statusLine() == 'OMP · Idle');
+    expect(displayedSeconds(), -1, reason:'An idle statusbar must stop the run clock');
+    expect(find.text('Execution process'), findsNothing);
+    expect(find.text('执行过程'), findsNothing);
+    expect(find.textContaining('Fixture tool result 1'), findsNothing,
+      reason:'Normal chat must not render raw execution output');
+    await tester.runAsync(() => _fixture('screenshot', {'name':'statusbar-completed'}));
+    await tester.runAsync(() => _fixture('runtime-todo-clear'));
+    controller.refreshLatest();
+    await _until(tester, () => todoLine().contains('0/0'));
 
     await send('Fixture mobile second question', 2);
     await tester.runAsync(() => _fixture('live'));
@@ -698,6 +783,9 @@ void main() {
           ),
         ))!;
     await tester.runAsync(() => _fixture('disconnect'));
+    final disconnectedView = await tester.runAsync(() => repository.getProjectView('omp-fixture'));
+    expect(disconnectedView!.agentByName('mobile')!.activityState, 'unknown',
+      reason: 'Unavailable native host must not be reported as Idle');
     controller.refreshLatest();
     // RELAY intentionally sanitizes unknown gateway 503 details. It presents
     // the generic failure/retry banner, not the HTTP host-unavailable wording.
@@ -707,6 +795,8 @@ void main() {
       tester,
       () => disconnectBanner.evaluate().isNotEmpty,
     );
+    expect(displayedSeconds(), -1, reason:'Unavailable host must not keep a live run clock');
+    await tester.runAsync(() => _fixture('screenshot', {'name':'statusbar-disconnected'}));
     expect(
       tester
           .widget<IconButton>(

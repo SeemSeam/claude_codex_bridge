@@ -187,6 +187,9 @@ def _blocks(message: dict, role: str, clean_text: Callable[[str], str]) -> list[
                 block['call_id'] = call_id
             if name:
                 block['name'] = name
+            intent = clean_text(_text(source.get('intent')))
+            if intent:
+                block['intent'] = intent
             if 'arguments' in source:
                 block['input'] = source['arguments']
             elif 'input' in source:

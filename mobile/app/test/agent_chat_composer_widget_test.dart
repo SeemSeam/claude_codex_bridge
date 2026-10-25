@@ -94,13 +94,11 @@ void main() {
       ]);
       await tester.tap(input);
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('agent-queue-button')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('agent-quick-key-esc')));
       await tester.pumpAndSettle();
       expect(terminal.sessions.single.written, [
         [13],
-        [9],
         [27],
       ]);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -182,7 +180,7 @@ void main() {
             onSend: () {
               sendCount += 1;
             },
-            onSendTab: () {},
+            onQueue: () {},
             onSendEscape: () {},
           ),
         ),
@@ -221,7 +219,7 @@ void main() {
             onSend: () {
               sendCount += 1;
             },
-            onSendTab: () {},
+            onQueue: () {},
             onSendEscape: () {},
           ),
         ),
@@ -305,8 +303,9 @@ void main() {
             onOpenAttachment: (_) {},
             onDeleteFailedMessage: (_) {},
             onSend: () {},
-            onSendTab: () {},
+            onQueue: () {},
             onSendEscape: () {},
+            onUiResponse: (_) async {},
           ),
         ),
       ),
@@ -400,8 +399,9 @@ void main() {
               onOpenAttachment: (_) {},
               onDeleteFailedMessage: (_) {},
               onSend: () {},
-              onSendTab: () {},
+              onQueue: () {},
               onSendEscape: () {},
+              onUiResponse: (_) async {},
             ),
           ),
         ),
@@ -456,7 +456,7 @@ void main() {
             onPickFile: () {},
             onRemoveAttachment: (_) {},
             onSend: () {},
-            onSendTab: () {
+            onQueue: () {
               tabCount += 1;
             },
             onSendEscape: () {
@@ -468,7 +468,7 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('agent-quick-key-toolbar')), findsNothing);
-    expect(find.byKey(const ValueKey('agent-quick-key-tab')), findsNothing);
+    expect(find.byKey(const ValueKey('agent-queue-button')), findsNothing);
     expect(find.byKey(const ValueKey('agent-quick-key-esc')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('agent-message-composer')));
@@ -477,14 +477,14 @@ void main() {
     final toolbar = find.byKey(const ValueKey('agent-quick-key-toolbar'));
     final composer = find.byKey(const ValueKey('agent-message-composer'));
     expect(toolbar, findsOneWidget);
-    expect(find.byKey(const ValueKey('agent-quick-key-tab')), findsOneWidget);
+    expect(find.byKey(const ValueKey('agent-queue-button')), findsOneWidget);
     expect(find.byKey(const ValueKey('agent-quick-key-esc')), findsOneWidget);
     expect(
       tester.getBottomLeft(toolbar).dy,
       lessThanOrEqualTo(tester.getTopLeft(composer).dy),
     );
 
-    await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+    await tester.tap(find.byKey(const ValueKey('agent-queue-button')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('agent-quick-key-esc')));
     await tester.pump();
@@ -639,7 +639,7 @@ void main() {
               removed = localId;
             },
             onSend: () {},
-            onSendTab: () {},
+            onQueue: () {},
             onSendEscape: () {},
           ),
         ),
@@ -2977,7 +2977,7 @@ void main() {
     expect(find.text('Credits remaining: 42%'), findsOneWidget);
   });
 
-  testWidgets('paired Tab quick key keeps a visible queued user bubble', (
+  testWidgets('Codex queue button uses native slash command and preserves visible draft', (
     tester,
   ) async {
     await setTestSurfaceSize(tester, const Size(390, 844));
@@ -3022,15 +3022,15 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('agent-quick-key-tab')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+    expect(find.byKey(const ValueKey('agent-queue-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('agent-queue-button')));
     await tester.pump();
 
     expect(repository.submittedMessages, isEmpty);
     expect(terminalTransport.requests, hasLength(1));
-    expect(terminalTransport.sessions.single.pasted, ['draft before tab']);
+    expect(terminalTransport.sessions.single.pasted, ['/queue draft before tab']);
     expect(terminalTransport.sessions.single.written, [
-      [9],
+      [13],
     ]);
     expect(find.text('draft before tab'), findsOneWidget);
     expect(
@@ -3044,7 +3044,7 @@ void main() {
     );
   });
 
-  testWidgets('paired Tab quick key uploads and queues image attachment', (
+  testWidgets('Codex queue button uploads and queues image attachment', (
     tester,
   ) async {
     await setTestSurfaceSize(tester, const Size(390, 844));
@@ -3110,7 +3110,7 @@ void main() {
       'queue this image',
     );
 
-    await tester.tap(find.byKey(const ValueKey('agent-quick-key-tab')));
+    await tester.tap(find.byKey(const ValueKey('agent-queue-button')));
     for (
       var attempt = 0;
       attempt < 20 && repository.pathUploads.isEmpty;
@@ -3121,6 +3121,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.pathUploads.single.fileName, 'queued-photo.jpg');
+    expect(terminalTransport.sessions.single.pasted.single, startsWith('/queue '));
     expect(repository.pathUploads.single.mimeType, 'image/jpeg');
     expect(
       terminalTransport.sessions.single.pasted.single,
@@ -3131,7 +3132,7 @@ void main() {
       contains('queued-photo.jpg'),
     );
     expect(terminalTransport.sessions.single.written, [
-      [9],
+      [13],
     ]);
     expect(find.text('queue this image'), findsOneWidget);
     expect(

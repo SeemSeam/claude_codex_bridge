@@ -95,3 +95,9 @@ abstract interface class MobileCcbProviderControlRepository {
     required String idempotencyKey,
   });
 }
+
+abstract interface class MobileCcbUiResponseRepository {
+  Future<void> uiResponse({required String projectId, required String agent,
+    required int namespaceEpoch, required String expectedOmpSessionId,
+    required String expectedOmpGeneration, required int reqId, required String value});
+}

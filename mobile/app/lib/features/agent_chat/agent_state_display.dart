@@ -26,6 +26,15 @@ enum AgentActivityDisplay { working, idle, exception, offline, unknown }
 ///
 /// `agent.active` is pane focus only and never maps to a state here.
 AgentActivityDisplay agentActivityDisplay(CcbAgent agent) {
+  final runtime = agent.ompRuntime;
+  if (runtime != null) {
+    return switch (runtime.mainState) {
+      'working' => AgentActivityDisplay.working,
+      'idle' => AgentActivityDisplay.idle,
+      'offline' => AgentActivityDisplay.offline,
+      _ => AgentActivityDisplay.unknown,
+    };
+  }
   final state = _normalized(agent.activityState);
   final text =
       '${_normalized(agent.activitySource) ?? ''} '

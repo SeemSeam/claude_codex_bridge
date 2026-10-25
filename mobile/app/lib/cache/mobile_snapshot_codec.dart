@@ -93,4 +93,5 @@ Map<String, Object?> _agentJson(CcbAgent agent) => {
   if (agent.activitySource != null) 'activity_source': agent.activitySource,
   if (agent.activityReason != null) 'activity_reason': agent.activityReason,
   if (agent.lastProgressAt != null) 'last_progress_at': agent.lastProgressAt,
+  if (agent.ompRuntime != null) 'omp_runtime': agent.ompRuntime!.toJson(),
 };

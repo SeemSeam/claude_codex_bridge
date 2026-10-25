@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import 'native_session_turn.dart';
@@ -8,7 +6,6 @@ import 'native_content_page.dart';
 /// Neutral defaults; hosts may supply their own localized strings.
 class NativeTurnLabels {
   const NativeTurnLabels({
-    this.process = 'Execution process',
     this.reasoning = 'Reasoning',
     this.toolCall = 'Tool call',
     this.toolResult = 'Tool result',
@@ -17,7 +14,6 @@ class NativeTurnLabels {
     this.failed = 'Failed',
     this.aborted = 'Aborted',
     this.unknown = 'Status unknown',
-    this.pendingTools = 'Tool execution unfinished',
     this.noAnswer = 'No assistant answer',
     this.message = 'Assistant message',
     this.readOriginal = 'Complete content',
@@ -34,7 +30,6 @@ class NativeTurnLabels {
         'Content could not load. It may have changed; close and refresh the conversation.',
   });
 
-  final String process;
   final String reasoning;
   final String toolCall;
   final String toolResult;
@@ -43,7 +38,6 @@ class NativeTurnLabels {
   final String failed;
   final String aborted;
   final String unknown;
-  final String pendingTools;
   final String noAnswer;
   final String message;
   final String readOriginal;
@@ -106,7 +100,6 @@ class NativeTurnBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final process = turn.processBlocks;
     final answer = turn.answerText;
     final status = turn.effectiveStatus;
     final attention =
@@ -126,7 +119,6 @@ class NativeTurnBody extends StatelessWidget {
             ),
           ),
         ),
-        if (turn.hasPendingTools) Text(labels.pendingTools),
         if (turn.inlineWindow)
           Text(labels.latestWindow)
         else if (turn.readCursor != null) ...[
@@ -149,60 +141,14 @@ class NativeTurnBody extends StatelessWidget {
                     ),
             child: Text(labels.readOriginal),
           ),
-        if (process.isNotEmpty)
-          _Disclosure(
-            key: ValueKey((turn.sessionId, turn.turnId, 'process')),
-            title: labels.process,
-            builder:
-                (context) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final item in process) _processBlock(context, item),
-                  ],
-                ),
-          ),
         if (answer.isNotEmpty)
-          SelectionArea(child: textBuilder(context, answer))
-        else if (turn.readCursor == null)
+          SelectionArea(child: textBuilder(context, answer)),
+        if (answer.isEmpty && turn.readCursor == null && status != NativeSessionStatus.running)
           Text(labels.noAnswer),
       ],
     );
   }
 
-  Widget _processBlock(BuildContext context, NativeSessionProcessBlock item) {
-    final block = item.block;
-    final title = switch (block.type) {
-      NativeSessionBlockType.text => labels.message,
-      NativeSessionBlockType.reasoning => labels.reasoning,
-      NativeSessionBlockType.toolCall => labels.toolCall,
-      NativeSessionBlockType.toolResult => labels.toolResult,
-    };
-    final name = block.name;
-    final callId = block.callId;
-    return _Disclosure(
-      key: ValueKey((item.entryId, item.blockIndex)),
-      title: [
-        title,
-        if (name != null && name.isNotEmpty) name,
-        if (callId != null && callId.isNotEmpty) callId,
-        if (block.isError == true) labels.failed,
-      ].join(' · '),
-      builder: (context) {
-        if (block.type == NativeSessionBlockType.text) {
-          return SelectionArea(child: textBuilder(context, block.text ?? ''));
-        }
-        final content = [
-          if (block.input is String)
-            block.input! as String
-          else if (block.input != null)
-            const JsonEncoder.withIndent('  ').convert(block.input),
-          if (block.text != null) block.text!,
-        ].join('\n\n');
-        return _ScrollableContent(text: content);
-      },
-    );
-  }
 }
 
 /// Unlike an eagerly built ExpansionTile children list, this does not invoke

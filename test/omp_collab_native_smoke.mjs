@@ -83,10 +83,12 @@ mock.module(path.join(nativeSource, 'native/index.js'), () => nativeExports);
 mock.module(path.resolve(source, '../../../global/node_modules/@oh-my-pi/pi-natives/native/index.js'), () => nativeExports);
 const entrypoint = path.join(root, 'upstream-entry.ts');
 await fs.writeFile(entrypoint, `export { CollabHost } from ${JSON.stringify(path.join(source, 'src/collab/host.ts'))};\nexport { SessionManager } from ${JSON.stringify(path.join(source, 'src/session/session-manager.ts'))};\nexport { Settings } from ${JSON.stringify(path.join(source, 'src/config/settings.ts'))};\nexport { collabHostsRuntimeDir } from ${JSON.stringify(path.join(source, 'src/collab/registry.ts'))};`);
+await fs.appendFile(entrypoint, `\nexport { AgentRegistry } from ${JSON.stringify(path.join(source, 'src/registry/agent-registry.ts'))};`);
 const bundled = await Bun.build({ entrypoints: [entrypoint], outdir: path.join(root, 'bundle'), target: 'bun', plugins: [pinnedPlugin] });
 if (!bundled.success) throw new AggregateError(bundled.logs, 'Cannot bundle pinned upstream fixture');
 await fs.symlink(path.resolve(source, '../../../global/node_modules'), path.join(root, 'bundle/node_modules'), 'dir');
 const { CollabHost, SessionManager, Settings, collabHostsRuntimeDir } = await import(pathToFileURL(bundled.outputs[0].path).href);
+const { AgentRegistry } = await import(pathToFileURL(bundled.outputs[0].path).href);
 const manager = SessionManager.inMemory(root);
 const listeners = new Set();
 let prompts = 0;
@@ -151,10 +153,38 @@ try {
     assert.equal(guest.streaming, null);
     assert.equal(guest.entries.filter(entry => entry.type === 'message' && entry.message?.role === 'assistant').length, 2);
     assert.deepEqual(guest.snapshot().stream_entry_ids, {});
+    session.isStreaming = true;
+    for (const fn of listeners) fn({ type: 'agent_start' });
+    for (const fn of listeners) fn({ type: 'tool_execution_start', toolCallId: 'native-progress-call',
+      toolName: 'read', intent: 'Inspect live progress', args: {} });
+    for (let i = 0; !guest.snapshot().runtime.activities.some(row => row.id === 'tool:native-progress-call') && i < 100; i++)
+      await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(guest.snapshot().runtime.activities.find(row => row.id === 'tool:native-progress-call').status, 'running');
+    session.isStreaming = false;
+    for (const fn of listeners) fn({ type: 'agent_end', messages: [] });
+    for (let i = 0; guest.snapshot().runtime.activities.find(row => row.id === 'tool:native-progress-call').status === 'running' && i < 100; i++)
+      await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(guest.snapshot().runtime.activities.find(row => row.id === 'tool:native-progress-call').status, 'unknown');
+    for (const draft of [
+      { kind: 'select', title: 'Mobile choice', options: ['A', { label: 'B', description: 'Alternative' }] },
+      { kind: 'editor', title: 'Custom details', prefill: 'initial' },
+    ]) {
+      const pending = host.requestGuestUi(draft);
+      assert.ok(pending);
+      for (let i = 0; !guest.snapshot().runtime.pending_ui_request && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      const ui = guest.snapshot().runtime.pending_ui_request;
+      assert.equal(ui.kind, draft.kind);
+      const value = draft.kind === 'select' ? 'B' : '自定义内容';
+      await guest.respondUi({ req_id: ui.req_id, value, expected_session_id: manager.getSessionId(), expected_generation: guest.snapshot().generation });
+      assert.deepEqual(await pending, { kind: 'answered', value });
+      for (let i = 0; guest.snapshot().runtime.pending_ui_request && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(guest.snapshot().runtime.pending_ui_request, null);
+      assert.equal(prompts, 1);
+    }
     await host.stop();
     for (let i = 0; guest.connected && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(guest.connected, false);
-    console.log('native CollabHost smoke passed: snapshot, prompt, idempotency, live text, disconnect; zero model calls');
+    console.log('native CollabHost smoke passed: snapshot, prompt, idempotency, live tools, select/editor ui-response, disconnect; zero model calls');
   } finally { server.close(); }
 } finally {
   guest.reset(); await host.stop(); relay.close();

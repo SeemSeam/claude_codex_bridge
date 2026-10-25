@@ -1421,6 +1421,14 @@ def _gateway_request(operation: str, payload: Mapping[str, object]) -> _GatewayR
             f'/v1/projects/{project}/agents/{agent}/messages',
             _without_relay_credentials(payload),
         )
+    if op == 'ui_response':
+        project = _segment(payload, 'project_id')
+        agent = _segment(payload, 'agent')
+        return _json_request(
+            'POST',
+            f'/v1/projects/{project}/agents/{agent}/ui-response',
+            _without_relay_credentials(payload),
+        )
     if op == 'lifecycle':
         project = _segment(payload, 'project_id')
         return _json_request('POST', f'/v1/projects/{project}/lifecycle', _only(payload, ('project_id', 'action')))

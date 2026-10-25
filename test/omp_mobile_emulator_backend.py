@@ -63,7 +63,33 @@ let nativePages = 0, maxNativePageBytes = 0;
 let historyFailure = false;
 const nativeGetEntry = manager.getEntry.bind(manager);
 manager.getEntry = id => { if (historyFailure) throw Error('Fixture native history unavailable'); return nativeGetEntry(id); };
-const emit = event => {for (const fn of listeners) fn(event);};
+const emit = event => {
+  for (const fn of listeners) fn(event);
+  for (const fn of handlers.get(event.type) ?? []) {
+    Promise.resolve(fn(event, productionContext)).catch(error => { console.error(error); process.exitCode = 1; });
+  }
+};
+let fixtureTodos = [];
+const commitFixtureTodos = (op, phases, error = false) => {
+  const message = {role:'toolResult',toolCallId:`fixture-todos-${op}`,
+    toolName:'todo',content:[{type:'text',text:'Native Todo status update'}],
+    details:{op,phases},isError:error,timestamp:Date.now()};
+  manager.appendMessage(message);
+  emit({type:'tool_execution_end',toolCallId:message.toolCallId,toolName:'todo',
+    result:{content:message.content,details:message.details},isError:error});
+  emit({type:'message_end',message});
+};
+const busListeners = new Map();
+const eventBus = {
+  on(channel, listener) {
+    if (!busListeners.has(channel)) busListeners.set(channel, new Set());
+    busListeners.get(channel).add(listener);
+    return () => busListeners.get(channel)?.delete(listener);
+  },
+};
+const emitBus = (channel, data) => {
+  for (const listener of busListeners.get(channel) ?? []) listener(data);
+};
 const beginLive = () => {
   live = {role:'assistant',content:[{type:'text',text:`Fixture live turn ${prompts}`}],timestamp:Date.now()};
   session.isStreaming = true;
@@ -75,7 +101,8 @@ const models = ['one', 'two'].map(id => ({provider: 'fixture', id,
   name: `Fixture ${id} (no inference)`, reasoning_levels: ['off']}));
 const session = {
   isStreaming: false, isAborting: false, isSessionTransitioning: false,
-  queuedMessageCount: 0, sessionName: 'isolated fixture', model: null, thinkingLevel: 'off',
+  queuedMessageCount: 0, sessionName: 'isolated fixture', get model() { return model; },
+  get thinkingLevel() { return thinking; },
   subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn); },
   emitNotice(...args) { notices.push(args); },
   async promptCustomMessage(message) {
@@ -91,8 +118,8 @@ const session = {
   },
 };
 const noop = () => {};
-const ctx = {session, sessionManager: manager, settings: Settings.isolated(),
-  statusLine: {setCollabStatus: noop, invalidate: noop, getCachedContextBreakdown: () => ({usedTokens: 0, contextWindow: 1000})},
+const ctx = {session, sessionManager: manager, settings: Settings.isolated(), eventBus,
+  statusLine: {setCollabStatus: noop, invalidate: noop, getCachedContextBreakdown: () => ({usedTokens: 250, contextWindow: 1000})},
   ui: {requestRender: noop}, showStatus: noop, updatePendingMessagesDisplay: noop};
 if (process.env.OMP_FIXTURE_LONG === '1') {
   manager.appendMessage({role:'user',content:'Fixture earliest history marker',timestamp:Date.now()});
@@ -139,8 +166,14 @@ const { initialize } = await import(process.env.OMP_FIXTURE_COMPOSER_MODULE);
 const handlers = new Map();
 const productionContext = {sessionManager:manager,hasUI:true,isIdle:()=>!session.isStreaming,
   ui:{getEditorText:()=>'',setEditorText:()=>{}}, modelRegistry:{getAvailable:()=>models}};
-initialize({on:(name,fn)=>handlers.set(name,fn)}, 'mobile', 'fixture-launch', 'fixture-runtime-one');
-await handlers.get('session_start')({},productionContext);
+initialize({on:(name,fn)=>{
+  if (!handlers.has(name)) handlers.set(name, []);
+  handlers.get(name).push(fn);
+}}, 'mobile', 'fixture-launch', 'fixture-runtime-one');
+const dispatchNative = async name => {
+  for (const fn of handlers.get(name) ?? []) await fn({}, productionContext);
+};
+await dispatchNative('session_start');
 // Only model selection remains controlled. inspect and every history operation
 // traverse the generated production composer socket and the native manager.
 const companion = net.createServer(socket => {
@@ -209,7 +242,7 @@ const bridgeServer = net.createServer(socket => {
             manager.resetLeaf();
             manager.appendMessage({role:'user',content:'Fixture isolated branch marker',timestamp:Date.now()});
             manager.appendMessage({role:'assistant',content:[{type:'text',text:'Fixture isolated branch answer'}],stopReason:'stop',timestamp:Date.now()});
-            await handlers.get('session_tree')({},productionContext);
+            await dispatchNative('session_tree');
             break;
           case 'automatic_live': automaticLive = true; break;
           case 'intermediate': {
@@ -233,9 +266,85 @@ const bridgeServer = net.createServer(socket => {
           case 'live':
             beginLive();
             break;
+          case 'runtime-todo-init':
+            fixtureTodos = [{name:'Statusbar validation',tasks:[
+              {content:'Read native clock',status:'in_progress'},
+              {content:'Synchronize active step',status:'pending'},
+              {content:'Verify Todo completion',status:'pending'}]}];
+            commitFixtureTodos('init', fixtureTodos);
+            break;
+          case 'runtime-todo-done':
+            fixtureTodos = [{name:'Statusbar validation',tasks:[
+              {content:'Read native clock',status:'completed'},
+              {content:'Synchronize active step',status:'in_progress'},
+              {content:'Verify Todo completion',status:'pending'}]}];
+            commitFixtureTodos('done', fixtureTodos);
+            break;
+          case 'runtime-todo-view':
+            commitFixtureTodos('view', []);
+            break;
+          case 'runtime-todo-error':
+            commitFixtureTodos('done', [], true);
+            break;
+          case 'runtime-todo-clear':
+            fixtureTodos = [];
+            manager.appendCustomEntry('user_todo_edit', {phases:[]});
+            break;
+          case 'runtime-tool-start':
+            emit({type:'tool_execution_start',toolCallId:'runtime-main-call',toolName:'read',
+              intent:'Inspect streamed Collab tool output',args:{path:'fixture.txt'}});
+            emit({type:'tool_execution_update',toolCallId:'runtime-main-call',toolName:'read',
+              args:{path:'fixture.txt'},partialResult:{content:[{type:'text',text:'Native progress: first chunk'}]}});
+            break;
+          case 'runtime-step-next':
+            emit({type:'tool_execution_start',toolCallId:'runtime-next-call',toolName:'grep',
+              intent:'Verify native Todo status',args:{pattern:'todo'}});
+            break;
+          case 'runtime-tool-update':
+            emit({type:'tool_execution_update',toolCallId:'runtime-main-call',toolName:'read',
+              args:{path:'fixture.txt'},partialResult:{content:[{type:'text',text:'Native progress: second chunk'}]}});
+            break;
+          case 'runtime-tool-finish':
+            emit({type:'tool_execution_end',toolCallId:'runtime-main-call',toolName:'read',
+              result:{content:[{type:'text',text:'Native progress: read complete'}]},isError:false});
+            break;
+          case 'runtime-retry-start':
+            emit({type:'auto_retry_start',attempt:1,maxAttempts:3,delayMs:1000,
+              errorMessage:'Fixture transient upstream overload'});
+            break;
+          case 'runtime-retry-finish':
+            emit({type:'auto_retry_end',success:true,attempt:1});
+            break;
+          case 'runtime-compaction-start':
+            emit({type:'auto_compaction_start',reason:'threshold',action:'context-full'});
+            break;
+          case 'runtime-compaction-finish':
+            emit({type:'auto_compaction_end',action:'context-full',aborted:false,willRetry:false});
+            break;
+          case 'runtime-task-start':
+            AgentRegistry.global().register({id:'runtime-registry-worker',displayName:'Native registry worker',
+              kind:'sub',parentId:'main',session:null,status:'running'});
+            emitBus('task:subagent:lifecycle', {id:'runtime-worker',agent:'scout',
+              agentSource:'bundled',description:'Inspect runtime status',status:'started',
+              parentToolCallId:'runtime-task-call',index:0,detached:true});
+            emitBus('task:subagent:progress', {agent:'scout',agentSource:'bundled',
+              task:'Inspect runtime status',parentToolCallId:'runtime-task-call',index:0,
+              detached:true,progress:{id:'runtime-worker',durationMs:4200,status:'running',
+                currentTool:'read',description:'Inspect runtime status',
+                lastIntent:'Compare native events against mobile summaries',
+                currentToolIntent:'Read Collab execution updates',stage:'Checking gateway projection',
+                recentOutput:['Found live task updates'],completionPercent:35,
+                toolCount:7,requests:3,tokens:4200,contextTokens:500,contextWindow:1000}});
+            break;
+          case 'runtime-task-finish':
+            AgentRegistry.global().setStatus('runtime-registry-worker', 'idle');
+            emitBus('task:subagent:lifecycle', {id:'runtime-worker',agent:'scout',
+              agentSource:'bundled',description:'Inspect runtime status',status:'completed',
+              parentToolCallId:'runtime-task-call',index:0,detached:true});
+            break;
           case 'finish':
             if (!live) throw Error('No live fixture turn');
-            manager.appendMessage({...live,stopReason:'tool_use',content:[...live.content,{type:'toolCall',id:`fixture-call-${prompts}`,name:'read',arguments:{path:'fixture.txt'}}]});
+            manager.appendMessage({...live,stopReason:'tool_use',content:[...live.content,{type:'toolCall',id:`fixture-call-${prompts}`,name:'read',intent:'Inspect fixture contents before answering',arguments:{path:'fixture.txt'}}]});
             emit({type:'message_end',message:live});
             manager.appendMessage({role:'toolResult',toolCallId:`fixture-call-${prompts}`,toolName:'read',content:[{type:'text',text:`Fixture tool result ${prompts}`}],isError:false,timestamp:Date.now()});
             manager.appendMessage({role:'assistant',content:[{type:'text',text:`Fixture durable turn ${prompts}`}],stopReason:'stop',timestamp:Date.now()});
@@ -306,7 +415,7 @@ const bridgeServer = net.createServer(socket => {
 await new Promise(resolve => bridgeServer.listen(bridge,resolve));
 await fs.chmod(bridge,0o600);
 console.log(JSON.stringify({fixture_ready:true,root,bridge,session_id:manager.getSessionId()}));
-process.on('SIGTERM',async()=>{closed = true;clearInterval(drainTimer);await guest.exclusive(async()=>{guest.reset();await guest.persist();});await handlers.get('session_shutdown')();await host.stop();relay.close();companion.close();bridgeServer.close();await fs.rm(root,{recursive:true,force:true});process.exit(0);});
+process.on('SIGTERM',async()=>{closed = true;clearInterval(drainTimer);await guest.exclusive(async()=>{guest.reset();await guest.persist();});await dispatchNative('session_shutdown');await host.stop();relay.close();companion.close();bridgeServer.close();await fs.rm(root,{recursive:true,force:true});process.exit(0);});
 '''
 
 
@@ -466,6 +575,9 @@ def main():
                     if path.startswith('/__fixture/'):
                         self._authenticate(headers, required_scopes=('view',))
                         action = path.removeprefix('/__fixture/')
+                        if action == 'statusbar-proof':
+                            (args.evidence/'statusbar-timing.json').write_text(json.dumps(body, indent=2))
+                            return 200, {'recorded':True}
                         if action == 'fifo-proof':
                             stats = bridge('stats')
                             if (stats['max_active_prompts'] != 1 or stats['active_prompts'] != 0
@@ -488,7 +600,7 @@ def main():
                             return 200, {'recorded':True}
                         if action == 'screenshot':
                             name = (body or {}).get('name')
-                            if name not in {'initial','bounded-bubble','original','original-next','history','history-error','history-recovered','history-branch','live','durable','tools','model','reconnect','fifo-queued','fifo-complete','final'}:
+                            if name not in {'initial','runtime-progress','statusbar-running','statusbar-completed','statusbar-disconnected','bounded-bubble','original','original-next','history','history-error','history-recovered','history-branch','live','durable','model','reconnect','fifo-queued','fifo-complete','final'}:
                                 raise MobileGatewayError('Unknown screenshot',status_code=400)
                             with (args.evidence / f'{name}.png').open('wb') as image:
                                 subprocess.run(['adb','-s',args.device,'exec-out','screencap','-p'],stdout=image,check=True,timeout=15)

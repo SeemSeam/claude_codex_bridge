@@ -170,3 +170,54 @@ def test_snapshot_preserves_safe_pending_inputs(tmp_path):
     thread, _ = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': snapshot})
     assert OmpCollabClient().get_snapshot(tmp_path, 'a')['pending_inputs'] == [pending]
     thread.join(2)
+
+
+def test_ui_response_ipc_preserves_exact_request_and_fences(tmp_path):
+    endpoint, _, _ = _binding(tmp_path)
+    thread, requests = _server(endpoint, {'actor': 'a', 'launch_session_id': 'launch', 'result': {'req_id': 9}})
+    assert OmpCollabClient().ui_response(tmp_path, 'a', 9, 'value',
+                                       expected_session_id='native', expected_generation='owner:1') == {'req_id': 9}
+    thread.join(2)
+    assert requests == [{'operation': 'ui_response', 'actor': 'a', 'launch_session_id': 'launch',
+                         'req_id': 9, 'value': 'value', 'expected_session_id': 'native',
+                         'expected_generation': 'owner:1'}]
+
+
+@pytest.mark.parametrize('fields', [{'req_id': True}, {'req_id': -1}, {'req_id': 9007199254740992},
+                                   {'value': 'x' * 513}, {'value': []},
+                                   {'expected_session_id': None}, {'expected_generation': None}])
+def test_ui_response_bounds_before_connecting(tmp_path, fields):
+    request = {'req_id': 9, 'value': None, 'expected_session_id': 'native', 'expected_generation': 'owner:1', **fields}
+    with pytest.raises(OmpCollabError) as error:
+        OmpCollabClient().ui_response(tmp_path, 'a', **request)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize('send_error', [False, True])
+def test_ui_response_disconnect_and_send_exception_are_unknown_without_retry(tmp_path, monkeypatch, send_error):
+    import struct
+    endpoint, _, _ = _binding(tmp_path)
+    owner = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    owner.bind(str(endpoint))
+    os.chmod(endpoint, 0o600)
+    sends = []
+    class ClientSocket:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def settimeout(self, value): pass
+        def connect(self, endpoint): pass
+        def getsockopt(self, *args): return struct.pack('3i', 1, os.getuid(), os.getgid())
+        def sendall(self, data):
+            sends.append(json.loads(data))
+            if send_error:
+                raise OSError('uncertain write')
+        def recv(self, count): return b''
+    monkeypatch.setattr('provider_backends.omp.collab.socket.socket', lambda *args: ClientSocket())
+    try:
+        with pytest.raises(OmpCollabError, match='unknown; do not retry') as error:
+            OmpCollabClient().ui_response(tmp_path, 'a', 9, None,
+                                        expected_session_id='native', expected_generation='owner:1')
+        assert error.value.status_code == 502
+        assert len(sends) == 1
+    finally:
+        owner.close()

@@ -7,9 +7,11 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import '../../app/chat_background.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
+import '../../models/omp_runtime.dart';
 import '../../native_session/native_session.dart';
 import '../../widgets/working_attention_beat.dart';
 import 'conversation_item_presentation.dart';
+import 'omp_runtime_panel.dart';
 
 const double _minLimitedConversationBodyHeight = 220;
 const double _conversationBodyViewportReserveHeight = 88;
@@ -32,6 +34,7 @@ class ConversationBubble extends StatelessWidget {
     this.onUserScrollDirectionChanged,
     this.isWorking = false,
     this.contentLoader,
+    this.ompRuntime,
     super.key,
   });
 
@@ -50,6 +53,7 @@ class ConversationBubble extends StatelessWidget {
   final ValueChanged<ScrollDirection>? onUserScrollDirectionChanged;
   final bool isWorking;
   final Future<NativeContentPage> Function(String cursor)? contentLoader;
+  final OmpRuntime? ompRuntime;
 
   void _toggleExpanded() {
     onToggleExpanded(item.id);
@@ -190,7 +194,10 @@ class ConversationBubble extends StatelessWidget {
                                     key: ValueKey(
                                       'conversation-working-${item.id}',
                                     ),
-                                    startedAt: item.startedAt ?? item.sentAt,
+                                    // OMP's native status bar owns the run clock;
+                                    // message timestamps include queue/history time.
+                                    startedAt: item.source == 'provider_native/omp'
+                                        ? null : item.startedAt ?? item.sentAt,
                                   ),
                                 ],
                               ],
@@ -237,6 +244,8 @@ class ConversationBubble extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 6),
+                  if (showWorking && ompRuntime != null)
+                    OmpRuntimePanel(runtime: ompRuntime!),
                   if (collapsible && !expanded)
                     Material(
                       color: Colors.transparent,

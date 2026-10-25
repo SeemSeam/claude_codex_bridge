@@ -1,3 +1,4 @@
+import 'omp_runtime.dart';
 import '../native_session/native_content_page.dart';
 import 'ccb_conversation_item.dart';
 
@@ -13,6 +14,7 @@ class CcbAgentConversation {
     this.ompGeneration,
     this.nativeContent,
     this.branchId,
+    this.ompRuntime,
   });
 
   final String projectId;
@@ -25,6 +27,7 @@ class CcbAgentConversation {
   final String? ompGeneration;
   final NativeContentPage? nativeContent;
   final String? branchId;
+  final OmpRuntime? ompRuntime;
 
   factory CcbAgentConversation.fromJson(Map<String, Object?> json) {
     final conversation = _map(json['conversation']);
@@ -51,6 +54,8 @@ class CcbAgentConversation {
               ? _optionalText(source['generation']?.toString())
               : null,
       branchId: _optionalText(source['branch_id']),
+      ompRuntime: source['omp_runtime'] is Map
+          ? OmpRuntime.fromJson(_map(source['omp_runtime']), sessionId: _optionalText(source['session_id'])) : null,
       nativeContent:
           source['native_content'] is Map
               ? NativeContentPage.fromJson(_map(source['native_content']))
@@ -72,6 +77,7 @@ class CcbAgentConversation {
       if (ompGeneration != null) 'generation': ompGeneration,
       if (branchId != null) 'branch_id': branchId,
       if (nativeContent != null) 'native_content': nativeContent!.toJson(),
+      if (ompRuntime != null) 'omp_runtime': ompRuntime!.toJson(),
     };
   }
 }

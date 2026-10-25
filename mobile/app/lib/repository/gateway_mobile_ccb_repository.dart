@@ -37,6 +37,7 @@ abstract interface class MobileGatewayPresenceReporter {
 class GatewayMobileCcbRepository
     implements
         MobileCcbRepository,
+        MobileCcbUiResponseRepository,
         MobileCcbRepositoryFileUploader,
         MobileCcbProviderControlRepository,
         MobileGatewayProfileHealthProbe,
@@ -52,6 +53,17 @@ class GatewayMobileCcbRepository
   @override
   set outcomeReporter(GatewayConnectionOutcomeReporter? reporter) {
     _outcomeReporter = reporter;
+  }
+
+  @override
+  Future<void> uiResponse({required String projectId, required String agent,
+    required int namespaceEpoch, required String expectedOmpSessionId,
+    required String expectedOmpGeneration, required int reqId, required String value}) {
+    final transport = _transport;
+    if (transport is! GatewayUiResponseTransport) throw UnsupportedError('UI responses are unavailable');
+    return _report(GatewayConnectionOperation.mutation, () => (transport as GatewayUiResponseTransport).uiResponse(
+      projectId: projectId, agent: agent, namespaceEpoch: namespaceEpoch,
+      expectedOmpSessionId: expectedOmpSessionId, expectedOmpGeneration: expectedOmpGeneration, reqId: reqId, value: value));
   }
 
   Future<T> _report<T>(

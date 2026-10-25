@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+- Support live OMP Collab select/editor questions on mobile through fenced native `ui-response`, including custom input, stale/disconnect handling and no-replay unknown delivery. Route replies through HTTP and encrypted Relay; keep questions separate from ordinary queued chat messages.
 - Replace raw JSON original-content pages with bounded semantic content pages and a full-screen “Complete content” reader. Render assistant prose as Markdown, with reasoning and tools independently folded, instead of exposing serialized record fields or byte offsets.
 - Preserve exact projected source blocks across Unicode-safe pages, including code-fence continuation rendering; keep immutable version/branch fences, current-page-only reader memory, and visible load errors without mixing content versions.
+- Expose bounded OMP Collab runtime metadata in Mobile: native main-turn activity/elapsed time, queue depth, model/thinking/context usage, task lifecycle/progress and agent-registry status. Use native observations consistently for project working counts and selected-agent status; disconnected or missing evidence never becomes idle.
+- Keep task identities and reply bubbles distinct across consecutive turns, support reused subagents and bounded long-session retention, and preserve current runtime while paging older history. Android qualification exercises real upstream Collab state, task bus and agent-registry frames through the production gateway and app without model calls.
+- Synchronize the OMP status bar through owner-bound native inspection: native-process elapsed time, the current working step, and canonical Todo done/total plus active items. Use a local monotonic clock between native observations, preserve exact counts under truncation, and ignore clock-only ticks in conversation/invalidation fingerprints.
+- Remove Execution process and recent raw tool/intent lists from normal chat. Preserve every assistant prose entry and keep Complete content as an explicit reader; missing native status/time/Todo evidence remains unavailable rather than guessed from messages or rendered terminal text.
+- Keep active native reply bubbles free of misleading “Tool execution unfinished” and “No assistant answer” placeholders. Before the first native intent arrives, the status bar explicitly waits for a native step instead of presenting an unexplained “Not reported” label.
+- Render native elapsed time, current step and active Todo inside the current working reply bubble, outside its collapsible prose. Idle/disconnected observations remain in the workspace status area; do not duplicate the same running state above the timeline.
+- Replace the mobile Tab shortcut with an explicit Codex Queue action. Submit `/queue <draft and uploaded attachments>` with Enter rather than a Tab byte; preserve the unprefixed user bubble, ignore empty queue clicks, and hide the queue action for other providers.
+- Bind Pi/OMP completion tracking to the parent session and ignore in-process subagent turns. Subagent `before_agent_start`/`turn_end`/`agent_end` activity no longer supersedes the active request or leaks its output into the parent reply; the parent keeps request attribution through task-tool fan-out, matching the Codex parent-binding behavior.
 
 ## v8.7.18 (2026-10-23)
 

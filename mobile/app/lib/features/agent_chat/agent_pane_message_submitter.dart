@@ -26,6 +26,7 @@ class AgentPaneMessageSubmitter {
     required AgentViewRefresh? refreshView,
     String? paneBody,
     List<int> submitBytes = const [13],
+    bool queueMessage = false,
   }) async {
     try {
       final readyTransport = transport;
@@ -34,11 +35,13 @@ class AgentPaneMessageSubmitter {
           'selected-agent terminal transport is not ready',
         );
       }
+      final codexQueue = agent.provider == 'codex' && queueMessage;
+      final body = paneBody ?? message.body;
       await _controllerFor(readyTransport).send(
         agent: agent,
         view: view,
-        body: paneBody ?? message.body,
-        submitBytes: submitBytes,
+        body: codexQueue ? '/queue $body' : body,
+        submitBytes: codexQueue ? const [13] : submitBytes,
       );
       return AgentPaneMessageSubmitOutcome.sent(
         message.copyWith(state: CcbConversationDeliveryState.sent),

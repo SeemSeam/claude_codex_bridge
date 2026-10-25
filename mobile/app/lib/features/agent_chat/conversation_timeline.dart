@@ -5,6 +5,7 @@ import '../../models/ccb_agent.dart';
 import '../../models/ccb_content_item.dart';
 import '../../models/ccb_conversation_item.dart';
 import '../../models/ccb_project_view.dart';
+import '../../models/omp_runtime.dart';
 import '../../models/readable_terminal_history.dart';
 import '../../repository/mobile_ccb_repository.dart';
 import '../../l10n/ccb_mobile_localizations.dart';
@@ -47,12 +48,14 @@ class ConversationTimeline extends StatelessWidget {
     this.expandedItemKeyBuilder,
     this.bottomRevealPadding = conversationTimelineFollowLatestPadding,
     this.workingItemId,
+    this.ompRuntime,
     super.key,
   });
 
   final MobileCcbRepository repository;
   final CcbProjectView view;
   final CcbAgent agent;
+  final OmpRuntime? ompRuntime;
   final List<CcbContentItem> contentItems;
   final ReadableTerminalHistory? initialHistory;
   final List<CcbConversationItem> items;
@@ -144,6 +147,7 @@ class ConversationTimeline extends StatelessWidget {
                   initialHistory: initialHistory,
                   expanded: expanded,
                   isWorking: item.id == workingItemId,
+                  ompRuntime: item.id == workingItemId ? ompRuntime : null,
                   downloadingAttachmentIds: downloadingAttachmentIds,
                   downloadedAttachmentIds: downloadedAttachmentIds,
                   onRetry: onRetry,
@@ -184,6 +188,7 @@ class _ConversationTimelineItem extends StatelessWidget {
     required this.onToggleExpanded,
     required this.onDownloadAttachment,
     required this.onOpenAttachment,
+    this.ompRuntime,
     super.key,
   });
 
@@ -198,6 +203,7 @@ class _ConversationTimelineItem extends StatelessWidget {
   final ReadableTerminalHistory? initialHistory;
   final bool expanded;
   final bool isWorking;
+  final OmpRuntime? ompRuntime;
   final Set<String> downloadingAttachmentIds;
   final Set<String> downloadedAttachmentIds;
   final ValueChanged<CcbConversationItem> onRetry;
@@ -274,6 +280,7 @@ class _ConversationTimelineItem extends StatelessWidget {
       timelineScrollController: timelineScrollController,
       onUserScrollDirectionChanged: onUserScrollDirectionChanged,
       isWorking: isWorking,
+      ompRuntime: ompRuntime,
       onToggleExpanded: onToggleExpanded,
       onRetry:
           item.state == CcbConversationDeliveryState.failed

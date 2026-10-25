@@ -6,6 +6,67 @@ from types import SimpleNamespace
 from mobile_gateway.service import MobileGatewayService, MobileGatewayError
 
 
+def test_native_status_clock_does_not_change_runtime_fingerprint():
+    import copy
+    from mobile_gateway.service import _omp_runtime_fingerprint
+
+    runtime = {'observed_at': 'first', 'status_bar': {'available': True, 'observed_at': 'native-first',
+               'elapsed_ms': 1000, 'started_at': 'native-start', 'is_streaming': True,
+               'step': 'Reading', 'todos': {'available': True, 'done': 0, 'total': 3}}}
+    before = copy.deepcopy(runtime)
+    baseline = _omp_runtime_fingerprint(runtime)
+    changed = copy.deepcopy(runtime)
+    changed['observed_at'] = 'second'
+    changed['status_bar'].update(observed_at='native-second', elapsed_ms=2000)
+    assert _omp_runtime_fingerprint(changed) == baseline
+    assert runtime == before
+    for key, value in [('step', 'Writing'), ('started_at', 'new-start'), ('is_streaming', False),
+                       ('todos', {'available': True, 'done': 1, 'total': 3})]:
+        meaningful = copy.deepcopy(changed)
+        meaningful['status_bar'][key] = value
+        assert _omp_runtime_fingerprint(meaningful) != baseline
+
+
+def test_native_status_whitelist_session_fences_and_escaped_budget():
+    import copy
+    import json
+    from mobile_gateway.service import _omp_runtime, _omp_runtime_activity
+
+    bar = {'available': True, 'source': 'native_events', 'session_id': 'native',
+           'observed_at': '2026-10-23T10:00:01.000Z', 'is_streaming': True,
+           'started_at': '2026-10-23T09:59:00.000Z', 'elapsed_ms': 61000,
+           'step': 'Reading native state', 'draft': 'secret editor',
+           'todos': {'available': True, 'done': 1, 'total': 300, 'in_progress': 1, 'blocked': 0,
+                     'items': [{'content': '任' * 256, 'phase': '階' * 128, 'status': 'pending',
+                                'raw_result': 'secret tool'} for _ in range(16)], 'truncated': True}}
+    snapshot = {'session_id': 'native', 'connected': True, 'ready': True,
+                'state': {'isStreaming': False}, 'runtime': {'status_bar': bar}}
+    runtime = _omp_runtime(snapshot, observed_at='phone-server-clock')
+    assert runtime['is_streaming'] is True
+    assert _omp_runtime_activity(runtime) == ('active', 'streaming')
+    assert runtime['started_at'] == bar['started_at']
+    assert runtime['status_bar']['elapsed_ms'] == 61000
+    assert runtime['status_bar']['todos']['total'] == 300
+    assert runtime['status_bar']['todos']['done'] == 1
+    assert len(json.dumps(runtime).encode()) <= 12 * 1024
+    assert 'secret' not in json.dumps(runtime)
+    assert _omp_runtime({**snapshot, 'runtime': {}}, observed_at='now')['status_bar'] == {'available': False}
+    for key, value in [('session_id', 'foreign'), ('source', 'guest'), ('is_streaming', None)]:
+        changed = copy.deepcopy(snapshot)
+        changed['runtime']['status_bar'][key] = value
+        assert _omp_runtime(changed, observed_at='now')['status_bar'] == {'available': False}
+    offline = _omp_runtime({**snapshot, 'connected': False}, observed_at='now')
+    assert offline['status_bar'] == {'available': False}
+    assert offline['started_at'] is None
+    snapshot['runtime']['status_bar']['is_streaming'] = False
+    idle = _omp_runtime(snapshot, observed_at='now')
+    assert idle['status_bar']['elapsed_ms'] is None
+    assert idle['status_bar']['step'] is None
+    snapshot['runtime']['status_bar']['todos'] = {'available': True, 'done': 0, 'total': 0,
+                                                'in_progress': 0, 'blocked': 0, 'items': [], 'truncated': False}
+    assert _omp_runtime(snapshot, observed_at='now')['status_bar']['todos']['total'] == 0
+
+
 @pytest.fixture(autouse=True)
 def linux_runtime(monkeypatch):
     monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform='linux'))
@@ -363,14 +424,15 @@ def test_omp_model_busy_and_unconfirmed_are_not_applied(tmp_path, monkeypatch):
     assert error.value.status_code == 502
 
 
-def test_project_view_advertises_omp_controls_without_hidden_connections(tmp_path, monkeypatch):
+def test_project_view_advertises_omp_controls_and_observes_native_runtime(tmp_path, monkeypatch):
     service, transport, _ = gateway(tmp_path, monkeypatch)
     payload = service.project_view_payload('project')
     control = payload['view']['agents'][0]['provider_control']
     assert control['provider'] == 'omp'
     assert control['mutation_mode'] == 'native'
     assert control['capabilities']['model_select'] is True
-    assert not transport.calls
+    assert [call[0] for call in transport.calls] == ['snapshot']
+    assert payload['view']['agents'][0]['omp_runtime']['is_streaming'] is False
 
 
 def test_darwin_omp_submit_uses_terminal_without_collab_fence(tmp_path, monkeypatch):
@@ -401,22 +463,6 @@ def test_darwin_omp_frontdesk_keeps_legacy_rpc(tmp_path, monkeypatch):
     assert result['message_submit']['job_id'] == 'job'
     assert len(calls) == 1
     assert not terminal and not transport.calls
-
-
-@pytest.mark.parametrize('platform', ['linux', 'darwin', 'win32'])
-def test_omp_project_and_focused_capabilities_match(tmp_path, monkeypatch, platform):
-    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform=platform))
-    service, transport, _ = gateway(tmp_path, monkeypatch)
-    project = service._require_project('project')
-    ordinary = service.project_view_payload('project')['view']['agents'][0]
-    focused = service._focused_project_view_payload(project, {})['view']['agents'][0]
-    assert ordinary == focused
-    if platform == 'linux':
-        assert ordinary['provider_control']['runtime_source'] == 'collab'
-        assert ordinary['provider_control']['mutation_mode'] == 'native'
-    else:
-        assert 'provider_control' not in ordinary
-    assert not transport.calls
 
 
 def test_darwin_omp_jsonl_history_and_cache(tmp_path, monkeypatch):
@@ -597,3 +643,347 @@ def test_history_append_race_does_not_merge_stale_stream_or_pending(tmp_path, mo
     assert [item['id'] for item in items].count('receipt') == 1
     assert items[-1]['id'] == 'receipt'
     assert all(item['kind'] == 'user_message' for item in items)
+
+
+@pytest.mark.parametrize('state,expected,reason', [
+    ({'isStreaming': True}, 'active', 'streaming'),
+    ({'isStreaming': False, 'isAborting': True}, 'active', 'aborting'),
+    ({'isStreaming': False, 'queuedMessageCount': 2}, 'pending', 'native_queue'),
+    ({'isStreaming': False}, 'idle', 'native_idle'),
+    ({}, 'unknown', 'native_state_missing'),
+])
+def test_project_view_native_activity_transitions(tmp_path, monkeypatch, state, expected, reason):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    transport.snapshot['state'] = state
+    record = service.project_view_payload('project')['view']['agents'][0]
+    assert record['activity_state'] == expected
+    assert record['activity_source'] == 'native_collab'
+    assert record['activity_reason'] == reason
+    assert record['omp_runtime']['started_at'] is None
+
+
+def test_project_runtime_disconnect_isolated_from_other_agents(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    project = service._require_project('project')
+    other = {'name': 'other', 'provider': 'pi', 'activity_state': 'active', 'activity_source': 'pane'}
+    healthy = {'name': 'healthy', 'provider': 'omp'}
+    payload = {'view': {'agents': [{'name': 'mobile', 'provider': 'omp'}, healthy, other]}}
+    def snapshot(root, agent):
+        if agent == 'mobile':
+            raise RuntimeError('secret/path')
+        return {**transport.snapshot, 'state': {'isStreaming': False}}
+    monkeypatch.setattr(transport, 'get_snapshot', snapshot)
+    records = service._with_omp_runtime(project, payload)['view']['agents']
+    assert records[0]['activity_state'] == 'unknown'
+    assert records[0]['omp_runtime']['connected'] is False
+    assert records[1]['activity_state'] == 'idle'
+    assert records[2] == other
+    assert 'omp_runtime' not in payload['view']['agents'][0]
+
+
+@pytest.mark.parametrize('connected,ready', [(False, False), (False, True), (True, False)])
+def test_stale_busy_runtime_does_not_mark_disconnected_agent_active(tmp_path, monkeypatch, connected, ready):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    transport.snapshot.update(connected=connected, ready=ready,
+        runtime={'is_streaming': True, 'is_aborting': True, 'queued_message_count': 4})
+    record = service.project_view_payload('project')['view']['agents'][0]
+    assert record['activity_state'] == 'unknown'
+    assert not record['omp_runtime']['is_streaming']
+    assert record['omp_runtime']['is_aborting'] is False
+    assert record['omp_runtime']['queued_message_count'] == 0
+
+
+def test_runtime_watch_tracks_tasks_revision_and_disconnect_not_observation_time(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    monkeypatch.setattr(service, '_agent_activity_probe', lambda **kw: pytest.fail('pane probe used'))
+    service._register_invalidation_watch({
+        'watch_project_id': ['project'], 'watch_agent': ['mobile'],
+        'watch_provider': ['omp'], 'watch_namespace_epoch': ['4'],
+    })
+    def watch():
+        return service._selected_invalidation_watch_snapshots()[0]
+    initial = watch()
+    monkeypatch.setattr(service, '_clock', lambda: '2026-10-23T12:00:01Z')
+    assert watch().conversation_fingerprint == initial.conversation_fingerprint
+    transport.snapshot['runtime'] = {'tasks': [
+        {'id': 'task', 'agent': 'worker', 'status': 'running', 'updated_at': '2026-10-23T12:00:00Z'}]}
+    running = watch()
+    assert running.conversation_fingerprint != initial.conversation_fingerprint
+    assert running.activity_state == 'idle'
+    transport.snapshot['runtime']['tasks'][0]['status'] = 'completed'
+    completed = watch()
+    assert completed.conversation_fingerprint != running.conversation_fingerprint
+    transport.snapshot['revision'] += 1
+    revised = watch()
+    assert revised.conversation_fingerprint != completed.conversation_fingerprint
+    transport.error = RuntimeError('offline')
+    disconnected = watch()
+    assert disconnected.activity_state == 'unknown'
+    assert disconnected.conversation_fingerprint != revised.conversation_fingerprint
+
+
+def test_history_page_reports_current_runtime_without_grafting_live_items(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    records = []
+    for index in range(4):
+        records.extend([
+            {'type': 'message', 'id': f'u{index}', 'parentId': records[-1]['id'] if records else None,
+             'message': {'role': 'user', 'content': f'question {index}'}},
+            {'type': 'message', 'id': f'a{index}', 'parentId': f'u{index}',
+             'message': {'role': 'assistant', 'content': f'answer {index}', 'stopReason': 'stop'}},
+        ])
+    transport.snapshot.update(entries=records, branch_id='branch',
+                              state={'leafId': records[-1]['id'], 'isStreaming': False})
+    query = {'namespace_epoch': ['4'], 'limit': ['2']}
+    latest = service.agent_conversation_payload(
+        'project', agent='mobile', query=query, headers=service.test_headers)['conversation']
+    assert latest['next_cursor']
+    transport.snapshot['state']['isStreaming'] = True
+    transport.snapshot['runtime'] = {
+        'is_streaming': True, 'started_at': '2026-10-23T12:00:00Z',
+        'tasks': [{'id': 'native-task', 'agent': 'worker', 'status': 'running',
+                   'updated_at': '2026-10-23T12:00:00Z', 'raw_progress': 'secret'}],
+    }
+    transport.snapshot.update(streaming_message={'role': 'assistant', 'content': 'live only'},
+                              stream_id='live')
+    query['cursor'] = [latest['next_cursor']]
+    older = service.agent_conversation_payload(
+        'project', agent='mobile', query=query, headers=service.test_headers)['conversation']
+    assert older['omp_runtime']['is_streaming'] is True
+    assert older['omp_runtime']['started_at'] == '2026-10-23T12:00:00Z'
+    assert older['omp_runtime']['tasks'][0]['id'] == 'native-task'
+    assert 'raw_progress' not in older['omp_runtime']['tasks'][0]
+    assert all(item.get('body') != 'live only' for item in older['items'])
+
+
+@pytest.mark.parametrize('platform,provider', [('darwin', 'omp'), ('linux', 'pi')])
+def test_project_view_runtime_keeps_other_providers_and_macos_unchanged(tmp_path, monkeypatch, platform, provider):
+    monkeypatch.setattr('provider_backends.omp.platform.sys', SimpleNamespace(platform=platform))
+    service, transport, _ = gateway(tmp_path, monkeypatch, provider=provider)
+    record = service.project_view_payload('project')['view']['agents'][0]
+    assert 'omp_runtime' not in record
+    assert 'activity_source' not in record
+    assert not transport.calls
+
+
+def test_runtime_metadata_is_bounded_and_prioritizes_active_work():
+    import json
+    from mobile_gateway.service import _omp_runtime
+    tasks = [{'id': f'finished-{index}', 'agent': 'worker', 'status': 'completed',
+              'description': '中' * 1000, 'updated_at': '2026-10-23T12:00:00Z',
+              'raw_progress': '/private/session'} for index in range(140)]
+    tasks.append({'id': 'active-task', 'agent': 'worker', 'status': 'running',
+                  'description': 'current work', 'updated_at': '2026-10-23T12:00:01Z'})
+    runtime = _omp_runtime({'connected': True, 'ready': True, 'runtime': {
+        'is_streaming': False, 'tasks': tasks,
+        'model': {'provider': 'native', 'id': 'model', 'apiKey': 'secret'},
+        'context_usage': {'tokens': 10, 'contextWindow': 100, 'percent': 10},
+        'agents': [{'id': 'worker', 'displayName': 'Worker', 'status': 'running',
+                    'sessionFile': '/private/session', 'hasSessionFile': True}],
+    }}, observed_at='2026-10-23T12:00:01Z')
+    assert len(json.dumps(runtime).encode('utf-8')) <= 12 * 1024
+    assert runtime['truncated'] is True
+    assert runtime['tasks'][0]['id'] == 'active-task'
+    assert runtime['agents'][0]['id'] == 'worker'
+    assert runtime['context_usage']['percent'] == 10
+    assert 'secret' not in json.dumps(runtime)
+    assert '/private/session' not in json.dumps(runtime)
+
+
+def test_unwrapped_view_observes_runtime_without_stale_queue_fallback(tmp_path, monkeypatch):
+    from mobile_gateway.service import _project_activity_summary_from_view
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    payload = {'agents': [{'name': 'mobile', 'provider': 'omp',
+                          'activity_state': 'active', 'queue_depth': 5}]}
+    transport.snapshot['state'] = {'isStreaming': False, 'contextUsage': {
+        'tokens': 20, 'contextWindow': 100, 'percent': 20}}
+    project = service._require_project('project')
+    idle = service._with_omp_runtime(project, payload)
+    assert idle['agents'][0]['activity_state'] == 'idle'
+    assert idle['agents'][0]['omp_runtime']['context_usage']['tokens'] == 20
+    assert not _project_activity_summary_from_view(idle).get('has_working_agents')
+    transport.error = RuntimeError('disconnected')
+    disconnected = service._with_omp_runtime(project, payload)
+    assert disconnected['agents'][0]['activity_state'] == 'unknown'
+    assert not _project_activity_summary_from_view(disconnected).get('has_working_agents')
+
+
+@pytest.mark.parametrize('streaming', [True, False])
+def test_server_project_activity_refresh_uses_native_runtime(tmp_path, monkeypatch, streaming):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    transport.snapshot['state'] = {'isStreaming': streaming}
+    summaries = []
+    monkeypatch.setattr(service, '_project_activity_store', SimpleNamespace(
+        record_summary=lambda **kwargs: summaries.append(kwargs['summary'])))
+    service._refresh_server_project_activity(service._require_project('project'))
+    assert len(summaries) == 1
+    assert bool(summaries[0].get('has_working_agents')) is streaming
+    assert summaries[0].get('working_agent_count', 0) == int(streaming)
+
+
+def test_project_activity_refresh_clears_cached_working_count(tmp_path, monkeypatch):
+    import time
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    transport.snapshot['state'] = {'isStreaming': False}
+    monkeypatch.setattr(service, '_project_activity_store', SimpleNamespace(
+        project=lambda project_id: {'has_working_agents': True, 'working_agent_count': 2},
+        record_summary=lambda **kwargs: None))
+    monkeypatch.setattr(service, '_request_project_view_with_timeout',
+                        lambda *args, **kwargs: {'view': {'agents': [
+                            {'name': 'mobile', 'provider': 'omp', 'activity_state': 'active'}]}})
+    summary, refreshed = service._project_activity_summary(
+        service._require_project('project'), allow_refresh=True, deadline=time.monotonic() + 10)
+    assert refreshed is True
+    assert not summary.get('has_working_agents')
+    assert summary.get('working_agent_count', 0) == 0
+
+
+def test_runtime_projects_semantic_progress_and_optional_task_metrics():
+    from mobile_gateway.service import _omp_runtime, _omp_runtime_activity, _omp_runtime_fingerprint
+    native = {'progress_available': True, 'is_streaming': False,
+              'activities': [{'id': 'tool:call', 'kind': 'tool', 'status': 'completed',
+                              'title': 'Inspect schema', 'text': 'Current output', 'tool_name': 'read',
+                              'updated_at': '2026-10-23T12:00:00Z', 'args': {'secret': 'hidden'}}],
+              'tasks': [{'id': 'child', 'status': 'running', 'task': 'Inspect subsystem', 'intent': 'Read schema',
+                         'stage': 'Inspecting', 'progress_text': 'Latest result', 'completion_percent': 42,
+                         'tool_count': 3, 'requests': 2, 'tokens': 900, 'context_tokens': 200, 'context_window': 1000,
+                         'currentToolArgs': 'hidden', 'tokens_invalid': float('inf')} ]}
+    snapshot = {'connected': True, 'ready': True, 'runtime': native}
+    runtime = _omp_runtime(snapshot, observed_at='now')
+    assert runtime['progress_available'] is True
+    assert runtime['activities'][0]['title'] == 'Inspect schema'
+    assert 'args' not in runtime['activities'][0]
+    task = runtime['tasks'][0]
+    for key in ('task', 'intent', 'stage', 'progress_text', 'completion_percent', 'tool_count', 'requests',
+                'tokens', 'context_tokens', 'context_window'):
+        assert task[key] == native['tasks'][0][key]
+    assert 'currentToolArgs' not in task
+    assert _omp_runtime_activity(runtime) == ('idle', 'native_idle')
+    initial = _omp_runtime_fingerprint(runtime)
+    native['activities'][0]['text'] = 'Updated before result'
+    assert _omp_runtime_fingerprint(_omp_runtime(snapshot, observed_at='now')) != initial
+    native['tasks'][0].update(completion_percent=101, requests=True, tokens=float('inf'), context_tokens=-1)
+    task = _omp_runtime(snapshot, observed_at='now')['tasks'][0]
+    assert all(key not in task for key in ('completion_percent', 'requests', 'tokens', 'context_tokens'))
+
+
+def test_old_bridge_runtime_explicitly_reports_progress_unavailable():
+    from mobile_gateway.service import _omp_runtime
+    for native in (None, {}, {'is_streaming': True}):
+        runtime = _omp_runtime({'connected': True, 'ready': True, 'runtime': native}, observed_at='now')
+        assert runtime['progress_available'] is False
+        assert runtime['activities'] == []
+
+
+def test_unicode_activity_budget_keeps_current_semantic_progress_before_agent_history():
+    import json
+    from mobile_gateway.service import _omp_runtime
+    native = {'progress_available': True,
+              'activities': [{'id': 'tool:' + 'x' * 128, 'kind': 'tool', 'status': 'running',
+                              'title': '😀' * 512, 'text': '😀' * 768, 'updated_at': 'now'}],
+              'agents': [{'id': str(index), 'status': 'parked', 'displayName': '😀' * 128} for index in range(128)]}
+    runtime = _omp_runtime({'connected': True, 'ready': True, 'runtime': native}, observed_at='now')
+    assert len(json.dumps(runtime).encode()) <= 12 * 1024
+    assert runtime['activities'][0]['id'] == 'tool:' + 'x' * 128
+    assert runtime['activities'][0]['status'] == 'running'
+    assert runtime['activities'][0]['text']
+    assert runtime['truncated'] is True
+    disconnected = _omp_runtime({'connected': False, 'ready': False, 'runtime': native}, observed_at='now')
+    assert disconnected['activities'][0]['status'] == 'aborted'
+    assert disconnected['started_at'] is None
+
+
+def test_ui_response_route_preserves_fences_and_isolates_message_submit(tmp_path, monkeypatch):
+    service, transport, terminal = gateway(tmp_path, monkeypatch)
+    calls = []
+    def respond(root, agent, req_id, value, **fences):
+        calls.append((agent, req_id, value, fences))
+        return {'req_id': req_id}
+    monkeypatch.setattr(transport, 'ui_response', respond, raising=False)
+    payload = {'namespace_epoch': 4, 'expected_omp_session_id': 'native',
+               'expected_omp_generation': 'instance:1', 'req_id': 7, 'value': 'Answer'}
+    status, result = service.dispatch_post('/v1/projects/project/agents/mobile/ui-response', payload,
+                                           service.test_headers)
+    assert status == 200
+    assert result['ui_response'] == {'req_id': 7}
+    assert calls == [('mobile', 7, 'Answer', {'expected_session_id': 'native',
+                                           'expected_generation': 'instance:1'})]
+    assert not terminal
+    assert not transport.calls
+    transport.snapshot['runtime'] = {'pending_ui_request': {'req_id': 7}}
+    with pytest.raises(MobileGatewayError, match='active OMP prompt'):
+        service._submit_agent_message(project_id='project', agent='mobile', headers=service.test_headers,
+                                      payload={**payload, 'body': 'not an answer', 'idempotency_key': 'key'})
+    assert not any(call[0] == 'submit' for call in transport.calls)
+
+
+@pytest.mark.parametrize('changes', [ {'req_id': True}, {'req_id': -1}, {'req_id': 1.5},
+    {'req_id': 9007199254740992}, {'value': 'x' * 513}, {'value': []},
+    {'expected_omp_session_id': None}, {'expected_omp_generation': ''}, {'namespace_epoch': 3}])
+def test_ui_response_rejects_invalid_and_stale_requests(tmp_path, monkeypatch, changes):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    monkeypatch.setattr(transport, 'ui_response', lambda *args, **kw: pytest.fail('invalid request sent'), raising=False)
+    payload = {'namespace_epoch': 4, 'expected_omp_session_id': 'native',
+               'expected_omp_generation': 'instance:1', 'req_id': 7, 'value': None, **changes}
+    with pytest.raises(MobileGatewayError) as error:
+        service.dispatch_post('/v1/projects/project/agents/mobile/ui-response', payload, service.test_headers)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize('status', [409, 502, 503])
+def test_ui_response_errors_are_safe_and_never_replayed(tmp_path, monkeypatch, status):
+    from provider_backends.omp.collab import OmpCollabError
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    calls = []
+    def respond(*args, **kwargs):
+        calls.append(True)
+        raise OmpCollabError('wss://secret/host-capability', status)
+    monkeypatch.setattr(transport, 'ui_response', respond, raising=False)
+    with pytest.raises(MobileGatewayError) as error:
+        service.dispatch_post('/v1/projects/project/agents/mobile/ui-response',
+                              {'namespace_epoch': 4, 'expected_omp_session_id': 'native',
+                               'expected_omp_generation': 'instance:1', 'req_id': 7}, service.test_headers)
+    assert error.value.status_code == status
+    assert 'secret' not in str(error.value)
+    assert calls == [True]
+
+
+def test_pending_ui_projection_is_bounded_whitelisted_and_not_replayed_offline():
+    from mobile_gateway.service import _omp_runtime
+    pending = {'req_id': 1, 'kind': 'select', 'title': 'Choose', 'options': [
+        {'label': 'One', 'description': 'Description', 'raw_args': 'secret'}],
+        'initial_index': 0, 'checked_indices': [0], 'help_text': 'Help', 'prefill': None,
+        'marker': '✓', 'path': '/secret'}
+    snapshot = {'connected': True, 'ready': True, 'runtime': {'pending_ui_request': pending}}
+    projected = _omp_runtime(snapshot, observed_at='now')['pending_ui_request']
+    assert projected['options'] == [{'label': 'One', 'description': 'Description'}]
+    assert 'path' not in projected
+    assert projected['req_id'] == 1
+    for changes in ({'req_id': True}, {'title': 'x' * 513}, {'options': [{'label': 'x' * 257}]},
+                    {'options': [{'label': 'x'}] * 17}, {'checked_indices': [2]}):
+        snapshot['runtime']['pending_ui_request'] = {**pending, **changes}
+        assert _omp_runtime(snapshot, observed_at='now')['pending_ui_request'] is None
+    snapshot['runtime']['pending_ui_request'] = pending
+    snapshot['connected'] = False
+    assert _omp_runtime(snapshot, observed_at='now')['pending_ui_request'] is None
+
+
+def test_ui_response_authentication_precedes_transport(tmp_path, monkeypatch):
+    service, transport, _ = gateway(tmp_path, monkeypatch)
+    monkeypatch.setattr(transport, 'ui_response', lambda *args, **kw: pytest.fail('unauthorized request sent'), raising=False)
+    with pytest.raises(MobileGatewayError) as error:
+        service.dispatch_post('/v1/projects/project/agents/mobile/ui-response', {}, {})
+    assert error.value.status_code == 401
+
+
+def test_pending_ui_metadata_budget_preserves_options():
+    import json
+    from mobile_gateway.service import _omp_runtime
+    labels = [f'option-{index}' for index in range(16)]
+    pending = {'req_id': 1, 'kind': 'select', 'title': '題' * 512,
+               'help_text': '助' * 512, 'options': [
+                   {'label': label, 'description': '説' * 512} for label in labels]}
+    runtime = _omp_runtime({'connected': True, 'ready': True, 'runtime': {'pending_ui_request': pending}},
+                           observed_at='now')
+    assert [row['label'] for row in runtime['pending_ui_request']['options']] == labels
+    assert len(json.dumps(runtime).encode()) <= 12 * 1024

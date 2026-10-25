@@ -35,6 +35,7 @@ class RelayGatewayException implements Exception {
 class RelaySocketGatewayTransport
     implements
         GatewayTransport,
+        GatewayUiResponseTransport,
         GatewayProviderControlTransport,
         GatewayHostTerminalTransport {
   static const _fileChunkBytes = 32 * 1024;
@@ -278,6 +279,17 @@ class RelaySocketGatewayTransport
       if (_hasText(cursor)) 'cursor': cursor,
     });
     return CcbAgentConversation.fromJson(body);
+  }
+
+  @override
+  Future<void> uiResponse({required String projectId, required String agent,
+    required int namespaceEpoch, required String expectedOmpSessionId,
+    required String expectedOmpGeneration, required int reqId, required String value}) async {
+    await _requestBody('ui_response', {
+      'project_id': projectId, 'agent': agent, 'namespace_epoch': namespaceEpoch,
+      'expected_omp_session_id': expectedOmpSessionId,
+      'expected_omp_generation': expectedOmpGeneration, 'req_id': reqId, 'value': value,
+    });
   }
 
   @override

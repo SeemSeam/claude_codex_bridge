@@ -46,23 +46,44 @@ Widget host(
 );
 
 void main() {
+  testWidgets('running tool-only turn does not claim missing answer or show execution placeholders', (tester) async {
+    final pending = entry('pending', [const NativeSessionBlock(
+      type: NativeSessionBlockType.toolCall, callId: 'call', name: 'read')]);
+    await tester.pumpWidget(host(turn([pending], status: NativeSessionStatus.running)));
+    expect(find.text('Running'), findsOneWidget);
+    expect(find.text('No assistant answer'), findsNothing);
+    expect(find.text('Tool execution unfinished'), findsNothing);
+    await tester.pumpWidget(host(turn([pending, entry('reply', [text('Live answer')])],
+      status: NativeSessionStatus.running)));
+    expect(find.text('Live answer'), findsOneWidget);
+    expect(find.text('No assistant answer'), findsNothing);
+  });
+  testWidgets('normal conversation omits raw tools and reasoning but keeps prose', (tester) async {
+    await tester.pumpWidget(host(turn([
+      entry('a', [text('First explanation'), const NativeSessionBlock(
+        type: NativeSessionBlockType.toolCall, intent: 'Inspect private tools',
+        input: {'path': 'private.txt'})]),
+      entry('b', [const NativeSessionBlock(type: NativeSessionBlockType.reasoning,
+        text: 'Private reasoning'), text('Final answer')]),
+    ])));
+    expect(find.text('First explanation\n\nFinal answer'), findsOneWidget);
+    expect(find.textContaining('Inspect private tools'), findsNothing);
+    expect(find.textContaining('private.txt'), findsNothing);
+    expect(find.text('Private reasoning'), findsNothing);
+    expect(find.text('Tool call'), findsNothing);
+  });
   testWidgets('all assistant prose stays visible across later assistant updates', (tester) async {
     final first = entry('a', [
       text('First explanation'),
       const NativeSessionBlock(type: NativeSessionBlockType.reasoning, text: 'detail'),
     ]);
     await tester.pumpWidget(host(turn([first])));
-    await tester.tap(find.text('Execution process'));
-    await tester.pump();
-    await tester.tap(find.text('Reasoning'));
-    await tester.pump();
     await tester.pumpWidget(host(turn([first, entry('b', [text('Later explanation')])])));
     expect(find.text('First explanation\n\nLater explanation'), findsOneWidget);
-    // Stable native keys retain both disclosure levels through a refresh.
-    expect(find.text('detail'), findsOneWidget);
+    expect(find.text('detail'), findsNothing);
   });
 
-  testWidgets('bounded latest answer and process stay readable beside original', (tester) async {
+  testWidgets('bounded latest answer stays readable beside original', (tester) async {
     final window = NativeSessionTurn(
       sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.completed,
       entries: [entry('a', [
@@ -79,12 +100,7 @@ void main() {
     expect(find.text('Tool execution unfinished'), findsNothing);
     expect(find.text(const NativeTurnLabels().latestWindow), findsOneWidget);
     expect(find.textContaining('previously loaded snapshot'), findsNothing);
-    await tester.tap(find.text('Execution process'));
-    await tester.pump();
-    await tester.tap(find.text('Tool call · read · c'));
-    await tester.pump();
-    expect(find.text('path: recent.txt'), findsOneWidget);
-    expect(find.text('"path: recent.txt"'), findsNothing);
+    expect(find.text('path: recent.txt'), findsNothing);
     await tester.pumpWidget(host(NativeSessionTurn(
       sessionId: 'session', turnId: 'user-entry', status: NativeSessionStatus.running,
       entries: [entry('b', [text('Newer explanation')])],
@@ -128,10 +144,9 @@ void main() {
     expect(value.entries.first.blocks.single.text, 'same text');
     expect(value.answerEntry?.id, 'c');
     expect(value.answerText, 'same text\n\nsame text\n\nsame text');
-    expect(value.processBlocks, isEmpty);
   });
 
-  test('process order and tool association survive final answer selection', () {
+  test('assistant prose and native tool outcome survive final answer selection', () {
     final value = turn([
       entry('user', [text('request')], role: NativeSessionRole.user),
       entry('thinking', [
@@ -160,15 +175,6 @@ void main() {
       ], stopReason: 'end_turn'),
     ]);
     expect(value.answerText, 'I will inspect\n\nFinal answer\n\nMore detail');
-    expect(value.processBlocks.map((item) => item.block.type), [
-      NativeSessionBlockType.reasoning,
-      NativeSessionBlockType.toolCall,
-      NativeSessionBlockType.toolResult,
-    ]);
-    expect(value.processBlocks.skip(1).map((item) => item.block.callId), [
-      'call-1',
-      'call-1',
-    ]);
     expect(value.hasPendingTools, isFalse);
     expect(value.effectiveStatus, NativeSessionStatus.completed);
   });
@@ -285,7 +291,7 @@ void main() {
   });
 
   testWidgets(
-    'host prose builder is used and reasoning is independently lazy',
+    'host prose builder is used without rendering reasoning',
     (tester) async {
       final built = <String>[];
       await tester.pumpWidget(
@@ -308,20 +314,12 @@ void main() {
       expect(built, ['Final prose']);
       expect(find.text('private visible thought'), findsNothing);
       expect(find.text('Reasoning'), findsNothing);
-      await tester.tap(find.text('Execution process'));
-      await tester.pump();
-      expect(find.text('Reasoning'), findsOneWidget);
-      expect(find.text('private visible thought'), findsNothing);
-      await tester.tap(find.text('Reasoning'));
-      await tester.pump();
-      expect(find.text('private visible thought'), findsOneWidget);
-      expect(find.byType(SelectableText), findsOneWidget);
       expect(find.text('Final prose'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'tool input and full long output expand separately with call ID',
+    'raw tool input and long output stay absent from normal chat',
     (tester) async {
       final output =
           '${List.filled(400, 'a long output line').join('\n')}\nEND';
@@ -348,28 +346,10 @@ void main() {
         ),
       );
       expect(find.byType(SelectableText), findsNothing);
-      await tester.tap(find.text('Execution process'));
-      await tester.pump();
-      expect(find.text('Tool call · read · call-42'), findsOneWidget);
-      expect(find.text('Tool result · call-42'), findsOneWidget);
-      expect(find.byType(SelectableText), findsNothing);
-      await tester.tap(find.text('Tool call · read · call-42'));
-      await tester.pump();
-      expect(
-        find.text(const JsonEncoder.withIndent('  ').convert({'path': 'file'})),
-        findsOneWidget,
-      );
+      expect(find.text('Done'), findsOneWidget);
+      expect(find.textContaining('call-42'), findsNothing);
+      expect(find.textContaining('"path"'), findsNothing);
       expect(find.text(output), findsNothing);
-      await tester.tap(find.text('Tool result · call-42'));
-      await tester.pump();
-      final content = tester.widgetList<SelectableText>(
-        find.byType(SelectableText),
-      );
-      expect(content.any((widget) => widget.data == output), isTrue);
-      expect(find.byType(Scrollbar), findsNWidgets(2));
-      await tester.tap(find.text('Execution process'));
-      await tester.pump();
-      expect(find.byType(SelectableText), findsNothing);
     },
   );
 
@@ -389,7 +369,6 @@ void main() {
       ),
     );
     expect(find.text('Status unknown'), findsOneWidget);
-    expect(find.text('Tool execution unfinished'), findsOneWidget);
     expect(find.text('No assistant answer'), findsOneWidget);
     expect(find.text('Completed'), findsNothing);
     for (final status in [
@@ -405,7 +384,7 @@ void main() {
     }
   });
 
-  testWidgets('hosts can localize neutral status and process strings', (
+  testWidgets('hosts can localize neutral status strings', (
     tester,
   ) async {
     await tester.pumpWidget(

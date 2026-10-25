@@ -35,7 +35,6 @@ import 'selected_agent_workspace_view.dart';
 const agentMessageMaxAttachments = 5;
 const agentMessageMaxAttachmentBytes = 25 * 1024 * 1024;
 const agentMessageMaxDownloadBytes = 128 * 1024 * 1024;
-const selectedAgentTabKeyBytes = [9];
 const selectedAgentEscapeKeyBytes = [27];
 const selectedAgentExpandScrollDuration = Duration(milliseconds: 220);
 
@@ -670,24 +669,12 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
     _refreshLatest(agent.name);
   }
 
-  Future<void> _sendDraftThenPaneKey(
-    CcbAgent agent, {
-    required List<int> bytes,
-    required String label,
-  }) async {
-    if (isOmpCollabAgent(agent)) {
-      _showSnack(
-        'Use Send for OMP Collab messages; terminal shortcuts remain in Open Terminal.',
-      );
-      return;
-    }
+  Future<void> _queueDraft(CcbAgent agent) async {
+    if (agent.provider != 'codex') return;
     final controller = _draftController(agent.name);
     final body = controller.text;
     final attachments = _draftAttachments(agent.name);
-    if (body.trim().isEmpty && attachments.isEmpty) {
-      await _sendPaneKey(agent, bytes: bytes, label: label);
-      return;
-    }
+    if (body.trim().isEmpty && attachments.isEmpty) return;
     if (!widget.sendEnabled || widget.view.namespaceEpoch == null) {
       _showSnack(widget.sendDisabledReason ?? 'Refresh target before sending');
       return;
@@ -700,7 +687,7 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
       repository: widget.repository,
       terminalTransport: widget.terminalTransport,
       usePaneInput: true,
-      paneSubmitBytes: bytes,
+      queueMessage: true,
       refreshView: widget.onRefreshView,
       onAccepted: () {
         controller.clear();
@@ -1393,6 +1380,12 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
         selectedAgent.name,
       ),
     );
+    final uiConversation = _chatController.remoteConversationFor(selectedAgent.name);
+    final uiSession = uiConversation?.ompSessionId;
+    final uiGeneration = uiConversation?.ompGeneration;
+    final uiEpoch = widget.view.namespaceEpoch;
+    final uiProject = widget.view.project.id;
+    final uiRepository = widget.repository;
     final draftFocusNode = _draftFocusNode(selectedAgent.name);
     _observeDraftFocusNode(selectedAgent.name, draftFocusNode);
     return Column(
@@ -1408,6 +1401,34 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
             repository: widget.repository,
             view: widget.view,
             model: model,
+            onUiResponse: (value) async {
+              final conversation = _chatController.remoteConversationFor(selectedAgent.name);
+              final session = uiSession;
+              final generation = uiGeneration;
+              final epoch = uiEpoch;
+              final request = model.pendingUiRequest;
+              final currentAgent = widget.agent;
+              if (currentAgent == null || widget.repository != uiRepository) throw StateError('Stale UI request');
+              final currentModel = selectedAgentWorkspaceModel(view: widget.view, agent: currentAgent, chatController: _chatController, isAwaitingAgentResponse: false);
+              final repository = uiRepository;
+              if (!widget.sendEnabled || widget.agent?.name != selectedAgent.name ||
+                  widget.view.project.id != uiProject || widget.view.namespaceEpoch != epoch ||
+                  conversation?.ompSessionId != session || conversation?.ompGeneration != generation ||
+                  request == null || currentModel.pendingUiRequest?.reqId != request.reqId ||
+                  !currentModel.uiRequestAvailable ||
+                  conversation?.projectId != widget.view.project.id || conversation?.namespaceEpoch != epoch ||
+                  session == null || generation == null || epoch == null ||
+                  selectedAgent.providerControl?.sessionId != null && selectedAgent.providerControl?.sessionId != session ||
+                  repository is! MobileCcbUiResponseRepository) {
+                throw StateError('Stale or disconnected UI request');
+              }
+              await (repository as MobileCcbUiResponseRepository).uiResponse(
+                projectId: widget.view.project.id, agent: selectedAgent.name, namespaceEpoch: epoch,
+                expectedOmpSessionId: session, expectedOmpGeneration: generation,
+                reqId: request.reqId, value: value,
+              );
+              if (mounted) await _loadConversation(selectedAgent.name);
+            },
             timelineController: _scrollController(selectedAgent.name),
             draftController: _draftController(selectedAgent.name),
             draftFocusNode: draftFocusNode,
@@ -1472,12 +1493,8 @@ class _SelectedAgentWorkspaceState extends State<SelectedAgentWorkspace>
             onSend: () {
               _sendMessage(selectedAgent);
             },
-            onSendTab: () {
-              _sendDraftThenPaneKey(
-                selectedAgent,
-                bytes: selectedAgentTabKeyBytes,
-                label: 'Tab',
-              );
+            onQueue: () {
+              _queueDraft(selectedAgent);
             },
             onSendEscape: () {
               _sendPaneKey(

@@ -108,14 +108,14 @@ void main() {
                 bubble.item.body.contains(marker),
           );
       expect(
-        reply.item.nativeTurn!.processBlocks.any(
-          (block) => block.block.type.name == 'toolCall',
+        reply.item.nativeTurn!.entries.expand((entry) => entry.blocks).any(
+          (block) => block.type.name == 'toolCall',
         ),
         isTrue,
       );
       expect(
-        reply.item.nativeTurn!.processBlocks.any(
-          (block) => block.block.type.name == 'toolResult',
+        reply.item.nativeTurn!.entries.expand((entry) => entry.blocks).any(
+          (block) => block.type.name == 'toolResult',
         ),
         isTrue,
       );
@@ -123,13 +123,10 @@ void main() {
       expect(reply.item.body, contains('CCB Mobile'));
       // ignore: avoid_print
       print(
-        'PAID_REAL_RESULT ${jsonEncode({'id': reply.item.id, 'session': reply.item.sessionId, 'status': reply.item.nativeTurn!.effectiveStatus.name, 'body': reply.item.body, 'observedRunningIds': seen.toList(), 'processBlocks': reply.item.nativeTurn!.processBlocks.length})}',
+        'PAID_REAL_RESULT ${jsonEncode({'id': reply.item.id, 'session': reply.item.sessionId, 'status': reply.item.nativeTurn!.effectiveStatus.name, 'body': reply.item.body, 'observedRunningIds': seen.toList()})}',
       );
-      await tester.ensureVisible(find.text('Execution process'));
-      await tester.tap(find.text('Execution process'));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.textContaining('Tool call'), findsWidgets);
-      expect(find.textContaining('Tool result'), findsWidgets);
+      expect(find.text('Execution process'), findsNothing);
+      expect(find.text('执行过程'), findsNothing);
       await tester.runAsync(() async {
         final client = HttpClient();
         final request = await client.getUrl(

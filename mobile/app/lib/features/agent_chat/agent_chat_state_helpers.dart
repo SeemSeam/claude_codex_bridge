@@ -25,7 +25,7 @@ CcbConversationDeliveryState paneFailureDeliveryState(Object error) {
 
 String conversationSignature(CcbAgentConversation? conversation) {
   final items = conversation?.items;
-  if (items == null || items.isEmpty) {
+  if (items == null || (items.isEmpty && conversation?.ompRuntime == null)) {
     return '';
   }
   return [
@@ -33,6 +33,8 @@ String conversationSignature(CcbAgentConversation? conversation) {
     conversation?.ompGeneration ?? '',
     conversation?.namespaceEpoch.toString() ?? '',
     conversation?.branchId ?? '',
+    if (conversation?.ompRuntime != null)
+      jsonEncode(conversation!.ompRuntime!.stableSnapshot()),
     for (final item in items)
       [
         item.id,

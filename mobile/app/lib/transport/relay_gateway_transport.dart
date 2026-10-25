@@ -130,6 +130,7 @@ class _RelayV2AeadEnvelopeCodec implements _RelayGatewayEnvelopeCodec {
 class RelayGatewayTransport
     implements
         GatewayTransport,
+        GatewayUiResponseTransport,
         GatewayProviderControlTransport,
         GatewayHostTerminalTransport {
   RelayGatewayTransport({
@@ -363,6 +364,21 @@ class RelayGatewayTransport
         );
       },
     );
+  }
+
+  @override
+  Future<void> uiResponse({required String projectId, required String agent,
+    required int namespaceEpoch, required String expectedOmpSessionId,
+    required String expectedOmpGeneration, required int reqId, required String value}) {
+    final inner = _inner;
+    if (inner is! GatewayUiResponseTransport) throw UnsupportedError('UI responses are unavailable');
+    return _record('ui_response', {
+      'project_id': projectId, 'agent': agent, 'namespace_epoch': namespaceEpoch,
+      'expected_omp_session_id': expectedOmpSessionId, 'expected_omp_generation': expectedOmpGeneration,
+      'req_id': reqId, 'value': value,
+    }, () => (inner as GatewayUiResponseTransport).uiResponse(projectId: projectId, agent: agent,
+      namespaceEpoch: namespaceEpoch, expectedOmpSessionId: expectedOmpSessionId,
+      expectedOmpGeneration: expectedOmpGeneration, reqId: reqId, value: value));
   }
 
   @override

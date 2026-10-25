@@ -34,6 +34,99 @@ BRIDGE = r'''
   let modelControlBusy = false;
   const modelAttempts = new Map<string, { signature: string, result: Promise<any> }>();
   let historyGeneration = 0;
+  // Status is observed inside the native process, never inferred from a guest clock.
+  let statusSession = "";
+  let statusStartedAt: string | null = null;
+  let statusStartedTick: number | null = null;
+  let statusStep: string | null = null;
+  let todoResolved: { leaf: string | null, value: any } | null = null;
+  let todoPending: { leaf: string | null, cursor: string | null, seen: Set<string> } | null = null;
+  const resetNativeStatus = () => {
+    statusSession = ""; statusStartedAt = null; statusStartedTick = null; statusStep = null;
+    todoResolved = null; todoPending = null;
+  };
+  const normalizeStatusIntent = (value: unknown) => typeof value === "string"
+    ? value.trim().replace(/\s*\.+$/, "").trim().slice(0, 512) || null : null;
+  const summarizeTodos = (phases: any) => {
+    if (!Array.isArray(phases) || !phases.every((phase: any) => phase && typeof phase.name === "string" &&
+        Array.isArray(phase.tasks) && phase.tasks.every((task: any) => task && typeof task.content === "string" &&
+          ["pending", "in_progress", "completed", "abandoned", "blocked"].includes(task.status)))) return null;
+    const value: any = { available: true, done: 0, total: 0, in_progress: 0, blocked: 0, items: [], truncated: false };
+    for (const phase of phases) for (const task of phase.tasks) {
+      value.total++;
+      if (["completed", "abandoned"].includes(task.status)) value.done++;
+      if (task.status === "in_progress") value.in_progress++;
+      if (task.status === "blocked") value.blocked++;
+      if (value.items.length < 16 || task.status === "in_progress") {
+        const item = { content: task.content.slice(0, 256), status: task.status,
+          phase: phase.name.slice(0, 128), ...(typeof task.blocker === "string" ? { blocker: task.blocker.slice(0, 256) } : {}) };
+        if (task.status === "in_progress") value.items.unshift(item); else value.items.push(item);
+        if (value.items.length > 16) { value.items.pop(); value.truncated = true; }
+      } else value.truncated = true;
+      if (task.content.length > 256 || phase.name.length > 128 || task.blocker?.length > 256) value.truncated = true;
+    }
+    while (Buffer.byteLength(JSON.stringify(value)) > 6144 && value.items.length) { value.items.pop(); value.truncated = true; }
+    return value;
+  };
+  const nativeTodos = (ctx: any) => {
+    const manager = ctx.sessionManager;
+    if (typeof manager?.getEntry !== "function" || typeof manager?.getLeafId !== "function") return { available: false };
+    const leaf = manager.getLeafId() ?? null;
+    if (todoResolved?.leaf === leaf) return todoResolved.value;
+    if (!todoPending) todoPending = { leaf, cursor: leaf, seen: new Set() };
+    const pending = todoPending;
+    for (let work = 0; work < 256; work++) {
+      let value: any = null;
+      if (todoResolved && pending.cursor === todoResolved.leaf) value = todoResolved.value;
+      else if (pending.cursor === null) value = summarizeTodos([]);
+      else {
+        if (pending.seen.has(pending.cursor)) { todoPending = null; return { available: false }; }
+        pending.seen.add(pending.cursor);
+        const entry = manager.getEntry(pending.cursor);
+        if (!entry) { todoPending = null; return { available: false }; }
+        if (entry.type === "custom" && entry.customType === "user_todo_edit") value = summarizeTodos(entry.data?.phases);
+        const message = entry.type === "message" ? entry.message : null;
+        if (message?.role === "toolResult" && message.toolName === "todo" && !message.isError && message.details?.op !== "view")
+          value = summarizeTodos(message.details?.phases);
+        pending.cursor = entry.parentId ?? null;
+      }
+      if (value) {
+        todoResolved = { leaf: pending.leaf, value }; todoPending = null;
+        return pending.leaf === leaf ? value : { available: false };
+      }
+    }
+    return { available: false };
+  };
+  const nativeStatus = (ctx: any, sessionId: string) => {
+    if (statusSession !== sessionId) { resetNativeStatus(); statusSession = sessionId; }
+    const streaming = !ctx.isIdle();
+    return { available: true, source: "native_events", session_id: sessionId, observed_at: new Date().toISOString(),
+      is_streaming: streaming, started_at: streaming ? statusStartedAt : null,
+      elapsed_ms: streaming && statusStartedTick !== null ? Math.max(0, Math.floor(performance.now() - statusStartedTick)) : null,
+      step: streaming ? statusStep : null, todos: nativeTodos(ctx) };
+  };
+  pi.on("agent_start", async (_event: any, ctx: any) => {
+    editorContext = ctx; statusSession = String(ctx.sessionManager?.getSessionId?.() || "");
+    statusStartedAt = new Date().toISOString(); statusStartedTick = performance.now(); statusStep = null;
+  });
+  pi.on("agent_end", async (_event: any, ctx: any) => {
+    editorContext = ctx; statusStartedAt = null; statusStartedTick = null; statusStep = null;
+  });
+  pi.on("tool_execution_start", async (event: any, ctx: any) => {
+    editorContext = ctx;
+    const intent = normalizeStatusIntent(event.intent);
+    if (intent) statusStep = intent;
+  });
+  pi.on("message_update", async (event: any, ctx: any) => {
+    editorContext = ctx;
+    const content = event.message?.content;
+    if (!Array.isArray(content)) return;
+    for (let index = content.length - 1; index >= 0; index--) {
+      const block = content[index];
+      const intent = block?.type === "toolCall" ? normalizeStatusIntent(block.arguments?.i) : null;
+      if (intent) { statusStep = intent; break; }
+    }
+  });
   // One chunked record, never a session replica. Records above this retained
   // byte budget remain readable but are serialized transiently for each page.
   let historySerialized: { session: string, generation: number, entry: any, bytes: Buffer } | null = null;
@@ -338,6 +431,9 @@ BRIDGE = r'''
       return { ...base, state: "unknown", reason: "editor_binding_unavailable" };
     }
     if (["ancestry_page", "history_page"].includes(request.operation)) return historyPage(request, ctx, base);
+    if (request.operation === "inspect") return { ...base,
+      state: ctx.isIdle() ? (ctx.ui.getEditorText() === "" ? "empty" : "nonempty") : "unknown",
+      ...(!ctx.isIdle() ? { reason: "provider_busy" } : {}), status_bar: nativeStatus(ctx, sessionId) };
     if (request.operation === "models") return { ...base, ...modelSnapshot(ctx) };
     if (request.operation === "set_model") {
       const current = modelSnapshot(ctx);
@@ -399,6 +495,7 @@ BRIDGE = r'''
   pi.on("session_start", async (_event: any, ctx: any) => {
     historyGeneration++;
     historySerialized = null;
+    resetNativeStatus();
     editorContext = ctx;
     if (!editorPath || editorServer) return;
     // A killed process leaves its socket behind. Only remove an unchanged,
@@ -453,6 +550,6 @@ BRIDGE = r'''
     editorServer = server;
   });
   for (const event of ["session_switch", "session_branch", "session_tree"] as const)
-    pi.on(event, async (_event: any, ctx: any) => { historyGeneration++; historySerialized = null; editorContext = ctx; });
-  pi.on("session_shutdown", async () => { historyGeneration++; historySerialized = null; editorContext = null; editorServer?.close(); });
+    pi.on(event, async (_event: any, ctx: any) => { historyGeneration++; historySerialized = null; resetNativeStatus(); editorContext = ctx; });
+  pi.on("session_shutdown", async () => { historyGeneration++; historySerialized = null; resetNativeStatus(); editorContext = null; editorServer?.close(); });
 '''

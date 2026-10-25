@@ -409,7 +409,7 @@ class CcbMobileLocalizations {
 
   String get attachFile => isChinese ? '添加附件' : 'Attach file';
 
-  String get sendTab => isChinese ? '发送 Tab' : 'Send Tab';
+  String get queueMessage => isChinese ? '排队' : 'Queue';
 
   String get sendEsc => isChinese ? '发送 Esc' : 'Send Esc';
 

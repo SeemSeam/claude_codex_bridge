@@ -7,8 +7,39 @@ import 'package:ccb_mobile/features/agent_chat/conversation_bubble.dart';
 import 'package:ccb_mobile/features/agent_chat/agent_chat_state_helpers.dart';
 import 'package:ccb_mobile/features/agent_chat/conversation_item_presentation.dart';
 import 'package:ccb_mobile/models/ccb_conversation_item.dart';
+import 'package:ccb_mobile/models/omp_runtime.dart';
 
 void main() {
+  testWidgets('current work bubble exposes native clock step and active todo even when body is folded', (tester) async {
+    const runtime = OmpRuntime(connected: true, ready: true, observedAt: null,
+      statusBar: OmpStatusBar(available: true, source: 'native_events', sessionId: 's',
+        isStreaming: true, elapsedMs: 8000, step: 'Verify visible work',
+        todos: OmpTodos(available: true, done: 1, total: 3, inProgress: 1,
+          items: [OmpTodoItem(content: 'Confirm current Todo',status: 'in_progress',phase: 'Check')])));
+    Future<void> show(bool working) => tester.pumpWidget(MaterialApp(home: Scaffold(body: ConversationBubble(
+      item: const CcbConversationItem(id:'live',agentName:'demo',kind:CcbConversationItemKind.agentReply,
+        title:'Agent reply',body:'Current prose',source:'provider_native/omp'),
+      expanded:false,isWorking:working,ompRuntime:runtime,onToggleExpanded:(_) {},
+    ))));
+    await show(true);
+    final bubble = find.byKey(const ValueKey('conversation-item-live'));
+    expect(find.descendant(of:bubble, matching:find.text('OMP · Working · 0:08')), findsOneWidget);
+    expect(find.descendant(of:bubble, matching:find.text('Todo 1/3 · Confirm current Todo')), findsOneWidget);
+    expect(find.descendant(of:bubble, matching:find.text('Step: Verify visible work')), findsOneWidget);
+    await show(false);
+    expect(find.byKey(const ValueKey('omp-runtime-panel')), findsNothing);
+  });
+  testWidgets('OMP working bubbles never derive run time from historical message timestamps', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ConversationBubble(
+      item: CcbConversationItem(id: 'omp-running', agentName: 'demo',
+        kind: CcbConversationItemKind.agentReply, title: 'Agent reply', body: 'Current answer',
+        source: 'provider_native/omp', startedAt: DateTime.utc(2001), sentAt: DateTime.utc(2000)),
+      expanded: true, isWorking: true, onToggleExpanded: (_) {},
+    ))));
+    expect(tester.widget<Text>(find.byKey(const ValueKey('conversation-working-status-text'))).data,
+      'Working');
+    expect(find.text('Current answer'), findsOneWidget);
+  });
   test('preview text strips common markdown markers', () {
     final preview = conversationPreviewText('''
 # Heading

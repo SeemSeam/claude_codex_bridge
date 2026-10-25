@@ -36,6 +36,7 @@ RELAY_UNARY_OPERATIONS = frozenset({
     'terminal_history',
     'agent_conversation',
     'submit_agent_message',
+    'ui_response',
     'lifecycle',
     'open_terminal',
     'open_host_terminal',

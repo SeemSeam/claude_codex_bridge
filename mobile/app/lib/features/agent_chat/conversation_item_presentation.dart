@@ -7,6 +7,7 @@ import '../../native_session/native_session.dart';
 import '../../platform/external_url_opener.dart';
 import 'agent_chat_state_helpers.dart';
 import 'content_text_styles.dart';
+import 'agent_execution_status.dart';
 
 class ConversationPreview extends StatelessWidget {
   const ConversationPreview({required this.item, super.key});
@@ -81,7 +82,6 @@ class ConversationBody extends StatelessWidget {
   NativeTurnLabels _readerLabels(BuildContext context) =>
       CcbMobileLocalizations.of(context).isChinese
           ? const NativeTurnLabels(
-            process: '执行过程',
             reasoning: '思考',
             toolCall: '工具调用',
             toolResult: '工具结果',
@@ -90,7 +90,6 @@ class ConversationBody extends StatelessWidget {
             failed: '失败',
             aborted: '已中止',
             unknown: '状态未知',
-            pendingTools: '工具执行尚未完成',
             noAnswer: '本轮尚无正文回复',
             message: '中间回复',
             readOriginal: '查看完整内容',
@@ -445,12 +444,7 @@ class OmpConversationErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chinese = CcbMobileLocalizations.of(context).isChinese;
-    final hostUnavailable =
-        error.contains('OMP Collab snapshot not ready') ||
-        error.contains('OMP Collab snapshot is not ready') ||
-        error.contains('OMP Collab is unavailable') ||
-        error.contains('host_disconnected') ||
-        error.contains('host_not_ready');
+    final hostUnavailable = isOmpHostUnavailable(error);
     final explanation =
         hostUnavailable
             ? (chinese

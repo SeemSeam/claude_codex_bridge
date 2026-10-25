@@ -115,9 +115,10 @@ class OmpCollabClient:
         except OmpCollabError:
             raise
         except (OSError, ValueError, KeyError, TypeError):
+            unknown = handed_off and operation in {"submit", "set_model", "ui_response"}
             raise OmpCollabError(
-                "OMP delivery unknown; do not retry" if handed_off and operation in {"submit", "set_model"} else "OMP Collab disconnected",
-                502 if handed_off and operation in {"submit", "set_model"} else 503,
+                "OMP delivery unknown; do not retry" if unknown else "OMP Collab disconnected",
+                502 if unknown else 503,
             ) from None
         finally:
             lock.release()
@@ -145,6 +146,16 @@ class OmpCollabClient:
         if not isinstance(expected_session_id, str) or not expected_session_id or expected_generation is None:
             raise OmpCollabError("Refresh OMP conversation before submitting", 409)
         return self._request(project_root, agent, "submit", body=body, idempotency_key=idempotency_key,
+                             expected_session_id=expected_session_id, expected_generation=expected_generation)
+
+    def ui_response(self, project_root: Path, agent: str, req_id: int, value: str | None, *,
+                    expected_session_id: str | None = None, expected_generation: object = None) -> dict:
+        if (not isinstance(req_id, int) or isinstance(req_id, bool) or not 0 <= req_id <= 9007199254740991
+                or (value is not None and (not isinstance(value, str) or len(value) > 512))
+                or not isinstance(expected_session_id, str) or not expected_session_id
+                or expected_generation is None):
+            raise OmpCollabError("Invalid OMP UI response or missing conversation fence", 409)
+        return self._request(project_root, agent, "ui_response", req_id=req_id, value=value,
                              expected_session_id=expected_session_id, expected_generation=expected_generation)
 
     def get_models(self, project_root: Path, agent: str) -> dict:

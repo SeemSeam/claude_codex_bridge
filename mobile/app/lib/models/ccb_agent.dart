@@ -1,3 +1,4 @@
+import 'omp_runtime.dart';
 import 'ccb_provider_control.dart';
 
 class CcbAgent {
@@ -17,6 +18,7 @@ class CcbAgent {
     this.activityReason,
     this.lastProgressAt,
     this.providerControl,
+    this.ompRuntime,
   });
 
   final String name;
@@ -34,6 +36,7 @@ class CcbAgent {
   final String? activityReason;
   final String? lastProgressAt;
   final CcbProviderControl? providerControl;
+  final OmpRuntime? ompRuntime;
 
   CcbAgent copyWith({
     String? activityState,
@@ -59,6 +62,7 @@ class CcbAgent {
       activityReason: activityReason ?? this.activityReason,
       lastProgressAt: lastProgressAt ?? this.lastProgressAt,
       providerControl: providerControl,
+      ompRuntime: ompRuntime,
     );
   }
 
@@ -79,6 +83,10 @@ class CcbAgent {
       activitySource: _optionalText(json['activity_source']),
       activityReason: _optionalText(json['activity_reason']),
       lastProgressAt: _optionalText(json['last_progress_at']),
+      ompRuntime: json['omp_runtime'] is Map
+          ? OmpRuntime.fromJson({for (final entry in (json['omp_runtime'] as Map).entries) entry.key.toString(): entry.value},
+              sessionId: json['provider_control'] is Map ? (json['provider_control'] as Map)['session_id'] as String? : null)
+          : null,
       providerControl:
           json['provider_control'] is Map
               ? CcbProviderControl.fromJson({

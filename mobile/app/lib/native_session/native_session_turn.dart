@@ -14,6 +14,7 @@ class NativeSessionBlock {
     this.name,
     this.input,
     this.isError,
+    this.intent,
   });
 
   final NativeSessionBlockType type;
@@ -22,6 +23,7 @@ class NativeSessionBlock {
   final String? name;
   final Object? input;
   final bool? isError;
+  final String? intent;
 
   factory NativeSessionBlock.fromJson(Map<String, Object?> json) {
     final type = switch (json['type']) {
@@ -38,6 +40,7 @@ class NativeSessionBlock {
       name: json['name'] as String?,
       input: json['input'],
       isError: json['is_error'] as bool?,
+      intent: json['intent'] as String?,
     );
   }
 
@@ -52,6 +55,7 @@ class NativeSessionBlock {
     if (name != null) 'name': name,
     if (input != null) 'input': input,
     if (isError != null) 'is_error': isError,
+    if (intent != null) 'intent': intent,
   };
 }
 
@@ -101,18 +105,6 @@ class NativeSessionEntry {
   };
 }
 
-/// A block's native identity and position, including its tool association.
-class NativeSessionProcessBlock {
-  const NativeSessionProcessBlock({
-    required this.entryId,
-    required this.blockIndex,
-    required this.block,
-  });
-
-  final String entryId;
-  final int blockIndex;
-  final NativeSessionBlock block;
-}
 
 class NativeSessionTurn {
   NativeSessionTurn({
@@ -201,21 +193,6 @@ class NativeSessionTurn {
             block.text!,
   ].join('\n\n');
 
-  List<NativeSessionProcessBlock> get processBlocks {
-    // Assistant prose is always readable, independently of process disclosure.
-    return [
-      for (final entry in entries)
-        if (entry.role != NativeSessionRole.user)
-          for (var index = 0; index < entry.blocks.length; index++)
-            if (!(entry.role == NativeSessionRole.assistant &&
-                entry.blocks[index].type == NativeSessionBlockType.text))
-              NativeSessionProcessBlock(
-                entryId: entry.id,
-                blockIndex: index,
-                block: entry.blocks[index],
-              ),
-    ];
-  }
 
   /// Match results only to preceding calls with the same native call ID.
   /// Anonymous calls cannot be guessed complete from unrelated tool output.

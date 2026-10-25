@@ -27,6 +27,7 @@ export 'models/ccb_provider_control.dart';
 export 'models/ccb_scope.dart';
 export 'models/ccb_terminal_target.dart';
 export 'models/ccb_window.dart';
+export 'models/omp_runtime.dart';
 export 'models/readable_terminal_history.dart';
 export 'notifications/task_completion_notifications.dart';
 export 'notifications/route_aware_task_completion_notifications.dart';

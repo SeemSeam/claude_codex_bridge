@@ -339,6 +339,7 @@ class AgentChatController {
       ompGeneration: previous.ompGeneration,
       nativeContent: previous.nativeContent,
       branchId: previous.branchId,
+      ompRuntime: previous.ompRuntime,
     );
     final next = _conversationWithLocalTimingFallback(agentName, merged);
     final nextSignature = conversationSignature(next);
@@ -384,6 +385,7 @@ class AgentChatController {
       ompGeneration: next.ompGeneration,
       branchId: next.branchId,
       nativeContent: next.nativeContent,
+      ompRuntime: next.ompRuntime,
     );
   }
 
@@ -506,6 +508,7 @@ class AgentChatController {
       ompGeneration: conversation.ompGeneration,
       nativeContent: conversation.nativeContent,
       branchId: conversation.branchId,
+      ompRuntime: conversation.ompRuntime,
     );
   }
 
