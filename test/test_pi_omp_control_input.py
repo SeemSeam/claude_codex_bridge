@@ -70,17 +70,43 @@ async function start(reqId: string) {
   await emit("before_agent_start", { prompt, images: [], systemPrompt: [] });
   await emit("agent_start");
 }
+const parentContext = context;
+const subagentContext = {
+  sessionManager: {
+    getSessionId: () => "subagent-session",
+    getSessionFile: () => "/tmp/subagent-session.jsonl",
+  },
+};
 
-await emit("session_start");
+await emit("session_start", {}, parentContext);
 await start("job_model");
 await emit("input", { text: "/model", source: "interactive" });
 if (rows().some((row) => row.type === "request_superseded" && row.req_id === "job_model")) {
   throw new Error("/model superseded the active request");
 }
-if (process.env.CCB_TEST_PROVIDER === "omp") await emit("agent_end", { messages: [], willContinue: false });
-else await emit("agent_settled");
+if (process.env.CCB_TEST_PROVIDER === "omp") await emit("agent_end", { messages: [], willContinue: false }, parentContext);
+else await emit("agent_settled", {}, parentContext);
 const settled = rows().findLast((row) => row.type === "agent_settled");
 if (settled?.req_id !== "job_model") throw new Error("/model lost request attribution");
+
+await start("job_subagent");
+await emit("before_agent_start", { prompt: "subagent delegated review", images: [], systemPrompt: [] }, subagentContext);
+await emit("agent_start", {}, subagentContext);
+await emit("agent_end", { messages: [{ role: "assistant", content: "subagent done" }] }, subagentContext);
+if (process.env.CCB_TEST_PROVIDER === "omp") await emit("agent_end", { messages: [{ role: "assistant", content: "parent done" }], willContinue: false }, parentContext);
+else {
+  await emit("agent_end", { messages: [{ role: "assistant", content: "parent done" }] }, parentContext);
+  await emit("agent_settled", {}, parentContext);
+}
+const subRows = rows().filter((row) => row.type === "request_superseded" && row.req_id === "job_subagent");
+if (subRows.length > 0) throw new Error("subagent turn superseded the parent request");
+const subSettled = rows().findLast((row) => row.type === "agent_settled");
+if (subSettled?.req_id !== "job_subagent") throw new Error("parent request lost attribution after subagent turns");
+if (process.env.CCB_TEST_PROVIDER === "omp") {
+  // OMP folds settle into agent_end; verify the parent agent_end text directly.
+  const parentEnd = rows().findLast((row) => row.type === "agent_end" && row.req_id === "job_subagent");
+  if (String(parentEnd?.assistant?.text || "") !== "parent done") throw new Error("subagent output leaked into the parent reply");
+} else if (String(subSettled?.assistant?.text || "") !== "parent done") throw new Error("subagent output leaked into the parent reply");
 
 await start("job_human");
 await emit("input", { text: "human follow-up", source: "interactive" });

@@ -377,7 +377,8 @@ def _omp_completion_extension_source() -> str:
         .replace("ccbPiCompletion", "ccbOmpCompletion")
         .replace("pi_session_", "omp_session_")
     )
-    old_agent_end = '''  pi.on("agent_end", async (event: any) => {
+    old_agent_end = '''  pi.on("agent_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     if (Array.isArray(event?.messages)) {
       for (let index = event.messages.length - 1; index >= 0; index -= 1) {
         const candidate = normalizeAssistant(event.messages[index]);
@@ -390,12 +391,14 @@ def _omp_completion_extension_source() -> str:
     appendEvent("agent_end", { assistant: latestAssistant });
   });
 
-  pi.on("agent_settled", async () => {
+  pi.on("agent_settled", async (_event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     appendEvent("agent_settled", { assistant: latestAssistant });
     activeReqId = "";
     latestAssistant = null;
   });'''
-    new_agent_end = '''  pi.on("agent_end", async (event: any) => {
+    new_agent_end = '''  pi.on("agent_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     if (Array.isArray(event?.messages)) {
       for (let index = event.messages.length - 1; index >= 0; index -= 1) {
         const candidate = normalizeAssistant(event.messages[index]);

@@ -354,6 +354,7 @@ const actor = process.env.CCB_CALLER_ACTOR || "";
 const launchSessionId = process.env.CCB_SESSION_ID || "";
 const runtimeInstanceId = randomUUID();
 const consumedDispatches = new Set<string>();
+let mainSessionId = "";
 let activeReqId = "";
 let latestAssistant: Record<string, unknown> | null = null;
 let activePromptSha256 = "";
@@ -534,11 +535,22 @@ function bindDispatchedInput(prompt: string, source: string): boolean {
 export default function ccbPiCompletion(pi: any): void {
   pi.on("session_start", async (_event: any, ctx: any) => {
     const manager = ctx?.sessionManager;
+    const sessionId = String(manager?.getSessionId?.() || "");
+    // The first session in this managed launch is the parent. In-process
+    // subagents share process.env, so their extension instances write here
+    // too; only the parent's own session may own or supersede CCB requests.
+    if (!mainSessionId) mainSessionId = sessionId;
     appendEvent("extension_ready", {
-      pi_session_id: String(manager?.getSessionId?.() || ""),
+      pi_session_id: sessionId,
       pi_session_path: String(manager?.getSessionFile?.() || ""),
     });
   });
+
+  const isParentSession = (ctx: any): boolean => {
+    if (!mainSessionId) return true;
+    const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
+    return !sessionId || sessionId === mainSessionId;
+  };
 
   const observeNativeSession = (ctx: any) => {
     const manager = ctx?.sessionManager;
@@ -547,8 +559,11 @@ export default function ccbPiCompletion(pi: any): void {
       pi_session_path: String(manager?.getSessionFile?.() || ""),
     });
   };
-  pi.on("session_switch", async (_event: any, ctx: any) => {
+  pi.on("session_switch", async (event: any, ctx: any) => {
     observeNativeSession(ctx);
+    if (!isParentSession(ctx)) return;
+    const reason = String(event?.reason || "unknown");
+    supersedeActiveRequest("session_switch:" + reason, "session_switch");
   });
   pi.on("input", async (event: any, ctx: any) => {
     observeNativeSession(ctx);
@@ -560,7 +575,13 @@ export default function ccbPiCompletion(pi: any): void {
     return { action: "continue" };
   });
 
-  pi.on("before_agent_start", async (event: any) => {
+  pi.on("before_agent_start", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) {
+      // A subagent turn must not detach the parent's active request; its
+      // assistant output belongs to the task tool result, not a CCB reply.
+      appendEvent("subagent_turn", { prompt_sha256: promptHash(String(event?.prompt || "")) });
+      return;
+    }
     const prompt = String(event?.prompt || "");
     if (activeReqId) {
       const anchorReqId = requestAnchor(prompt);
@@ -595,17 +616,14 @@ export default function ccbPiCompletion(pi: any): void {
     }
   });
 
-  pi.on("session_switch", async (event: any) => {
-    const reason = String(event?.reason || "unknown");
-    supersedeActiveRequest("session_switch:" + reason, "session_switch");
-  });
-
-  pi.on("agent_start", async () => {
+  pi.on("agent_start", async (_event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     if (activeReqId) activeAgentStarted = true;
     appendEvent("agent_start");
   });
 
-  pi.on("message_end", async (event: any) => {
+  pi.on("message_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     rememberAssistant(event?.message);
     if (activeReqId && latestAssistant) {
       appendEvent("assistant_message", { assistant: latestAssistant });
@@ -613,6 +631,7 @@ export default function ccbPiCompletion(pi: any): void {
   });
 
   pi.on("turn_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     observeNativeSession(ctx);
     rememberAssistant(event?.message);
     appendEvent("turn_end", {
@@ -624,14 +643,16 @@ export default function ccbPiCompletion(pi: any): void {
     });
   });
 
-  pi.on("tool_execution_start", async (event: any) => {
+  pi.on("tool_execution_start", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     appendEvent("tool_start", {
       tool_call_id: String(event?.toolCallId || ""),
       tool_name: String(event?.toolName || ""),
     });
   });
 
-  pi.on("tool_execution_end", async (event: any) => {
+  pi.on("tool_execution_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     appendEvent("tool_end", {
       tool_call_id: String(event?.toolCallId || ""),
       tool_name: String(event?.toolName || ""),
@@ -639,7 +660,8 @@ export default function ccbPiCompletion(pi: any): void {
     });
   });
 
-  pi.on("agent_end", async (event: any) => {
+  pi.on("agent_end", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     if (Array.isArray(event?.messages)) {
       for (let index = event.messages.length - 1; index >= 0; index -= 1) {
         const candidate = normalizeAssistant(event.messages[index]);
@@ -652,7 +674,8 @@ export default function ccbPiCompletion(pi: any): void {
     appendEvent("agent_end", { assistant: latestAssistant });
   });
 
-  pi.on("agent_settled", async () => {
+  pi.on("agent_settled", async (_event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return;
     appendEvent("agent_settled", { assistant: latestAssistant });
     activeReqId = "";
     latestAssistant = null;
