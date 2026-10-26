@@ -1197,7 +1197,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Open site'));
+    await tester.tap(find.text('Open site', findRichText: true));
     await tester.pumpAndSettle();
 
     expect(

@@ -25,15 +25,17 @@ void main() {
     );
 
     final colorScheme = Theme.of(capturedContext).colorScheme;
-    final styleSheet = ccbMarkdownStyleSheet(capturedContext);
+    final markdownTheme = ccbMarkdownTheme(capturedContext);
+    final styleSheet = markdownTheme.styleSheet;
 
-    expect(styleSheet.h1?.color, colorScheme.primary);
-    expect(styleSheet.h2?.color, colorScheme.secondary);
-    expect(styleSheet.h3?.color, colorScheme.tertiary);
-    expect(styleSheet.a?.color, colorScheme.secondary);
-    expect(styleSheet.code?.color, colorScheme.tertiary);
-    expect(styleSheet.codeblockDecoration, isA<BoxDecoration>());
-    expect(styleSheet.blockquoteDecoration, isA<BoxDecoration>());
+    expect(markdownTheme.h1?.color, colorScheme.primary);
+    expect(markdownTheme.h2?.color, colorScheme.secondary);
+    expect(markdownTheme.h3?.color, colorScheme.tertiary);
+    expect(styleSheet.link?.color, colorScheme.secondary);
+    expect(markdownTheme.inlineCode.color, colorScheme.tertiary);
+    expect(styleSheet.codeBlock?.backgroundColor, isNotNull);
+    expect(styleSheet.blockQuote?.barColor, colorScheme.secondary);
+    expect(styleSheet.blockQuote?.backgroundColor, isNotNull);
   });
 
   test('terminal history style varies by block type', () {

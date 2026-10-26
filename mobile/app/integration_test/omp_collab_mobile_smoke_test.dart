@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:ccb_mobile/features/agent_chat/content_text_styles.dart';
 import 'package:ccb_mobile/features/agent_chat/conversation_bubble.dart';
 import 'package:ccb_mobile/features/agent_chat/conversation_timeline.dart';
 import 'package:ccb_mobile/features/agent_chat/selected_agent_workspace.dart';
@@ -342,9 +342,9 @@ void main() {
       final expandedBeforeReader = tester.widget<ConversationBubble>(bubble).expanded;
       await _tap(tester, read);
       final reader = find.byKey(const ValueKey('native-original-reader'));
-      final markdown = find.descendant(of: reader, matching: find.byType(MarkdownBody));
+      final markdown = find.descendant(of: reader, matching: find.byType(CcbMarkdown));
       String visibleOriginal() => [
-        ...tester.widgetList<MarkdownBody>(markdown).map((body) => body.data),
+        ...tester.widgetList<CcbMarkdown>(markdown).map((body) => body.data),
         ...tester.widgetList<SelectableText>(find.descendant(of: reader,
           matching: find.byType(SelectableText))).map((text) => text.data ?? ''),
       ].join();
@@ -390,7 +390,7 @@ void main() {
       await _tap(tester, find.descendant(of: readableBubble,
         matching: find.byKey(const ValueKey('native-read-original'))));
       await _until(tester, () => find.descendant(of: reader,
-        matching: find.byType(MarkdownBody)).evaluate().isNotEmpty);
+        matching: find.byType(CcbMarkdown)).evaluate().isNotEmpty);
       expect(visibleOriginal(), contains('## Fixture readable answer'));
       expect(visibleOriginal(), isNot(contains('Fixture readable reasoning')));
       expect(visibleOriginal(), isNot(contains('fixture-readable.txt')));

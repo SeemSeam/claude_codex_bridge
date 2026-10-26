@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../models/ccb_content_item.dart';
 import 'clipboard_feedback.dart';
@@ -79,16 +78,14 @@ class ContentItemView extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: MarkdownBody(
+            child: CcbMarkdown(
               key: ValueKey('markdown-body-${item.id}'),
               data: item.text,
-              selectable: true,
-              styleSheet: ccbMarkdownStyleSheet(context),
-              onTapLink: (text, href, title) {
+              onLinkTap: (href, label) {
                 if (isOpenableExternalUrl(href)) {
-                  confirmAndOpenExternalUrl(context, href!);
+                  confirmAndOpenExternalUrl(context, href);
                 } else {
-                  showBlockedConversationLink(context, href ?? text);
+                  showBlockedConversationLink(context, href);
                 }
               },
             ),

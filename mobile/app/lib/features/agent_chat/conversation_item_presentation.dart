@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../l10n/ccb_mobile_localizations.dart';
 import '../../models/ccb_conversation_item.dart';
@@ -108,21 +107,19 @@ class ConversationBody extends StatelessWidget {
 
   Widget _buildText(BuildContext context, String text) {
     if (shouldRenderConversationMarkdown(item)) {
-      return MarkdownBody(
+      return CcbMarkdown(
         key: ValueKey('markdown-body-conversation-${item.id}'),
         data: text,
-        selectable: true,
-        styleSheet: ccbMarkdownStyleSheet(context),
-        onTapLink: (text, href, title) {
-          if (href != null && href.startsWith('ccb-artifact://')) {
+        onLinkTap: (href, label) {
+          if (href.startsWith('ccb-artifact://')) {
             final fileId = href.replaceFirst('ccb-artifact://', '');
             if (onOpenArtifactActions != null) {
               onOpenArtifactActions!(fileId);
             }
           } else if (isOpenableExternalUrl(href)) {
-            confirmAndOpenExternalUrl(context, href!);
+            confirmAndOpenExternalUrl(context, href);
           } else {
-            showBlockedConversationLink(context, href ?? text);
+            showBlockedConversationLink(context, href);
           }
         },
       );

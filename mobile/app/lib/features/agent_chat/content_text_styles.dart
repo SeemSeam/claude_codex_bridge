@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 
-MarkdownStyleSheet ccbMarkdownStyleSheet(BuildContext context) {
+/// Body text style for rendered Markdown paragraphs.
+TextStyle? ccbMarkdownTextStyle(BuildContext context) {
+  final theme = Theme.of(context);
+  return theme.textTheme.bodyMedium?.copyWith(
+    color: theme.colorScheme.onSurface,
+  );
+}
+
+GptMarkdownThemeData ccbMarkdownTheme(BuildContext context) {
   final theme = Theme.of(context);
   final colorScheme = theme.colorScheme;
   final textTheme = theme.textTheme;
@@ -11,13 +19,7 @@ MarkdownStyleSheet ccbMarkdownStyleSheet(BuildContext context) {
   final quoteBackground = colorScheme.secondaryContainer.withValues(
     alpha: colorScheme.brightness == Brightness.dark ? 0.20 : 0.28,
   );
-  return MarkdownStyleSheet.fromTheme(theme).copyWith(
-    a: textTheme.bodyMedium?.copyWith(
-      color: colorScheme.secondary,
-      decoration: TextDecoration.underline,
-      decorationColor: colorScheme.secondary,
-    ),
-    p: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface),
+  return GptMarkdownTheme.of(context).copyWith(
     h1: textTheme.headlineSmall?.copyWith(
       color: colorScheme.primary,
       fontWeight: FontWeight.w700,
@@ -30,35 +32,73 @@ MarkdownStyleSheet ccbMarkdownStyleSheet(BuildContext context) {
       color: colorScheme.tertiary,
       fontWeight: FontWeight.w700,
     ),
-    strong: const TextStyle(fontWeight: FontWeight.w700),
-    em: TextStyle(color: colorScheme.onSurfaceVariant),
-    code: textTheme.bodyMedium?.copyWith(
+    linkColor: colorScheme.secondary,
+    linkHoverColor: colorScheme.secondary,
+    autoAddDividerLineAfterH1: false,
+    inlineCode: InlineCodeStyle(
       color: colorScheme.tertiary,
       fontFamily: 'monospace',
       backgroundColor: codeBackground,
     ),
-    blockquote: textTheme.bodyMedium?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-      fontStyle: FontStyle.italic,
-    ),
-    tableHead: textTheme.bodyMedium?.copyWith(
-      color: colorScheme.primary,
-      fontWeight: FontWeight.w700,
-    ),
-    tableBody: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface),
-    tableBorder: TableBorder.all(color: colorScheme.outlineVariant),
-    blockSpacing: 10,
-    codeblockPadding: const EdgeInsets.all(10),
-    codeblockDecoration: BoxDecoration(
-      color: codeBackground,
-      border: Border.all(color: colorScheme.outlineVariant),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    blockquotePadding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-    blockquoteDecoration: BoxDecoration(
-      color: quoteBackground,
-      border: Border(left: BorderSide(color: colorScheme.secondary, width: 4)),
-      borderRadius: BorderRadius.circular(6),
+    styleSheet: GptMarkdownStyleSheet(
+      blockSpacing: 10,
+      link: LinkStyle(
+        color: colorScheme.secondary,
+        decoration: TextDecoration.underline,
+      ),
+      codeBlock: CodeBlockStyle(
+        backgroundColor: codeBackground,
+        borderColor: colorScheme.outlineVariant,
+        borderRadius: const Radius.circular(6),
+        padding: const EdgeInsets.all(10),
+      ),
+      blockQuote: BlockQuoteStyle(
+        barColor: colorScheme.secondary,
+        barWidth: 4,
+        backgroundColor: quoteBackground,
+        padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+        textStyle: textTheme.bodyMedium?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+      table: TableStyle(
+        borderColor: colorScheme.outlineVariant,
+        headerTextStyle: textTheme.bodyMedium?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     ),
   );
+}
+
+/// Selectable, app-themed Markdown. The transparent Material hosts task-list
+/// checkboxes, which bubbles do not otherwise provide.
+class CcbMarkdown extends StatelessWidget {
+  const CcbMarkdown({
+    required this.data,
+    required this.onLinkTap,
+    super.key,
+  });
+
+  final String data;
+  final void Function(String url, String label) onLinkTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: SelectionArea(
+        child: GptMarkdownTheme(
+          gptThemeData: ccbMarkdownTheme(context),
+          child: GptMarkdown(
+            data,
+            style: ccbMarkdownTextStyle(context),
+            onLinkTap: onLinkTap,
+          ),
+        ),
+      ),
+    );
+  }
 }
