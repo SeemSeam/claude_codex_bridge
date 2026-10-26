@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v8.7.19 (2026-10-26)
+
 - Support live OMP Collab select/editor questions on mobile through fenced native `ui-response`, including custom input, stale/disconnect handling and no-replay unknown delivery. Route replies through HTTP and encrypted Relay; keep questions separate from ordinary queued chat messages.
 - Replace raw JSON original-content pages with bounded semantic content pages and a full-screen “Complete content” reader. Render assistant prose as Markdown, with reasoning and tools independently folded, instead of exposing serialized record fields or byte offsets.
 - Preserve exact projected source blocks across Unicode-safe pages, including code-fence continuation rendering; keep immutable version/branch fences, current-page-only reader memory, and visible load errors without mixing content versions.

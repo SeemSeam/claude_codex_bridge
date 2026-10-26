@@ -6,7 +6,7 @@
 **Codex、Claude、Gemini などの CLI Agent を、見える・制御できる・直接引き継げるワークフローで連携**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.18-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.19-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,12 @@
 - モバイルリモートコントローラーにより、provider をまたいだ音声操作、ファイル転送、リモート端末アクセスができます。
 
 <a id="how-to-install"></a>
+
+## New in 8.7.19: OMP native questions and runtime status / OMP 原生交互与运行状态
+
+Native select/editor cards use fenced replies over HTTP or encrypted Relay. Mobile shows native elapsed time, current step and Todo progress. Update gateway and app together; restart only idle OMP agents.
+
+[Full bilingual notes](../docs/releases/v8.7.19.md).
 
 ## New in 8.7.18: Stable OMP Mobile History / 稳定长历史
 
@@ -200,7 +206,7 @@ ccb update mobile
 
 CCB 8.6.6 では Flutter 版 CCB Mobile のソースが [`mobile/`](../mobile/) に含まれ、Android APK は GitHub Releases で公開されています。
 
-- [CCB Mobile v8.7.18 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.18/ccb-mobile-v8.7.18.apk)
+- [CCB Mobile v8.7.19 APK をダウンロード](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.19/ccb-mobile-v8.7.19.apk)
 - App ソース：[`mobile/app`](../mobile/app)
 - サーバー gateway ソース：[`lib/mobile_gateway`](../lib/mobile_gateway)
 

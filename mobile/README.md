@@ -10,7 +10,7 @@ CCB and provider CLIs run on the server; the mobile app is a controller for
 project discovery, agent switching, terminal access, Markdown reading,
 notifications, local/Tailnet gateway access, and file transfer.
 
-## Unreleased: readable complete content / 可读完整内容
+## v8.7.19: readable complete content / 可读完整内容
 
 “Complete content” replaces the raw JSON original viewer with a full-screen Markdown reader. Assistant prose is shown first; reasoning, tool calls and tool results are independently folded. Server content schema v2 sends semantic fragments with stable block identities, continuation markers and immutable versions, never the original serialized item envelope. Pages carry at most 32 KiB of source text within the existing 192 KiB response budget; the phone retains only the current page and refetches previous pages by fenced cursor. Split Markdown code fences receive display-only context without modifying source text. Update gateway and app together; schema v1 JSON slices are deliberately not rendered as fallback.
 
@@ -19,7 +19,7 @@ notifications, local/Tailnet gateway access, and file transfer.
 Qualification: 105 targeted Python tests, 21 runtime tests and 54 targeted Flutter tests passed; Flutter analysis reported no issues. Android API 35, actual OMP 18.12.6 native host and encrypted Relay passed the full long-history workflow, readable Markdown/code rendering, independent execution disclosures, next/previous navigation and close. The fixture traversed 202 history items and reconstructed six semantic blocks across 29 content pages with exact projected-source text hashes. Evidence: `~/.local/state/ccb-mobile-complete-content-vm-final/`. Source changes only; not installed or published.
 
 
-## Unreleased: native OMP questions / OMP 原生交互问题
+## v8.7.19: native OMP questions / OMP 原生交互问题
 
 Live Collab `ui-request` select/editor dialogs appear as a separate interactive card, with option descriptions and custom text input. Submit uses the native `ui-response` channel, not a chat prompt. Session, generation, namespace and request ID fences reject stale answers; disconnect/end clears pending requests, and uncertain delivery is never automatically retried. While a dialog is pending, ordinary prompts cannot answer it and queued prompts do not drain through it. Requests are ephemeral, not restored from phone cache. Bounded requests support up to 16 options and 512-character responses; unsupported/oversized dialogs must be answered on the desktop.
 
@@ -56,9 +56,9 @@ OMP 回复采用有界、绑定归属的原生 `reply_deliver` / `reply_status` 
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.18 release APK:
+CCB Mobile v8.7.19 release APK:
 
-- [Download ccb-mobile-v8.7.18.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.18/ccb-mobile-v8.7.18.apk)
+- [Download ccb-mobile-v8.7.19.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.19/ccb-mobile-v8.7.19.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 
