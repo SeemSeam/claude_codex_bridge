@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Render mobile chat and content Markdown through a shared `CcbMarkdown` widget backed by `gpt_markdown` 1.3.x, preserving link routing and selectable text while adding code highlighting/copy controls, task checkboxes and LaTeX. Keep dependency locking aligned with Flutter 3.44.2.
+
 ## v8.7.19 (2026-10-26)
 
 - Support live OMP Collab select/editor questions on mobile through fenced native `ui-response`, including custom input, stale/disconnect handling and no-replay unknown delivery. Route replies through HTTP and encrypted Relay; keep questions separate from ordinary queued chat messages.
