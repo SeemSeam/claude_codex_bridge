@@ -53,6 +53,10 @@ project manually.
 
 ## Reading Path
 
+For the owner's 2026-10-21 request to release unused mounted Agents and wake
+them on demand, start with [Agent hibernation](topics/agent-hibernation.md).
+This is a source-backed proposal; automatic hibernation is not claimed implemented.
+
 1. [roadmap.md](roadmap.md)
 2. [topics/idle-resource-pressure-solution.md](topics/idle-resource-pressure-solution.md)
 3. [topics/worker-execution-goal.md](topics/worker-execution-goal.md)

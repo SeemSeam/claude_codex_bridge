@@ -73,6 +73,11 @@ Date: 2026-06-23
 
 ## Next
 
+Owner request (2026-10-21): prioritize analysis of mounted-Agent process release
+and automatic wake. See [Agent hibernation](topics/agent-hibernation.md) for current
+source findings, eligibility, interaction/queue semantics and proposed rollout.
+Codex independent prototype passed; see [evidence](evidence/agent-hibernation-prototype-20261021.md). Production runtime support remains unimplemented.
+
 1. Ship the callback-ledger fix, restart the affected project only after the
    release is installed, and verify heartbeat freshness plus `/proc` CPU/read
    deltas against the 2026-08-01 production baseline.
