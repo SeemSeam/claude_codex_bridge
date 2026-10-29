@@ -598,14 +598,17 @@ Map<String, Object?> demoPayloadWithReviewWindow() {
 }
 
 Finder renderedTextContaining(String text) {
-  return find.byWidgetPredicate((widget) {
+  return find.byElementPredicate((element) {
+    final widget = element.widget;
     if (widget is Text) {
       return (widget.data ?? widget.textSpan?.toPlainText() ?? '').contains(
         text,
       );
     }
     if (widget is RichText) {
-      return widget.text.toPlainText().contains(text);
+      // A Text paints through its own RichText; count the Text once.
+      return element.findAncestorWidgetOfExactType<Text>() == null &&
+          widget.text.toPlainText().contains(text);
     }
     if (widget is SelectableText) {
       return (widget.data ?? widget.textSpan?.toPlainText() ?? '').contains(

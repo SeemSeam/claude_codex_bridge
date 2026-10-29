@@ -1909,11 +1909,11 @@ void main() {
     expect(find.text('Value'), findsOneWidget);
     expect(find.text('alpha'), findsOneWidget);
     expect(find.text('42'), findsOneWidget);
-    expect(find.text('docs link'), findsOneWidget);
+    expect(find.text('docs link', findRichText: true), findsOneWidget);
 
-    await tester.ensureVisible(find.text('docs link'));
+    await tester.ensureVisible(find.text('docs link', findRichText: true));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('docs link'));
+    await tester.tap(find.text('docs link', findRichText: true));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('open-url-confirm-action')),

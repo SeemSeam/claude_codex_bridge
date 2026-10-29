@@ -7,7 +7,7 @@ import 'package:ccb_mobile/models/ccb_conversation_item.dart';
 import 'package:ccb_mobile/native_session/native_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:ccb_mobile/features/agent_chat/content_text_styles.dart';
 
 NativeContentPage page(String text, {int index = 0, String version = 'v',
   String? next, bool before = false, bool after = false}) => NativeContentPage(
@@ -245,9 +245,9 @@ void main() {
       await tester.pumpAndSettle();
       final read = <String>[];
       for (var index = 0; index < texts.length; index++) {
-        final text = tester.widget<MarkdownBody>(
+        final text = tester.widget<CcbMarkdown>(
           find.descendant(of: find.byKey(const ValueKey('native-original-reader')),
-            matching: find.byType(MarkdownBody)),
+            matching: find.byType(CcbMarkdown)),
         ).data;
         expect(find.text(texts[index].trim(), findRichText: true), findsOneWidget);
         read.add(text);
