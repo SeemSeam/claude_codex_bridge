@@ -56,9 +56,9 @@ OMP 回复采用有界、绑定归属的原生 `reply_deliver` / `reply_status` 
 
 ## Android Alpha Release
 
-CCB Mobile v8.7.19 release APK:
+CCB Mobile v8.7.20 release APK:
 
-- [Download ccb-mobile-v8.7.19.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.19/ccb-mobile-v8.7.19.apk)
+- [Download ccb-mobile-v8.7.20.apk](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.20/ccb-mobile-v8.7.20.apk)
 - Server setup entrypoint: `ccb update mobile`
 - App source: [`app/`](app/)
 

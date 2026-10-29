@@ -6,7 +6,7 @@
 **نسّق Codex وClaude وGemini وغيرهم من وكلاء CLI ضمن سير عمل مرئي وقابل للتحكم والتدخل المباشر**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.19-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.20-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -206,7 +206,7 @@ ccb update mobile
 
 يتضمن CCB 8.6.6 مصدر Flutter الخاص بـ CCB Mobile داخل [`mobile/`](../mobile/) وينشر Android APK عبر GitHub Releases:
 
-- [تنزيل CCB Mobile v8.7.19 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.19/ccb-mobile-v8.7.19.apk)
+- [تنزيل CCB Mobile v8.7.20 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.20/ccb-mobile-v8.7.20.apk)
 - مصدر التطبيق: [`mobile/app`](../mobile/app)
 - مصدر gateway الخادم: [`lib/mobile_gateway`](../lib/mobile_gateway)
 

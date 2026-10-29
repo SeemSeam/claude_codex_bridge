@@ -6,7 +6,7 @@
 **Coordina Codex, Claude, Gemini y otros agentes CLI en flujos visibles y controlables que puedes tomar directamente**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.19-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.20-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -206,7 +206,7 @@ Este comando guía la instalación y configuración.
 
 CCB 8.6.6 incluye el código Flutter de CCB Mobile en [`mobile/`](../mobile/) y publica el APK Android mediante GitHub Releases:
 
-- [Descargar CCB Mobile v8.7.19 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.19/ccb-mobile-v8.7.19.apk)
+- [Descargar CCB Mobile v8.7.20 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.20/ccb-mobile-v8.7.20.apk)
 - Fuente de la app: [`mobile/app`](../mobile/app)
 - Fuente del gateway del servidor: [`lib/mobile_gateway`](../lib/mobile_gateway)
 

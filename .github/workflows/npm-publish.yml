@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to publish"
         required: true
-        default: "v8.7.19"
+        default: "v8.7.20"
   push:
     tags:
       - "v*.*.*"
