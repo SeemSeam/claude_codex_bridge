@@ -6,7 +6,7 @@
 **Codex, Claude, Gemini 등 CLI Agent를 보이고 제어 가능하며 직접 이어받을 수 있는 워크플로로 조율**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.20-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.21-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -206,7 +206,7 @@ ccb update mobile
 
 CCB 8.6.6은 Flutter CCB Mobile 소스를 [`mobile/`](../mobile/)에 포함하며 Android APK를 GitHub Releases로 배포합니다.
 
-- [CCB Mobile v8.7.20 APK 다운로드](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.20/ccb-mobile-v8.7.20.apk)
+- [CCB Mobile v8.7.21 APK 다운로드](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.21/ccb-mobile-v8.7.21.apk)
 - 앱 소스: [`mobile/app`](../mobile/app)
 - 서버 gateway 소스: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -283,6 +283,13 @@ sidebar 아이디어와 영감을 준 [tmux-agent-sidebar](https://github.com/hi
 <a id="release-notes"></a>
 
 ## 릴리스 노트
+
+<details>
+<summary><b>v8.7.21</b> - OpenCode v2 native support / OpenCode v2 原生适配</summary>
+
+Native OpenCode 2.2.x task ingress and idle completion; private legacy database snapshots; OMP native task delivery. OpenCode 2.2.x 原生入队与 idle 完成判定、旧版数据库私有快照和 OMP 原生投递。 [Release notes / 版本说明](../docs/releases/v8.7.21.md).
+
+</details>
 
 <details open>
 <summary><b>v8.7.18</b> - Stable OMP Mobile history / 稳定长历史</summary>

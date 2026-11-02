@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v8.7.21 (2026-11-02)
+
+- OpenCode 2.2.x native task support, safe legacy WAL snapshots, and OMP native task ingress. See [bilingual release notes](docs/releases/v8.7.21.md).
+- OpenCode 2.2.x 原生任务适配、旧版 WAL 安全快照读取与 OMP 原生任务入口。详见[中英双语版本说明](docs/releases/v8.7.21.md)。
+
 ## v8.7.20 (2026-10-29)
 
 - Render mobile chat and content Markdown through a shared `CcbMarkdown` widget backed by `gpt_markdown` 1.3.x, preserving link routing and selectable text while adding code highlighting/copy controls, task checkboxes and LaTeX. Keep dependency locking aligned with Flutter 3.44.2.

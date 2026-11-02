@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.20-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.21-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -52,9 +52,16 @@
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
 
+## New in 8.7.21: OpenCode v2 and native Provider reliability / OpenCode v2 与原生通信修复
+
+OpenCode 2.2.x gains opt-in native task submission and idle completion. Legacy OpenCode reads use private snapshots to avoid touching Provider WAL indexes; OMP tasks use native ingress. See [bilingual release notes](docs/releases/v8.7.21.md) and the [OpenCode configuration contract](docs/opencode-completion-contract.md).
+
+OpenCode 2.2.x 新增显式启用的原生任务提交与完成判定；旧版 OpenCode 使用私有快照读取，OMP 使用原生任务入口。启用方式与限制见版本说明。
+
 ## New in 8.7.20: Mobile Markdown rendering / 手机 Markdown 渲染升级
 
 Chat and content readers share a selectable `gpt_markdown` renderer with syntax-highlighted code, copy controls, task checkboxes and LaTeX. Existing artifact routing and external-link confirmation are preserved. [Bilingual notes](docs/releases/v8.7.20.md).
+
 
 ## New in 8.7.19: OMP Mobile native questions and runtime status / OMP 原生交互与运行状态
 
@@ -369,9 +376,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.20 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.21 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.20 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.20/ccb-mobile-v8.7.20.apk)
+- [Download CCB Mobile v8.7.21 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.21/ccb-mobile-v8.7.21.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -458,6 +465,13 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 <a id="release-notes"></a>
 
 ## Release Notes
+
+<details>
+<summary><b>v8.7.21</b> - OpenCode v2 native support / OpenCode v2 原生适配</summary>
+
+Native OpenCode 2.2.x task ingress and idle completion; private legacy database snapshots; OMP native task delivery. OpenCode 2.2.x 原生入队与 idle 完成判定、旧版数据库私有快照和 OMP 原生投递。 [Release notes / 版本说明](docs/releases/v8.7.21.md).
+
+</details>
 
 <details open>
 <summary><b>v8.7.19</b> - OMP Mobile native questions and runtime status / OMP 原生交互与运行状态</summary>
