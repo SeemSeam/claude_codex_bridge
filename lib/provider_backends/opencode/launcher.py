@@ -85,6 +85,11 @@ def prepare_launch_context(
     payload['opencode_state_dir'] = str(state_dir)
     payload['opencode_config_path'] = str(state_dir / 'opencode.json')
     payload['opencode_api_url'] = os.environ.get('CCB_OPENCODE_API_URL', '').strip()
+    version = os.environ.get('CCB_OPENCODE_API_VERSION', '1').strip()
+    if version not in {'1', '2'}:
+        raise RuntimeError('CCB_OPENCODE_API_VERSION must be 1 or 2')
+    payload['opencode_api_version'] = int(version)
+    payload['opencode_api_password_env'] = os.environ.get('CCB_OPENCODE_API_PASSWORD_ENV', '').strip()
     payload.update(_opencode_state_payload(state_dir))
     return payload
 
@@ -122,7 +127,34 @@ def build_start_cmd(
         **_opencode_memory_env(_path_or_none(launch_context.get('opencode_config_path')), profile),
     }
     cmd_parts = provider_start_parts('opencode')
-    if _should_auto_continue(command, spec, cmd_parts):
+    if launch_context.get('opencode_api_version') == 2:
+        from opencode_runtime.native_v2 import OpenCodeV2State
+        api_url = str(launch_context.get('opencode_api_url') or '')
+        OpenCodeV2State(api_url, str(launch_context.get('workspace_path') or project_root),
+                        password_env=launch_context.get('opencode_api_password_env'))
+        parts = [*cmd_parts, *spec.startup_args]
+        def option(names):
+            values = []
+            for index, part in enumerate(parts):
+                if part in names and index + 1 < len(parts):
+                    values.append(parts[index + 1])
+                for name in names:
+                    if part.startswith(name + '='):
+                        values.append(part[len(name) + 1:])
+            if len(values) > 1:
+                raise RuntimeError('Ambiguous OpenCode v2 startup binding')
+            return values[0] if values else ''
+        session_id = option({'--session', '-s'})
+        server = option({'--server'})
+        if (not session_id or not session_id.startswith('ses_') or
+                any(part.split('=', 1)[0] in {'--continue', '-c', '--standalone'} for part in parts)):
+            raise RuntimeError('OpenCode v2 native transport requires explicit --session ses_... without --continue/--standalone')
+        if server and server.rstrip('/') != api_url.rstrip('/'):
+            raise RuntimeError('OpenCode v2 TUI and state reader must use the same --server')
+        if not server:
+            cmd_parts.extend(['--server', api_url])
+        launch_context['opencode_session_id'] = session_id
+    elif _should_auto_continue(command, spec, cmd_parts):
         cmd_parts.append('--continue')
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
@@ -135,6 +167,9 @@ def build_start_cmd(
             caller_context_env(actor=spec.name, runtime_dir=runtime_dir, launch_session_id=launch_session_id)
         ),
     )
+    password_env = str(launch_context.get('opencode_api_password_env') or '')
+    if launch_context.get('opencode_api_version') == 2 and password_env:
+        env_prefix = join_env_prefix(env_prefix, f'export OPENCODE_PASSWORD="${{{password_env}}}"')
     if env_prefix:
         return f'{env_prefix}; {cmd}'
     return cmd
@@ -172,6 +207,9 @@ def build_session_payload(
         'opencode_storage_root': str(prepared.get('opencode_storage_root') or ''),
         'opencode_log_root': str(prepared.get('opencode_log_root') or ''),
         'opencode_api_url': str(prepared.get('opencode_api_url') or ''),
+        'opencode_api_version': int(prepared.get('opencode_api_version') or 1),
+        'opencode_api_password_env': str(prepared.get('opencode_api_password_env') or ''),
+        **({'opencode_session_id': str(prepared['opencode_session_id'])} if prepared.get('opencode_session_id') else {}),
     }
 
 

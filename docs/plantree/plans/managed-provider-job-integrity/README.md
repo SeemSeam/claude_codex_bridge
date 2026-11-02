@@ -130,3 +130,7 @@ A defer or blocker does not unlock the next row. Every slice must:
 
 The 2026-11-02 follow-up is tracked independently of the completed R slices in
 [native provider ingress and observation](topics/native-provider-ingress.md).
+
+The next execute-ready slice is [OpenCode v2 native task support](topics/opencode-v2-native.md).
+
+OpenCode v2 local qualification: [evidence](evidence/opencode-v2-installed-20261102.md).

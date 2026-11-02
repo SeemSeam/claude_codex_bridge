@@ -275,6 +275,8 @@ class ExecutionService(ExecutionServiceStateMixin):
 
 
 def interrupt_active_submission(submission: ProviderSubmission) -> None:
+    if submission.provider == 'opencode' and submission.runtime_state.get('native_v2'):
+        return  # Native cancellation must go through the adapter, never pane keys.
     if submission.provider == 'omp' and submission.runtime_state.get('reply_receipt_transport'):
         return  # Receipt admission never owns the provider's business turn.
     backend = submission.runtime_state.get("backend")
@@ -303,6 +305,11 @@ def _complete_herdr_pane_ref(value: object) -> bool:
 
 
 def _cancel_submission(adapter, submission: ProviderSubmission) -> None:
+    if submission.provider == 'opencode' and submission.runtime_state.get('native_v2'):
+        provider_cancel = getattr(adapter, 'cancel', None)
+        if callable(provider_cancel):
+            provider_cancel(submission)
+        return  # Native session work must never be cancelled through terminal keys.
     if submission.provider == 'omp' and submission.runtime_state.get('reply_receipt_transport'):
         return
     if submission.runtime_state.get('draft_guard_enabled') and submission.runtime_state.get('prompt_sent') is False:

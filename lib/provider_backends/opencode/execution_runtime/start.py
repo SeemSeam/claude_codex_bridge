@@ -34,6 +34,15 @@ def start_submission(
     if not isinstance(prepared, PreparedActiveStart):
         return prepared
 
+    binding = getattr(prepared.session, 'data', {})
+    if binding.get('opencode_api_version') == 2:
+        from .native_v2 import start
+        request_anchor = request_anchor_fn(job.job_id)
+        prompt = job.request.body if no_wrap_requested(job) else wrap_prompt_fn(job.request.body, request_anchor)
+        return start(job, prepared, api_url=str(binding.get('opencode_api_url') or ''),
+                     session_id=_provider_session_filter(prepared.session, provider), prompt=prompt, now=now,
+                     password_env=binding.get('opencode_api_password_env'))
+
     reader_kwargs = {
         "work_dir": Path(prepared.session.work_dir),
         "project_id": _provider_session_project_id(prepared.session, provider) or "global",

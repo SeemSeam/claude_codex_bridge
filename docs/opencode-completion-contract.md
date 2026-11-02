@@ -12,10 +12,11 @@ Authentication projection and logout isolation must also satisfy
 
 - `CCB_REQ_ID` is a request-binding marker only.
 - `CCB_DONE` is not part of the `opencode` completion authority.
-- The authoritative runtime evidence comes from `opencode` structured storage:
-  session records, message records, part records, and assistant timestamps.
+- The authoritative runtime evidence comes from native structured session and
+  message records. Version 1 / legacy completion and version 2 native idle
+  completion have separate contracts below.
 
-### Request Binding
+### Request Binding (v1 / legacy)
 
 - A managed `opencode` job writes `CCB_REQ_ID: <job_id>` into the user prompt.
 - The reply belongs to that job only when the observed assistant message points
@@ -24,7 +25,7 @@ Authentication projection and logout isolation must also satisfy
 - Session identity and `session_id_filter` scope the storage reader, but they do
   not replace request binding.
 
-### Completion
+### Completion (v1 / legacy)
 
 - An `opencode` assistant reply becomes complete only when the matched assistant
   message has `time.completed`.
@@ -33,7 +34,7 @@ Authentication projection and logout isolation must also satisfy
 - The execution adapter emits a `TURN_BOUNDARY` with reason
   `assistant_completed` when a matched assistant reaches completion.
 
-### No-Wrap Mode
+### No-Wrap Mode (v1 / legacy)
 
 - `no_wrap` intentionally skips managed request binding.
 - In `no_wrap`, `opencode` may still surface reply previews and completed
@@ -108,18 +109,17 @@ Authentication projection and logout isolation must also satisfy
   loopback OpenCode service origin, not a request to start another service.
   The TUI and reader must refer to the same native session and workspace.
 - Native observation requires an already bound exact `opencode_session_id`;
-  it never selects the newest session from a shared server. Only unauthenticated
+  it never selects the newest session from a shared server. Only
   loopback HTTP origins without credentials, path, query, or redirects are
-  supported by this initial adapter. Authentication is not read from Provider
-  files. A native API error never silently falls back to database storage.
+  supported. Optional Basic authentication references an explicitly named
+  environment variable; authentication is never read from Provider files.
+  A native API error never silently falls back to database storage.
 - The initial native adapter supports the v1 structured service endpoints
   `GET /session/{sessionID}` and `GET /session/{sessionID}/message`, with
   session/directory, message/part, parentID, request marker and time.completed
   validation. Idle state does not authorize completion.
-- OpenCode v2.2.4 uses `/api/session`, new type/content messages and different
-  native causal/completion semantics. It is **not** supported by the initial
-  v1 adapter. Do not invent parentID values from proximity or rename its SQL
-  tables to claim compatibility. Full v2 binding remains a separate slice.
+- OpenCode 2.2.x uses the opt-in native task transport below; it never opens
+  v2 SQL storage or fabricates v1 parentID links.
 - Legacy database observation never opens the Provider's database or WAL/shm
   with SQLite. It copies main+WAL into a private temporary directory and
   performs query-only reads there. A changed copy is discarded. This adds
@@ -128,3 +128,47 @@ Authentication projection and logout isolation must also satisfy
 - Missing legacy tables/columns are an explicit UnsupportedOpenCodeSchema,
   not an empty reply. Initial capture occurs before prompt submission, so
   incompatible storage fails without sending business work (issues #401/#402).
+
+
+### OpenCode 2.2.x Native Task Transport
+
+The native v2 transport is opt-in, qualified against OpenCode 2.2.4. Set
+`CCB_OPENCODE_API_VERSION=2`, `CCB_OPENCODE_API_URL=http://127.0.0.1:<port>`
+and, for an authenticated service, `CCB_OPENCODE_API_PASSWORD_ENV=<variable>`
+before the managed launch. The named variable supplies the existing service
+password; CCB persists only its name. Configure startup arguments with an exact
+`--session ses_...`; optional `--server` must match the API origin. Automatic
+continue and standalone launches are rejected. CCB neither starts nor selects
+an external service/session automatically.
+
+- Verify `/api/info` reports 2.2.x and the exact native session has the expected
+  workspace before submitting. Missing bindings fail before task admission.
+- Submit once to `/api/session/{id}/prompt` with a new native input ID, queue
+  delivery, job ID metadata and a prompt hash. A receipt means admission only.
+  Lost or malformed receipts never authorize replay or terminal injection.
+- Read paginated native messages, using inbox evidence for pending admission.
+  Validate the exact user input ID, metadata and prompt hash. Inspect only the
+  subsequent interval through the first native idle. Foreign user, synthetic,
+  shell, skill or workspace-changing inputs make attribution ambiguous and
+  terminate observation as incomplete.
+- Native assistant `time.completed` is a step boundary and cannot finish a
+  task. A successful native idle must also have a final completed assistant,
+  visible text, `finish=stop`, and no unresolved tools or running compaction.
+  Failure/interruption produces explicit terminal status; empty or inconsistent
+  success produces incomplete. No fake v1 parent or TURN_BOUNDARY is emitted.
+- Native messages may expose only completed steps; live streaming previews are
+  best effort. TUI pane liveness is not completion authority for native work.
+- Network failures have a continuous 30-second observation grace period, reset
+  by a successful read. Unknown admission is bounded without replay; an exact
+  pending inbox entry may wait for existing work to finish.
+- Cancellation requests deletion of only the exact pending inbox input and
+  checks for raced native delivery. Its idempotent 204 is not proof that an
+  active task stopped. OpenCode 2.2.x has
+  no atomic active-turn interrupt fenced by expected input ID. Active native
+  cancellation therefore reports unsupported and warns that native work may
+  continue; CCB never substitutes session-wide interruption or terminal keys.
+
+This transport does not change Mobile discovery or automatically migrate
+existing configured agents. Restart-time execution observation restore remains
+unsupported; never automatically replay an uncertain native admission. Enable
+it only with the matching explicit native service and session binding.

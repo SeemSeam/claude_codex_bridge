@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from completion.models import CompletionItemKind
-from provider_execution.active import prepare_active_poll
+from provider_execution.active import prepare_active_poll, prepare_active_poll_without_liveness
 from provider_execution.base import ProviderPollResult, ProviderSubmission
 from provider_execution.common import build_item, request_anchor_from_runtime_state
 
@@ -14,9 +14,14 @@ def poll_submission(
     now: str,
     state_session_path_fn,
 ) -> ProviderPollResult | None:
-    prepared = prepare_active_poll(submission, now=now)
+    prepare = prepare_active_poll_without_liveness if submission.runtime_state.get("native_v2") else prepare_active_poll
+    prepared = prepare(submission, now=now)
     if prepared is None or isinstance(prepared, ProviderPollResult):
         return prepared
+
+    if submission.runtime_state.get('native_v2'):
+        from .native_v2 import poll
+        return poll(submission, prepared, now=now)
 
     state = submission.runtime_state.get("state") or {}
     runtime = _poll_runtime_state(submission)
