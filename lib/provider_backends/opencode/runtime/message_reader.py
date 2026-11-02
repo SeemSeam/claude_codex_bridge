@@ -2,6 +2,9 @@ from __future__ import annotations
 
 
 def read_messages(reader, session_id: str) -> list[dict]:
+    native = getattr(reader, '_native', None)
+    if native is not None:
+        return native.messages(session_id)
     messages = read_messages_from_db(reader, session_id)
     if messages:
         messages.sort(key=reader._message_sort_key)
@@ -61,6 +64,9 @@ def read_messages_from_db(reader, session_id: str) -> list[dict]:
 
 
 def read_parts(reader, message_id: str) -> list[dict]:
+    native = getattr(reader, '_native', None)
+    if native is not None:
+        return native.parts.get(message_id, [])
     parts = read_parts_from_db(reader, message_id)
     if parts:
         parts.sort(key=reader._part_sort_key)

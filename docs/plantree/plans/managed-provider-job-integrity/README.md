@@ -125,3 +125,8 @@ A defer or blocker does not unlock the next row. Every slice must:
    from `/home/bfly/yunwei/test_ccb2` when runtime evidence is required.
 6. Record the verified commit, verification, remaining risk, and next target
    before advancing the roadmap; merge and release remain separate gates.
+
+## Native ingress follow-up
+
+The 2026-11-02 follow-up is tracked independently of the completed R slices in
+[native provider ingress and observation](topics/native-provider-ingress.md).

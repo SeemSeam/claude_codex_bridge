@@ -703,6 +703,13 @@ def _dispatch_if_ready(
     state["runtime_instance_id"] = observation.runtime_instance_id
     state["event_offset"] = observation.next_offset
     _persist_observed_native_session(state, observation, observed_at=now)
+    if _text(state.get('provider')) == 'omp':
+        if state.get('draft_guard_enabled') and not allow_submission_send('omp', state):
+            return replace(submission, runtime_state=state)
+        from provider_backends.omp.task_delivery import dispatch
+        native = dispatch(submission, state, now=now, append_dispatch=_append_dispatch)
+        if native is not None:
+            return native
     if state.get('draft_guard_enabled'):
         if not allow_submission_send('omp', state):
             return replace(submission, runtime_state=state)

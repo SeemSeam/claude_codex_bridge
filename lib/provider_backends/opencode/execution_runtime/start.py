@@ -42,6 +42,9 @@ def start_submission(
     storage_root = _provider_storage_root(prepared.session, provider)
     if storage_root:
         reader_kwargs["root"] = storage_root
+    api_url = getattr(prepared.session, 'data', {}).get('opencode_api_url')
+    if api_url:
+        reader_kwargs['api_url'] = str(api_url)
     reader = reader_cls(**reader_kwargs)
     state = reader.capture_state()
     request_anchor = request_anchor_fn(job.job_id)

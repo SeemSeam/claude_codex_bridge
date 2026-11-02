@@ -14,7 +14,14 @@ class OpenCodeLogReader(OpenCodeStorageMixin, OpenCodeTimelineMixin, OpenCodeCan
         project_id: str = "global",
         *,
         session_id_filter: str | None = None,
+        api_url: str | None = None,
     ):
+        self._native = None
+        if api_url:
+            from opencode_runtime.native import OpenCodeNativeState, NativeStateError
+            if not session_id_filter or not work_dir:
+                raise NativeStateError('OpenCode native observation requires exact session and workspace binding')
+            self._native = OpenCodeNativeState(api_url, str(work_dir))
         initialize_reader(
             self,
             root=root,

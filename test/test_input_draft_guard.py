@@ -357,3 +357,14 @@ def test_preclaim_binding_resolution_is_read_only(tmp_path, monkeypatch, provide
     context.backend_type = 'tmux'
     with pytest.raises(ValueError, match='missing managed binding'):
         resolve_job_target(job, context)
+
+
+def test_native_task_observation_ignores_cursor_and_uses_owner_binding():
+    from provider_execution.draft_guard import DraftTarget
+    backend = SimpleNamespace(capture_composer=lambda _: pytest.fail('native ingress queried cursor'))
+    target = DraftTarget('omp', backend, '%1', 'launch', '/native.sock')
+    target._editor_request = lambda *_: dict(task_ingress_version=1, state='empty',
+                                            runtime_instance_id='runtime', session_id='native')
+    observed = target.observe()
+    assert observed.state == 'empty'
+    assert observed.binding == 'launch:runtime:native'

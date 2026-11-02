@@ -84,6 +84,7 @@ def prepare_launch_context(
     state_dir = context.paths.agent_provider_state_dir(spec.name, 'opencode')
     payload['opencode_state_dir'] = str(state_dir)
     payload['opencode_config_path'] = str(state_dir / 'opencode.json')
+    payload['opencode_api_url'] = os.environ.get('CCB_OPENCODE_API_URL', '').strip()
     payload.update(_opencode_state_payload(state_dir))
     return payload
 
@@ -170,6 +171,7 @@ def build_session_payload(
         'opencode_data_home': str(prepared.get('opencode_data_home') or ''),
         'opencode_storage_root': str(prepared.get('opencode_storage_root') or ''),
         'opencode_log_root': str(prepared.get('opencode_log_root') or ''),
+        'opencode_api_url': str(prepared.get('opencode_api_url') or ''),
     }
 
 

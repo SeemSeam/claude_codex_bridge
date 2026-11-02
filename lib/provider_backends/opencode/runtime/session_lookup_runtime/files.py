@@ -7,6 +7,9 @@ from .db import get_latest_session_from_db
 
 
 def get_latest_session(reader) -> dict | None:
+    native = getattr(reader, '_native', None)
+    if native is not None:
+        return native.session(reader._session_id_filter)
     session = get_latest_session_from_db(reader)
     if session is not None:
         return session

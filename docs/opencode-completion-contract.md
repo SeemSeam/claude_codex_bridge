@@ -100,3 +100,31 @@ Authentication projection and logout isolation must also satisfy
 - Quiet terminal periods are not completion authority for `opencode`.
 - `CCB_DONE`, terminal idle time, or pane text markers must not be reintroduced
   as the primary completion path for `opencode`.
+
+### Native State And Safe Legacy Reads
+
+- Managed launches may explicitly capture `CCB_OPENCODE_API_URL` as
+  `opencode_api_url` in the CCB-owned session binding. This is an existing
+  loopback OpenCode service origin, not a request to start another service.
+  The TUI and reader must refer to the same native session and workspace.
+- Native observation requires an already bound exact `opencode_session_id`;
+  it never selects the newest session from a shared server. Only unauthenticated
+  loopback HTTP origins without credentials, path, query, or redirects are
+  supported by this initial adapter. Authentication is not read from Provider
+  files. A native API error never silently falls back to database storage.
+- The initial native adapter supports the v1 structured service endpoints
+  `GET /session/{sessionID}` and `GET /session/{sessionID}/message`, with
+  session/directory, message/part, parentID, request marker and time.completed
+  validation. Idle state does not authorize completion.
+- OpenCode v2.2.4 uses `/api/session`, new type/content messages and different
+  native causal/completion semantics. It is **not** supported by the initial
+  v1 adapter. Do not invent parentID values from proximity or rename its SQL
+  tables to claim compatibility. Full v2 binding remains a separate slice.
+- Legacy database observation never opens the Provider's database or WAL/shm
+  with SQLite. It copies main+WAL into a private temporary directory and
+  performs query-only reads there. A changed copy is discarded. This adds
+  disk I/O; native observation is preferred where a compatible service and
+  exact session binding exist. The external shm is never copied or opened.
+- Missing legacy tables/columns are an explicit UnsupportedOpenCodeSchema,
+  not an empty reply. Initial capture occurs before prompt submission, so
+  incompatible storage fails without sending business work (issues #401/#402).

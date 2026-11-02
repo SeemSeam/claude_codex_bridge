@@ -10,6 +10,11 @@ intents hold ambiguous attempts across restarts, never replaying them.
 Admission and native processing have separate lifetimes, so busy owners can
 admit multiple aside messages without interruption.
 
+Task ingress v1 reuses the durable receipt engine with separate ccb-task keys.
+Admission requires an idle owner, no pending messages, and an empty composer;
+request binding is established from the CCB dispatch journal before the native
+nextTurn message. Business completion remains the completion event contract.
+
 Native history v1 walks only the active parent chain with getEntry/getLeafId.
 Signed ancestry_page/history_page cursors bind an immutable anchor to the owner,
 runtime, session and branch generation; appends preserve them, tree/session
@@ -258,7 +263,7 @@ BRIDGE = r'''
   };
   // Read only the bounded JSONL tail, never trust an in-memory append as a
   // receipt. Older records outside this budget remain held, not replayed.
-  const replyOnDisk = async (path: string, matches: any[]) => {
+  const replyOnDisk = async (path: string, matches: any[], customType = "ccb-reply") => {
     let file: any;
     try {
       file = await replyOpen(path, "r");
@@ -274,7 +279,7 @@ BRIDGE = r'''
       const found = lines.some((line: string) => {
         let entry: any;
         try { entry = JSON.parse(line); } catch { return false; }
-        return entry.type === "custom_message" && entry.customType === "ccb-reply" &&
+        return entry.type === "custom_message" && entry.customType === customType &&
           matches.some((match: any) => entry.id === match.id &&
             entry.details?.delivery_id === match.details.delivery_id &&
             entry.details?.body_sha256 === match.details.body_sha256 &&
@@ -287,7 +292,9 @@ BRIDGE = r'''
       throw error;
     } finally { await file?.close(); }
   };
-  const replyOperation = async (request: any) => {
+  const replyOperation = async (request: any, task = false) => {
+    const customType = task ? "ccb-task" : "ccb-reply";
+    const ingress = task ? "task" : "reply";
     const ctx = editorContext;
     const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
     const base = { runtime_instance_id: runtimeInstanceId, session_id: sessionId };
@@ -297,7 +304,10 @@ BRIDGE = r'''
     if (request.operation === "reply_capabilities") {
       if (typeof pi.sendMessage !== "function" || typeof ctx.sessionManager?.getEntries !== "function")
         return unknown("reply_ingress_unavailable", 503);
-      return { ...base, reply_ingress_version: 1 };
+      if (task && (typeof ctx.hasPendingMessages !== "function" || !ctx.hasUI ||
+          typeof ctx.ui?.getEditorText !== "function" || typeof ctx.isIdle !== "function" ||
+          typeof bindDispatchedInput !== "function")) return unknown("task_ingress_unavailable", 503);
+      return { ...base, [ingress + "_ingress_version"]: 1 };
     }
     if (request.runtime_instance_id !== runtimeInstanceId || request.session_id !== sessionId)
       return unknown("reply_binding_changed");
@@ -315,11 +325,12 @@ BRIDGE = r'''
       return unknown("reply_body_conflict");
     // Session identity is part of the key. Never use another session's receipt
     // or replay a held attempt, including after sendMessage rejects.
-    const key = JSON.stringify([sessionId, id]);
+    const key = JSON.stringify([ingress, sessionId, id]);
     const previous = replyAttempts.get(key);
     let intents: any[];
     try { intents = replyJournal().filter((record: any) => record.actor === actor &&
-      record.launch_session_id === launchSessionId && record.session_id === sessionId && record.delivery_id === id); }
+      record.launch_session_id === launchSessionId && record.session_id === sessionId && record.delivery_id === id &&
+      (record.ingress || "reply") === ingress); }
     catch { return unknown("reply_intent_unknown", 503); }
     if (intents.some((record: any) => hash !== undefined && record.body_sha256 !== hash))
       return unknown("reply_body_conflict");
@@ -328,7 +339,7 @@ BRIDGE = r'''
     catch { return unknown("reply_entries_unavailable", 503); }
     if (!Array.isArray(entries)) return unknown("reply_entries_unavailable", 503);
     const matches = entries.filter((entry: any) => entry.type === "custom_message" &&
-      entry.customType === "ccb-reply" && entry.details?.delivery_id === id);
+      entry.customType === customType && entry.details?.delivery_id === id);
     if ((previous && hash !== undefined && previous.hash !== hash) ||
         matches.some((entry: any) => (hash !== undefined && entry.details?.body_sha256 !== hash) ||
           typeof entry.content !== "string" || replyHash(entry.content) !== entry.details?.body_sha256))
@@ -343,7 +354,7 @@ BRIDGE = r'''
       let persisted = false;
       try {
         if (typeof ctx.sessionManager.flush === "function") await ctx.sessionManager.flush();
-        persisted = await replyOnDisk(sessionFile, matches);
+        persisted = await replyOnDisk(sessionFile, matches, customType);
       } catch { return unknown("reply_persistence_unknown", 502); }
       if (editorContext !== ctx || String(ctx.sessionManager?.getSessionId?.() || "") !== sessionId ||
           ctx.sessionManager?.getSessionFile?.() !== sessionFile)
@@ -363,9 +374,9 @@ BRIDGE = r'''
     // Receipted attempts may be evicted because native entries deduplicate them.
     if (replyAttempts.size >= 256) {
       for (const [oldKey, attempt] of replyAttempts) {
-        const [oldSession, oldId] = JSON.parse(oldKey);
-        if (oldSession === sessionId && !attempt.processing && entries.some((entry: any) =>
-            entry.type === "custom_message" && entry.customType === "ccb-reply" &&
+        const [oldIngress, oldSession, oldId] = JSON.parse(oldKey);
+        if (oldIngress === ingress && oldSession === sessionId && !attempt.processing && entries.some((entry: any) =>
+            entry.type === "custom_message" && entry.customType === customType &&
             entry.details?.delivery_id === oldId && entry.details?.body_sha256 === attempt.hash)) {
           replyAttempts.delete(oldKey);
           break;
@@ -374,7 +385,13 @@ BRIDGE = r'''
     }
     if (replyAttempts.size >= 256) return unknown("reply_admission_full", 503);
     if (typeof pi.sendMessage !== "function") return unknown("reply_ingress_unavailable", 503);
-    try { replyJournal({ actor, launch_session_id: launchSessionId, session_id: sessionId,
+    // Final admission is inside the native owner. A rejected admission has no
+    // journal intent and may be retried; an ambiguous send is never replayed.
+    if (task && (typeof ctx.hasPendingMessages !== "function" || typeof bindDispatchedInput !== "function"))
+      return unknown("task_ingress_unavailable", 503);
+    if (task && (!ctx.isIdle() || ctx.hasPendingMessages() || modelControlBusy || ctx.ui.getEditorText() !== ""))
+      return { ...base, state: "blocked", reason: "owner_busy_or_draft" };
+    try { replyJournal({ ingress, actor, launch_session_id: launchSessionId, session_id: sessionId,
       delivery_id: id, body_sha256: hash }); }
     catch {
       replyAttempts.set(key, { hash: hash as string, failed: true, processing: null });
@@ -383,9 +400,13 @@ BRIDGE = r'''
     const attempt = { hash: hash as string, failed: false, processing: null as Promise<void> | null };
     replyAttempts.set(key, attempt);
     try {
-      const processing = pi.sendMessage({ customType: "ccb-reply", content: request.body,
+      if (task && !bindDispatchedInput(request.body, "ccb_native_task")) {
+        attempt.failed = true;
+        return unknown("task_dispatch_binding_missing");
+      }
+      const processing = pi.sendMessage({ customType, content: request.body,
         display: true, details: { delivery_id: id, body_sha256: hash } },
-        { deliverAs: "aside", triggerTurn: true });
+        { deliverAs: task ? "nextTurn" : "aside", triggerTurn: true });
       attempt.processing = Promise.resolve(processing).then(() => {}, () => { attempt.failed = true; })
         .finally(() => { attempt.processing = null; });
     } catch { attempt.failed = true; }
@@ -415,8 +436,10 @@ BRIDGE = r'''
     };
   };
   const editorReply = async (request: any) => {
-    if (["reply_capabilities", "reply_deliver", "reply_status"].includes(request?.operation)) {
-      const result = replyAdmission.then(() => replyOperation(request));
+    if (["reply_capabilities", "reply_deliver", "reply_status", "task_capabilities", "task_deliver", "task_status"].includes(request?.operation)) {
+      const task = request.operation.startsWith("task_");
+      const normalized = { ...request, operation: request.operation.replace(/^task_/, "reply_") };
+      const result = replyAdmission.then(() => replyOperation(normalized, task));
       replyAdmission = result.then(() => {}, () => {});
       return await result;
     }
@@ -432,8 +455,9 @@ BRIDGE = r'''
     }
     if (["ancestry_page", "history_page"].includes(request.operation)) return historyPage(request, ctx, base);
     if (request.operation === "inspect") return { ...base,
-      state: ctx.isIdle() ? (ctx.ui.getEditorText() === "" ? "empty" : "nonempty") : "unknown",
-      ...(!ctx.isIdle() ? { reason: "provider_busy" } : {}), status_bar: nativeStatus(ctx, sessionId) };
+      task_ingress_version: typeof pi.sendMessage === "function" && typeof bindDispatchedInput === "function" && typeof ctx.hasPendingMessages === "function" ? 1 : 0,
+      state: ctx.isIdle() && !ctx.hasPendingMessages?.() ? (ctx.ui.getEditorText() === "" ? "empty" : "nonempty") : "unknown",
+      ...(!ctx.isIdle() || ctx.hasPendingMessages?.() ? { reason: "provider_busy" } : {}), status_bar: nativeStatus(ctx, sessionId) };
     if (request.operation === "models") return { ...base, ...modelSnapshot(ctx) };
     if (request.operation === "set_model") {
       const current = modelSnapshot(ctx);
@@ -446,7 +470,7 @@ BRIDGE = r'''
       if (previous) return previous.signature === signature ? await previous.result
         : { ...base, error: "OMP model idempotency conflict", status_code: 409 };
       if (current.error) return { ...base, ...current };
-      if (modelControlBusy || modelAttempts.size >= 256 || !ctx.isIdle() || ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "")
+      if (modelControlBusy || modelAttempts.size >= 256 || !ctx.isIdle() || ctx.hasPendingMessages?.() || ctx.ui.getEditorText() !== "")
         return { ...base, error: "OMP owner busy or editor draft pending", status_code: 409 };
       if (request.runtime_instance_id !== runtimeInstanceId || request.session_id !== sessionId ||
           request.expected_model?.provider !== current.model?.provider || request.expected_model?.id !== current.model?.id ||
@@ -463,13 +487,13 @@ BRIDGE = r'''
         try {
           const fresh = modelSnapshot(ctx);
           if (editorContext !== ctx || ctx.sessionManager?.getSessionId?.() !== sessionId ||
-              !ctx.isIdle() || ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "" ||
+              !ctx.isIdle() || ctx.hasPendingMessages?.() || ctx.ui.getEditorText() !== "" ||
               fresh.model_revision !== request.expected_model_revision)
             return { ...base, error: "OMP model state changed; refresh", status_code: 409 };
           // Only the documented native model APIs; no command or model prompt.
           if (!await pi.setModel(target)) return { ...base, error: "OMP model authentication unavailable", status_code: 409 };
           if (editorContext !== ctx || ctx.sessionManager?.getSessionId?.() !== sessionId || !ctx.isIdle() ||
-              ctx.hasQueuedMessages?.() || ctx.ui.getEditorText() !== "" ||
+              ctx.hasPendingMessages?.() || ctx.ui.getEditorText() !== "" ||
               ctx.model?.provider !== target.provider || ctx.model?.id !== target.id)
             return { ...base, error: "OMP model change raced owner; refresh", status_code: 502 };
           if (request.thinking != null) pi.setThinkingLevel(request.thinking);
@@ -481,7 +505,7 @@ BRIDGE = r'''
       modelAttempts.set(key, { signature, result });
       return await result;
     }
-    if (!ctx.isIdle()) return { ...base, state: "unknown", reason: "provider_busy" };
+    if (!ctx.isIdle() || ctx.hasPendingMessages?.()) return { ...base, state: "unknown", reason: "provider_busy" };
     if (request.operation === "clear") {
       if (request.runtime_instance_id !== runtimeInstanceId || request.session_id !== sessionId)
         return { ...base, state: "unknown", reason: "editor_binding_changed" };

@@ -43,7 +43,7 @@ def records(path):
     # Native append can be observed between write boundaries. Ignore only the
     # incomplete final record, never malformed completed records.
     lines = path.read_text().splitlines(keepends=True)
-    return [json.loads(line) for line in lines if line.endswith('\n')]
+    return [json.loads(line) for line in lines if line.endswith('\n') and line.strip()]
 
 
 class LocalProvider(http.server.ThreadingHTTPServer):
@@ -116,6 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-root', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--omp', default='omp')
+    parser.add_argument('--native-task', action='store_true', help='Seed the task through native task ingress')
     args = parser.parse_args()
     app_root = args.app_root.resolve()
     if not (app_root / 'lib/provider_backends/omp/launcher.py').is_file():
@@ -306,9 +307,15 @@ def main():
             dispatch.write_text(json.dumps(dict(schema_version=1, actor=ACTOR, launch_session_id=LAUNCH,
                                                 runtime_instance_id=fence['runtime_instance_id'], req_id=ANCHOR,
                                                 dispatch_id=dispatch_id, prompt_sha256=digest(prompt))) + '\n')
-            snapshot = client.get_snapshot(root, ACTOR)
-            client.submit(root, ACTOR, prompt, 'single-seed', expected_session_id=snapshot['session_id'],
-                          expected_generation=snapshot['generation'])
+            if args.native_task:
+                assert rpc('task_capabilities').get('task_ingress_version') == 1
+                answer = rpc('task_deliver', **fence, delivery_id='single-seed', body=prompt)
+                assert answer.get('state') in {'pending', 'received'}, answer
+                stage('task admitted through native extension, no terminal submission')
+            else:
+                snapshot = client.get_snapshot(root, ACTOR)
+                client.submit(root, ACTOR, prompt, 'single-seed', expected_session_id=snapshot['session_id'],
+                              expected_generation=snapshot['generation'])
             wait_for('real streamed tool call holding native turn', lambda: held.exists() and observe().get('idle') is False)
             os.write(master, DRAFT.encode())
             wait_for('unsubmitted draft observed during native turn', lambda: observe().get('draft_sha256') == digest(DRAFT))
@@ -370,8 +377,13 @@ def main():
                 users = [entry for entry in native if
                          (entry.get('type') == 'message' and entry.get('message', {}).get('role') == 'user')
                          or (entry.get('type') == 'custom_message' and entry.get('attribution') == 'user')]
-                assert len(users) == 1, 'Reply ingress submitted/superseded a native user prompt'
-                assert users[0].get('customType') == 'collab-prompt' and users[0].get('content') == prompt
+                if args.native_task:
+                    tasks = [entry for entry in native if entry.get('customType') == 'ccb-task']
+                    assert len(tasks) == 1 and tasks[0]['content'] == prompt
+                    assert not users, 'Native task unexpectedly submitted a user prompt'
+                else:
+                    assert len(users) == 1, 'Reply ingress submitted/superseded a native user prompt'
+                    assert users[0].get('customType') == 'collab-prompt' and users[0].get('content') == prompt
 
             assert_native_entries()
             # Same IDs must be harmless re-admissions, not duplicate native entries.
@@ -396,7 +408,7 @@ def main():
             assert not any(row['type'] in {'request_superseded', 'binding_error'} for row in final_events)
             assert len([row for row in final_events if row['type'] == 'request_start']) == 1
             attempts = records(collab / 'attempts.jsonl')
-            assert len(attempts) == 1, f'Expected one seed prompt admission, got {len(attempts)}'
+            assert len(attempts) == (0 if args.native_task else 1), f'Unexpected Collab prompt admissions: {len(attempts)}'
             assert len(server.requests) >= 2 and not server.errors
             stage('PASS actual OMP: two busy admissions, durable native receipts, no supersession, draft intact')
         except Exception:

@@ -119,6 +119,15 @@ Date: 2026-07-21
   auth/session/permission/plugin-data boundary, and relinquishes locally
   diverged state.
 
+## Native provider follow-up (2026-11-02)
+
+Local implementation and validation are recorded in
+[native provider ingress and observation](topics/native-provider-ingress.md).
+OMP native task transport and safe OpenCode/v1 state reads are implemented in
+this working tree; the [local preview installation](evidence/native-provider-installed-20261102.md)
+passed source and installed acceptance. Stable rollout and full OpenCode v2
+causal/completion support remain open. This does not reopen or change the completed R slices.
+
 ## In Progress
 
 None. Current main remains an ancestor of the qualified stack. PR258, PR259,

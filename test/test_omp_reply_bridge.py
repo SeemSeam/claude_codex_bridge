@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import {appendFileSync as appendFixture, writeFileSync as writeFixture} from "node:fs";
 const actor = "worker", launchSessionId = "launch", runtimeInstanceId = "runtime";
 const eventPath = process.env.CCB_OMP_COMPOSER_SOCKET! + ".events";
+function bindDispatchedInput(body: string, source: string) { return body !== "unbound"; }
 const handlers: Record<string, any> = {}, sent: any[] = [];
 let rejectNext = false;
 const pi = {
@@ -169,4 +170,44 @@ persist(0); sent[0].resolve();
 assert.equal((await request("reply_deliver", {delivery_id: "overflow", body: "body"})).state, "pending");
 assert.equal(sent.length, 257);
 assert.equal((await request("reply_deliver", {delivery_id: "0", body: "body"})).state, "received");
+''')
+
+
+def test_task_native_void_api_admission_binding_and_dedup(tmp_path):
+    _run(tmp_path, r'''
+// Native production sendMessage returns void, not a processing promise.
+pi.sendMessage = (message: any, options: any) => {sent.push({message, options});};
+let pending = false, draft = "", bound = 0;
+ctx.hasPendingMessages = () => pending;
+ctx.ui.getEditorText = () => draft;
+assert.equal((await request("task_capabilities")).task_ingress_version, 1);
+const task = {delivery_id: "task", body: "native task"};
+assert.equal((await request("task_deliver", task)).state, "blocked");
+idle = true; pending = true;
+assert.equal((await request("inspect")).reason, "provider_busy");
+assert.equal((await request("task_deliver", task)).state, "blocked");
+pending = false; draft = "human draft";
+assert.equal((await request("task_deliver", task)).state, "blocked");
+draft = "";
+assert.equal((await request("task_deliver", {...task, session_id: "foreign"})).state, "unknown");
+assert.equal(sent.length, 0);
+assert.equal((await request("task_deliver", task)).state, "pending");
+assert.equal(sent.length, 1);
+assert.equal(sent[0].message.customType, "ccb-task");
+assert.deepEqual(sent[0].options, {deliverAs: "nextTurn", triggerTurn: true});
+assert.equal((await request("task_deliver", task)).state, "pending");
+assert.equal(sent.length, 1);
+persist(0);
+assert.equal((await request("task_status", task)).state, "received");
+assert.equal((await request("task_deliver", {...task, body: "conflict"})).reason, "reply_body_conflict");
+// Separate task/reply identities must not cross-deduplicate.
+assert.equal((await request("reply_deliver", task)).state, "pending");
+assert.equal(sent.length, 2);
+assert.equal(sent[1].message.customType, "ccb-reply");
+// Ambiguous admission survives process-memory loss and cannot be replayed.
+const lost = {delivery_id: "lost", body: "once"};
+await request("task_deliver", lost);
+replyAttempts.clear();
+assert.equal((await request("task_deliver", lost)).state, "unknown");
+assert.equal(sent.length, 3);
 ''')

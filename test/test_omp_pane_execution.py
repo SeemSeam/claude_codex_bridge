@@ -433,3 +433,65 @@ def test_omp_busy_reply_receipt_releases_without_terminal_or_composer_send(monke
     assert result.decision.diagnostics['business_processing_complete'] is False
     assert calls == ['reply_capabilities', 'reply_deliver', 'reply_status']
     assert backend.sent == [] and dispatch.read_text() == ''
+
+
+def test_native_task_transport_never_injects_keys_and_waits_for_anchored_completion(monkeypatch, tmp_path):
+    from provider_backends.omp import task_delivery
+    data, events, dispatch = _runtime(tmp_path)
+    data['omp_draft_guard_socket'] = '/native.sock'
+    _append(events, _event('extension_ready'))
+    backend = _FakeBackend()
+    calls = []
+    def request(path, actor, launch, operation, **fields):
+        calls.append(operation)
+        assert (path, actor, launch) == ('/native.sock', ACTOR, LAUNCH_ID)
+        if operation == 'task_capabilities':
+            return dict(task_ingress_version=1, runtime_instance_id=INSTANCE_ID, session_id='native')
+        assert operation == 'task_deliver'
+        assert fields['body'].startswith('CCB_REQ_ID: ')
+        assert json.loads(dispatch.read_text())['prompt_sha256']
+        return dict(state='pending', runtime_instance_id=INSTANCE_ID, session_id='native')
+    monkeypatch.setattr(task_delivery, 'request', request)
+    monkeypatch.setattr(pane_execution, 'get_backend_for_session', lambda _: backend)
+    adapter = OmpPaneExecutionAdapter()
+    adapter.session_loader = lambda *args, **kwargs: _FakeSession(data)
+    submission = adapter.start(_job(), context=_context(tmp_path), now=NOW)
+    assert submission.runtime_state['task_native_transport']
+    assert backend.sent == backend.keys == []
+    _append(events, _event('request_start', req_id=submission.job_id, dispatch_matched=True),
+            _event('agent_start', req_id=submission.job_id))
+    progress = adapter.poll(submission, now='2026-09-05T00:00:02Z')
+    assert progress is not None and progress.decision is None
+    _append(events, _event('agent_settled', req_id=submission.job_id, assistant=_assistant('native result')))
+    result = adapter.poll(progress.submission, now='2026-09-05T00:00:03Z')
+    assert result.decision.status is CompletionStatus.COMPLETED
+    assert result.decision.reply == 'native result'
+    assert calls == ['task_capabilities', 'task_deliver']
+    assert backend.sent == backend.keys == []
+
+
+@pytest.mark.parametrize('outcome', ['blocked', 'lost'])
+def test_native_task_rejection_and_ambiguity_never_fall_back_to_terminal(monkeypatch, tmp_path, outcome):
+    from provider_backends.omp import task_delivery
+    data, events, _ = _runtime(tmp_path)
+    data['omp_draft_guard_socket'] = '/native.sock'
+    _append(events, _event('extension_ready'))
+    backend, calls = _FakeBackend(), []
+    def request(path, actor, launch, operation, **fields):
+        calls.append(operation)
+        if operation == 'task_capabilities':
+            return dict(task_ingress_version=1, runtime_instance_id=INSTANCE_ID, session_id='native')
+        if outcome == 'lost':
+            raise TimeoutError('response lost after possible native acceptance')
+        return dict(state='blocked', runtime_instance_id=INSTANCE_ID, session_id='native')
+    monkeypatch.setattr(task_delivery, 'request', request)
+    monkeypatch.setattr(pane_execution, 'get_backend_for_session', lambda _: backend)
+    adapter = OmpPaneExecutionAdapter()
+    adapter.session_loader = lambda *args, **kwargs: _FakeSession(data)
+    submission = adapter.start(_job(), context=_context(tmp_path), now=NOW)
+    assert submission.runtime_state['prompt_sent'] is (outcome == 'lost')
+    assert backend.sent == backend.keys == []
+    before = len(calls)
+    adapter.poll(submission, now='2026-09-05T00:00:02Z')
+    assert len(calls) == before + (2 if outcome == 'blocked' else 0)
+    assert backend.sent == backend.keys == []

@@ -87,6 +87,14 @@ class DraftTarget:
 
     def observe(self) -> Observation:
         try:
+            if self.provider == 'omp' and self.editor_socket:
+                data = self._editor_request('inspect')
+                if data.get('task_ingress_version') == 1:
+                    self._native = data
+                    binding = f'{self.generation}:{data.get("runtime_instance_id", "")}:{data.get("session_id", "")}'
+                    state = data.get('state')
+                    return Observation(state if state in {'empty', 'nonempty'} else 'unknown',
+                                       binding, str(data.get('reason') or state))
             screen = self.backend.capture_composer(self.pane_id)
             binding = f'{self.generation}:{screen["binding"]}'
             if screen.get('blocked'):

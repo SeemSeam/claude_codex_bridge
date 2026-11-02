@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
+
+
+class UnsupportedOpenCodeSchema(RuntimeError):
+    """Provider storage changed; never interpret it as an empty conversation."""
 
 
 class OpenCodeStorageAccessor:
@@ -93,6 +99,13 @@ class OpenCodeStorageAccessor:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout = 200")
             return _row_results(conn.execute(query, params).fetchall())
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc) or "no such column" in str(exc):
+                raise UnsupportedOpenCodeSchema(
+                    "Unsupported OpenCode storage schema; use a compatible native state adapter "
+                    "before submitting tasks (issues #401/#402)."
+                ) from exc
+            return []
         except Exception:
             return []
         finally:
@@ -147,22 +160,47 @@ class OpenCodeStorageAccessor:
         return None
 
 
+class _SnapshotConnection(sqlite3.Connection):
+    snapshot_dir: tempfile.TemporaryDirectory | None = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self.snapshot_dir is not None:
+                self.snapshot_dir.cleanup()
+                self.snapshot_dir = None
+
+
 def _open_readonly_connection(db_path: Path) -> sqlite3.Connection | None:
-    return _connect_via_uri(db_path) or _connect_direct(db_path)
-
-
-def _connect_via_uri(db_path: Path) -> sqlite3.Connection | None:
+    # mode=ro can still truncate the owner's WAL shared memory (issue #401).
+    # Never open the foreign database with SQLite, even as a fallback. Recover
+    # a private copy of main+WAL instead; SQLite checks WAL frame checksums.
+    snapshot = tempfile.TemporaryDirectory(prefix="ccb-opencode-read-")
     try:
-        db_uri = f"{db_path.resolve().as_uri()}?mode=ro"
-        return sqlite3.connect(db_uri, uri=True, timeout=0.2)
+        target = Path(snapshot.name) / "opencode.db"
+        journal = Path(str(db_path) + "-journal")
+        if journal.exists() and journal.stat().st_size:
+            snapshot.cleanup()
+            return None
+        wal = Path(str(db_path) + "-wal")
+        before = (db_path.stat(), wal.stat() if wal.exists() else None)
+        shutil.copyfile(db_path, target)
+        if before[1] is not None:
+            shutil.copyfile(wal, Path(str(target) + "-wal"))
+        after = (db_path.stat(), wal.stat() if wal.exists() else None)
+        # Checkpoint/truncate/replacement while copying is not a coherent read.
+        def signature(stats):
+            return tuple(None if st is None else (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns) for st in stats)
+        if signature(before) != signature(after):
+            snapshot.cleanup()
+            return None
+        conn = sqlite3.connect(str(target), timeout=0.2, factory=_SnapshotConnection)
+        conn.snapshot_dir = snapshot
+        conn.execute("PRAGMA query_only=ON")
+        return conn
     except Exception:
-        return None
-
-
-def _connect_direct(db_path: Path) -> sqlite3.Connection | None:
-    try:
-        return sqlite3.connect(str(db_path), timeout=0.2)
-    except Exception:
+        snapshot.cleanup()
         return None
 
 
