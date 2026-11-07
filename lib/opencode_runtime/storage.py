@@ -3,14 +3,23 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import shutil
 import tempfile
+import time
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 
 class UnsupportedOpenCodeSchema(RuntimeError):
     """Provider storage changed; never interpret it as an empty conversation."""
+
+
+class OpenCodeObservationUnavailable(RuntimeError):
+    """Sanitized failure: an unavailable snapshot is not an empty conversation."""
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__('OpenCode observation unavailable: ' + reason)
 
 
 class OpenCodeStorageAccessor:
@@ -22,6 +31,7 @@ class OpenCodeStorageAccessor:
         db_filenames: tuple[str, ...] = ("opencode.db",),
     ) -> None:
         self.root = Path(root).expanduser()
+        self._observation_local = threading.local()
         self._db_path_hint: Path | None = None
         self.db_env_var = str(db_env_var or "").strip()
         self.db_filenames = tuple(str(item).strip() for item in db_filenames if str(item).strip()) or ("opencode.db",)
@@ -88,16 +98,49 @@ class OpenCodeStorageAccessor:
         self._db_path_hint = resolved
         return resolved
 
+    def database_signature(self):
+        """Metadata only; never open or map the live SQLite shared-memory index."""
+        path = self.resolve_opencode_db_path()
+        if path is None:
+            return None
+        try:
+            wal = Path(str(path) + '-wal')
+            records = (path.stat(), wal.stat() if wal.exists() else None)
+            return (str(path), *(None if st is None else
+                    (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns) for st in records))
+        except OSError:
+            raise OpenCodeObservationUnavailable('snapshot_stat_failed') from None
+
+    @contextmanager
+    def observation(self):
+        """One private snapshot for a complete session/message/parts observation."""
+        if getattr(self._observation_local, 'scope', None) is not None:
+            yield
+            return
+        scope = {'connection': None, 'resolved': False}
+        self._observation_local.scope = scope
+        try:
+            yield
+        finally:
+            _close_connection(scope['connection'])
+            del self._observation_local.scope
+
     def fetch_opencode_db_rows(self, query: str, params: tuple[object, ...]) -> list[sqlite3.Row]:
-        db_path = self.resolve_opencode_db_path()
-        if not db_path:
-            return []
-        conn = _open_readonly_connection(db_path)
+        scope = getattr(self._observation_local, 'scope', None)
+        if scope is None:
+            with self.observation():
+                return self.fetch_opencode_db_rows(query, params)
+        if not scope['resolved']:
+            db_path = self.resolve_opencode_db_path()
+            scope['connection'] = _open_readonly_connection(db_path) if db_path else None
+            scope['resolved'] = True
+        conn = scope['connection']
         if conn is None:
-            return []
+            return []  # No database: legacy file storage may exist.
         try:
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA busy_timeout = 200")
+            deadline = time.monotonic() + SNAPSHOT_MAX_SECONDS
+            conn.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
             return _row_results(conn.execute(query, params).fetchall())
         except sqlite3.OperationalError as exc:
             if "no such table" in str(exc) or "no such column" in str(exc):
@@ -105,11 +148,10 @@ class OpenCodeStorageAccessor:
                     "Unsupported OpenCode storage schema; use a compatible native state adapter "
                     "before submitting tasks (issues #401/#402)."
                 ) from exc
-            return []
-        except Exception:
-            return []
-        finally:
-            _close_connection(conn)
+            reason = 'query_time_budget' if 'interrupted' in str(exc) else 'query_failed'
+            raise OpenCodeObservationUnavailable(reason) from None
+        except sqlite3.Error:
+            raise OpenCodeObservationUnavailable('query_failed') from None
 
     @staticmethod
     def message_sort_key(message: dict) -> tuple[int, float, str]:
@@ -172,36 +214,61 @@ class _SnapshotConnection(sqlite3.Connection):
                 self.snapshot_dir = None
 
 
-def _open_readonly_connection(db_path: Path) -> sqlite3.Connection | None:
-    # mode=ro can still truncate the owner's WAL shared memory (issue #401).
-    # Never open the foreign database with SQLite, even as a fallback. Recover
-    # a private copy of main+WAL instead; SQLite checks WAL frame checksums.
-    snapshot = tempfile.TemporaryDirectory(prefix="ccb-opencode-read-")
+SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024
+SNAPSHOT_MAX_SECONDS = 2.0
+
+
+def _copy_bounded(source: Path, target: Path, *, size: int, deadline: float) -> None:
+    # Copy only the statted extent: an appending WAL cannot extend the loop.
+    with source.open('rb') as incoming, target.open('xb') as outgoing:
+        remaining = size
+        while remaining:
+            if time.monotonic() >= deadline:
+                raise OpenCodeObservationUnavailable('snapshot_time_budget')
+            chunk = incoming.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise OpenCodeObservationUnavailable('snapshot_changed')
+            outgoing.write(chunk)
+            remaining -= len(chunk)
+
+
+def _open_readonly_connection(db_path: Path) -> sqlite3.Connection:
+    # Never open the foreign DB/WAL/SHM through SQLite (issue #401).
+    snapshot = None
+    conn = None
     try:
-        target = Path(snapshot.name) / "opencode.db"
-        journal = Path(str(db_path) + "-journal")
+        journal = Path(str(db_path) + '-journal')
         if journal.exists() and journal.stat().st_size:
-            snapshot.cleanup()
-            return None
-        wal = Path(str(db_path) + "-wal")
+            raise OpenCodeObservationUnavailable('journal_active')
+        wal = Path(str(db_path) + '-wal')
         before = (db_path.stat(), wal.stat() if wal.exists() else None)
-        shutil.copyfile(db_path, target)
+        if sum(st.st_size for st in before if st is not None) > SNAPSHOT_MAX_BYTES:
+            raise OpenCodeObservationUnavailable('snapshot_byte_budget')
+        snapshot = tempfile.TemporaryDirectory(prefix='ccb-opencode-read-')
+        target = Path(snapshot.name) / 'opencode.db'
+        deadline = time.monotonic() + SNAPSHOT_MAX_SECONDS
+        _copy_bounded(db_path, target, size=before[0].st_size, deadline=deadline)
         if before[1] is not None:
-            shutil.copyfile(wal, Path(str(target) + "-wal"))
+            _copy_bounded(wal, Path(str(target) + '-wal'), size=before[1].st_size, deadline=deadline)
         after = (db_path.stat(), wal.stat() if wal.exists() else None)
-        # Checkpoint/truncate/replacement while copying is not a coherent read.
         def signature(stats):
             return tuple(None if st is None else (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns) for st in stats)
         if signature(before) != signature(after):
-            snapshot.cleanup()
-            return None
+            raise OpenCodeObservationUnavailable('snapshot_changed')
+        if time.monotonic() >= deadline:
+            raise OpenCodeObservationUnavailable('snapshot_time_budget')
         conn = sqlite3.connect(str(target), timeout=0.2, factory=_SnapshotConnection)
         conn.snapshot_dir = snapshot
-        conn.execute("PRAGMA query_only=ON")
+        conn.execute('PRAGMA query_only=ON')
         return conn
-    except Exception:
-        snapshot.cleanup()
-        return None
+    except Exception as exc:
+        if conn is not None:
+            conn.close()
+        elif snapshot is not None:
+            snapshot.cleanup()
+        if isinstance(exc, OpenCodeObservationUnavailable):
+            raise
+        raise OpenCodeObservationUnavailable('snapshot_copy_or_open_failed') from None
 
 
 def _row_results(rows: list[object]) -> list[sqlite3.Row]:

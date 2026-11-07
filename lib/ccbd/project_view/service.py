@@ -110,7 +110,7 @@ class ProjectViewDependencies:
 @dataclass(frozen=True)
 class _ExecutionProviderEvidence:
     state: str | None
-    identity_current: bool
+    identity_current: bool | None
     reason: str | None
     last_progress_at: str | None
 
@@ -1025,7 +1025,7 @@ def _execution_provider_state(
             reason=str(getattr(provider_activity, 'reason', '') or '').strip() or None,
             last_progress_at=last_progress_at,
         )
-    return _ExecutionProviderEvidence(None, False, None, last_progress_at)
+    return _ExecutionProviderEvidence(None, None, None, last_progress_at)
 
 
 def _execution_provider_state_token(value: object) -> str | None:
@@ -2421,7 +2421,7 @@ def _execution_phase_projection(
     completion = comms_lookup.snapshot_for_job(job_id)
     provider_evidence = context.execution_provider_by_job_id.get(
         job_id,
-        _ExecutionProviderEvidence(None, False, None, None),
+        _ExecutionProviderEvidence(None, None, None, None),
     )
     if running_observation.exact_idle_candidate:
         provider_evidence = _ExecutionProviderEvidence(

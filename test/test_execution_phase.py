@@ -148,6 +148,7 @@ def test_execution_phase_vocabulary(evidence, expected_phase, expected_reason) -
         ({"completion_job_id": "job-other"}, "completion_job_mismatch"),
         ({"completion_job_id": "JOB-1"}, "completion_job_mismatch"),
         ({"provider_identity_current": False}, "provider_identity_mismatch"),
+        ({"provider_identity_current": None}, "provider_identity_unavailable"),
     ),
 )
 def test_contradictory_active_evidence_is_unknown(changes, expected_reason) -> None:

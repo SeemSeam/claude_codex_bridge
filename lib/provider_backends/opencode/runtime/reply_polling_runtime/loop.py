@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Callable
+from contextlib import nullcontext
 
 
 def resolve_active_session(
@@ -46,51 +47,32 @@ def read_since(
     reset_state_for_session_fn: Callable,
     session_updated_fn: Callable,
 ) -> tuple[str | None, dict[str, Any]]:
-    deadline = time.time() + timeout
-    last_forced_read = time.time()
+    deadline = time.monotonic() + timeout
     session_id = state_session_id(state)
-
     while True:
-        session_entry = get_latest_session_fn(reader)
-        session_id, current_session_id, state = resolve_active_session(
-            state,
-            session_id=session_id,
-            session_entry=session_entry,
-            reset_state_for_session_fn=reset_state_for_session_fn,
-        )
-        if not current_session_id:
-            if should_finish_read_cycle(block=block, reader=reader, deadline=deadline):
-                return None, state
-            continue
-
-        updated_i = session_updated_value(
-            session_entry,
-            session_updated_fn=session_updated_fn,
-        )
-        prev_updated = int(state.get("session_updated") or -1)
-        if should_scan_session(
-            block=block,
-            updated_i=updated_i,
-            prev_updated=prev_updated,
-            last_forced_read=last_forced_read,
-            force_read_interval=reader._force_read_interval,
-        ):
-            last_forced_read, reply, state = scan_current_session(
-                reader,
-                state,
-                current_session_id=current_session_id,
-                session_entry=session_entry,
-                updated_i=updated_i,
-                prev_updated=prev_updated,
-                block=block,
-                last_forced_read=last_forced_read,
-                find_reply_fn=find_reply_fn,
-                merge_reply_state_fn=merge_reply_state_fn,
-                refresh_observed_state_fn=refresh_observed_state_fn,
-            )
-            if reply:
-                return reply, state
-
+        storage = getattr(reader, '_storage', None)
+        scope = storage.observation() if storage is not None else nullcontext()
+        with scope:
+            session_entry = get_latest_session_fn(reader)
+            session_id, current_session_id, candidate = resolve_active_session(
+                state, session_id=session_id, session_entry=session_entry,
+                reset_state_for_session_fn=reset_state_for_session_fn)
+            if current_session_id:
+                updated_i = session_updated_value(session_entry, session_updated_fn=session_updated_fn)
+                previous = int(candidate.get('session_updated') or -1)
+                last_scan = getattr(reader, '_last_reply_scan', float('-inf'))
+                if should_scan_session(block=block, updated_i=updated_i, prev_updated=previous,
+                                       last_forced_read=last_scan, force_read_interval=reader._force_read_interval):
+                    scanned_at, reply, candidate = scan_current_session(
+                        reader, candidate, current_session_id=current_session_id,
+                        session_entry=session_entry, updated_i=updated_i, prev_updated=previous,
+                        block=block, last_forced_read=last_scan, find_reply_fn=find_reply_fn,
+                        merge_reply_state_fn=merge_reply_state_fn,
+                        refresh_observed_state_fn=refresh_observed_state_fn)
+                    reader._last_reply_scan = scanned_at
+                    state = candidate
+                    if reply:
+                        return reply, state
         if should_finish_read_cycle(block=block, reader=reader, deadline=deadline):
             return None, state
 
@@ -132,7 +114,7 @@ def should_scan_session(
 ) -> bool:
     if updated_i != prev_updated:
         return True
-    return block and (time.time() - last_forced_read) >= force_read_interval
+    return (time.monotonic() - last_forced_read) >= force_read_interval
 
 
 def scan_current_session(
@@ -149,30 +131,19 @@ def scan_current_session(
     merge_reply_state_fn: Callable,
     refresh_observed_state_fn: Callable,
 ) -> tuple[float, str | None, dict[str, Any]]:
-    if block and updated_i == prev_updated:
-        last_forced_read = time.time()
+    # Do not perform a second refresh: it can consume a just-completed reply
+    # into the baseline without ever delivering it. One observation, one merge.
+    scanned_at = time.monotonic()
     reply, reply_state = find_reply_fn(reader, current_session_id, state)
-    if reply:
-        merged_state = merge_reply_state_fn(
-            state,
-            session_entry=session_entry,
-            current_session_id=current_session_id,
-            updated_i=updated_i,
-            reply_state=reply_state,
-        )
-        return last_forced_read, reply, merged_state
-    refreshed = refresh_observed_state_fn(
-        reader,
-        state,
-        current_session_id,
-        updated_i=updated_i,
-    )
-    return last_forced_read, None, refreshed
+    merged = merge_reply_state_fn(
+        state, session_entry=session_entry, current_session_id=current_session_id,
+        updated_i=updated_i, reply_state=reply_state)
+    return scanned_at, reply, merged
 
 
 def sleep_or_timeout(reader, deadline: float) -> bool:
     time.sleep(reader._poll_interval)
-    return time.time() >= deadline
+    return time.monotonic() >= deadline
 
 
 __all__ = [

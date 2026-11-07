@@ -107,6 +107,15 @@ def build_start_cmd(
     project_root = _path_or_none(launch_context.get('project_root'))
     if project_root is None:
         raise RuntimeError('OpenCode launch requires prepare_launch_context before build_start_cmd')
+    from opencode_runtime.git_excludes import ensure_runtime_excludes
+    import warnings
+    roots = {project_root.resolve(), Path(str(launch_context.get('workspace_path') or project_root)).resolve()}
+    protection_warnings = []
+    for root in sorted(roots):
+        protection_warnings.extend(ensure_runtime_excludes(root))
+    launch_context['opencode_snapshot_protection_warnings'] = list(dict.fromkeys(protection_warnings))
+    for warning in launch_context['opencode_snapshot_protection_warnings']:
+        warnings.warn(warning, RuntimeWarning, stacklevel=2)
     profile = load_resolved_provider_profile(runtime_dir)
     state_dir = _path_or_none(launch_context.get('opencode_state_dir'))
     if state_dir is None:
@@ -206,6 +215,7 @@ def build_session_payload(
         'opencode_data_home': str(prepared.get('opencode_data_home') or ''),
         'opencode_storage_root': str(prepared.get('opencode_storage_root') or ''),
         'opencode_log_root': str(prepared.get('opencode_log_root') or ''),
+        'opencode_snapshot_protection_warnings': list(prepared.get('opencode_snapshot_protection_warnings') or []),
         'opencode_api_url': str(prepared.get('opencode_api_url') or ''),
         'opencode_api_version': int(prepared.get('opencode_api_version') or 1),
         'opencode_api_password_env': str(prepared.get('opencode_api_password_env') or ''),

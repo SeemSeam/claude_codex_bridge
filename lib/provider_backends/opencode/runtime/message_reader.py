@@ -36,7 +36,7 @@ def read_messages_from_files(reader, session_id: str) -> list[dict]:
 def read_messages_from_db(reader, session_id: str) -> list[dict]:
     rows = reader._fetch_opencode_db_rows(
         """
-        SELECT id, session_id, time_created, time_updated, data
+        SELECT id, session_id, time_created, time_updated, json_remove(data, '$.summary') AS data
         FROM message
         WHERE session_id = ?
         ORDER BY time_created ASC, time_updated ASC, id ASC

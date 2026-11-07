@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from completion.models import CompletionItemKind
+from completion.models import (CompletionItemKind, CompletionDecision, CompletionStatus,
+                               CompletionConfidence, seconds_between)
 from provider_execution.active import prepare_active_poll, prepare_active_poll_without_liveness
 from provider_execution.base import ProviderPollResult, ProviderSubmission
 from provider_execution.common import build_item, request_anchor_from_runtime_state
@@ -23,11 +24,35 @@ def poll_submission(
         from .native_v2 import poll
         return poll(submission, prepared, now=now)
 
+    previous_submission = submission
     state = submission.runtime_state.get("state") or {}
     runtime = _poll_runtime_state(submission)
     items = []
 
     reply, state = prepared.reader.try_get_message(state)
+    if state.get('observation_error'):
+        failed_state = {**submission.runtime_state, 'state': state}
+        since = failed_state.setdefault('observation_failure_since', now)
+        updated = replace(submission, runtime_state=failed_state, diagnostics={
+            **(submission.diagnostics or {}), 'observation_error': state['observation_error'],
+            'observation_failure_since': since, 'automatic_replay': False})
+        decision = None
+        if seconds_between(since, now) >= 30:
+            decision = CompletionDecision(
+                terminal=True, status=CompletionStatus.INCOMPLETE,
+                reason='opencode_observation_unavailable', confidence=CompletionConfidence.DEGRADED,
+                reply=submission.reply, anchor_seen=bool(runtime['anchor_emitted']),
+                reply_started=bool(submission.reply), reply_stable=False, finished_at=now,
+                provider_turn_ref=state.get('last_assistant_id'), source_cursor=None,
+                diagnostics={**updated.diagnostics, 'provider_may_still_be_running': True})
+        return ProviderPollResult(submission=updated, decision=decision)
+    if 'observation_failure_since' in submission.runtime_state:
+        recovered = dict(submission.runtime_state)
+        recovered.pop('observation_failure_since', None)
+        diagnostics = dict(submission.diagnostics or {})
+        diagnostics.pop('observation_error', None)
+        diagnostics.pop('observation_failure_since', None)
+        submission = replace(submission, runtime_state=recovered, diagnostics=diagnostics)
     _apply_session_rotation(
         submission,
         runtime,
@@ -61,7 +86,9 @@ def poll_submission(
             "session_path": runtime["session_path"],
         },
     )
-    if not items and updated.reply == submission.reply and updated.runtime_state == submission.runtime_state:
+    if (not items and updated.reply == previous_submission.reply
+            and updated.runtime_state == previous_submission.runtime_state
+            and updated.diagnostics == previous_submission.diagnostics):
         return None
     return ProviderPollResult(submission=updated, items=tuple(items))
 

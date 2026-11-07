@@ -88,6 +88,8 @@ def derive_execution_phase(evidence: ExecutionPhaseEvidence) -> ExecutionPhaseRe
         return _result(evidence, "injecting", "request_anchor_not_seen")
     if evidence.completion_anchor_seen is not True:
         return _result(evidence, "unknown", "completion_anchor_unknown")
+    if evidence.provider_identity_current is None:
+        return _result(evidence, "unknown", "provider_identity_unavailable")
     if evidence.provider_identity_current is not True:
         return _result(evidence, "unknown", "provider_identity_mismatch")
 

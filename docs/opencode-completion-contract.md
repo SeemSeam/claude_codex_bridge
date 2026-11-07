@@ -129,6 +129,36 @@ Authentication projection and logout isolation must also satisfy
   not an empty reply. Initial capture occurs before prompt submission, so
   incompatible storage fails without sending business work (issues #401/#402).
 
+### Snapshot Growth And Legacy Observation Recovery
+
+- Before managed OpenCode launch, CCB adds precise local Git `info/exclude`
+  rules for `.ccb/{agents,ccbd,runtime,state,shared-cache,workspaces}/` under
+  both project and workspace roots. Git resolves subdirectory/worktree metadata.
+  Existing rules, tracked configuration and project memory remain preserved.
+  This prevents OpenCode source snapshots from recursively including runtime
+  databases, logs and snapshots. Non-Git roots skip this step. Failed writes,
+  overriding ignore rules or already tracked runtime files produce sanitized
+  warnings in startup output and `opencode_snapshot_protection_warnings`.
+- One observation reuses one private main+WAL snapshot across session, message
+  and part queries. Copies are limited to 256 MiB combined and a two-second
+  copy budget, with deadline checks between chunks; each SQL query has its own
+  two-second progress-handler budget. These are cooperative budgets, not hard
+  OS I/O deadlines. Unused message `summary` data is projected out in SQL.
+- Failed, unstable, corrupt or over-budget reads are unavailable observations,
+  never empty conversations or permission to fall back to legacy files. They
+  preserve the last successful cursor and emitted-reply baseline. Nonblocking
+  polling periodically rechecks unchanged session timestamps and file
+  signatures, so message/part-only updates and recovered reads remain visible.
+  No refresh may consume an undelivered assistant reply into the baseline.
+- After 30 seconds of continuous observation failure, legacy execution returns
+  `INCOMPLETE / opencode_observation_unavailable`. Diagnostics state that the
+  Provider may still be running; CCB neither replays the prompt nor claims the
+  Provider stopped. Initial capture failure prevents prompt submission.
+- Missing identity evidence is `provider_identity_unavailable`; proven identity
+  mismatch remains `provider_identity_mismatch`.
+- Exclusions prevent new recursion; they do not shrink existing databases or
+  snapshot histories. CCB never deletes, VACUUMs or checkpoints Provider data.
+
 
 ### OpenCode 2.2.x Native Task Transport
 

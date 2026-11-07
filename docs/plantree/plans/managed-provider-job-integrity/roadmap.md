@@ -167,3 +167,14 @@ See [scope and limits](topics/opencode-v2-native.md) and
 [installation evidence](evidence/opencode-v2-installed-20261102.md). Existing
 reviewed repair rows retain their recorded state. No stable rollout or release
 is included in this supplemental slice.
+
+
+## Supplemental OpenCode snapshot repair (2026-11-07)
+
+The issue #402 follow-up adds managed-launch Git exclusions, bounded private
+observation scopes, failed-read cursor preservation and periodic reply rescans.
+Missing identity evidence is distinguished from a proven mismatch. See
+[scope](topics/opencode-snapshot-growth.md) and
+[qualification](evidence/opencode-snapshot-growth-20261107.md).
+This supplemental slice preserves the completed reviewed repair rows and does
+not authorize a stable rollout or release.

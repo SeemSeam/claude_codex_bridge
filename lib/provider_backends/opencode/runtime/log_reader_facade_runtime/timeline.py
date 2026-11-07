@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+import time
+
+from opencode_runtime.storage import OpenCodeObservationUnavailable
 
 from opencode_runtime.replies import extract_text as _extract_text
 
@@ -46,10 +49,31 @@ class OpenCodeTimelineMixin:
         return _extract_text(parts, allow_reasoning_fallback=allow_reasoning_fallback)
 
     def capture_state(self) -> dict[str, Any]:
-        return _capture_state(self)
+        with self._storage.observation():
+            return _capture_state(self)
 
     def _read_since(self, state: dict[str, Any], timeout: float, block: bool) -> tuple[str | None, dict[str, Any]]:
-        return _read_since_runtime(self, state, timeout, block)
+        now = time.monotonic()
+        if now < getattr(self, '_observation_retry_at', 0):
+            return None, state
+        try:
+            signature = self._storage.database_signature() if self._native is None else None
+            if (not block and signature is not None and not state.get('observation_error')
+                    and signature == getattr(self, '_last_database_signature', None)
+                    and now - getattr(self, '_last_observation_at', float('-inf')) < self._force_read_interval):
+                return None, state
+            reply, updated = _read_since_runtime(self, state, timeout, block)
+        except OpenCodeObservationUnavailable as exc:
+            self._observation_retry_at = time.monotonic() + self._force_read_interval
+            # Preserve the last successful cursor and emitted assistant baseline.
+            return None, {**state, 'observation_error': exc.reason}
+        # Retain only metadata, not a stale snapshot. Force revalidation at least
+        # once per interval even if a filesystem coalesces timestamp updates.
+        self._last_database_signature = signature
+        self._last_observation_at = now
+        updated = dict(updated)
+        updated.pop('observation_error', None)
+        return reply, updated
 
     def wait_for_message(self, state: dict[str, Any], timeout: float) -> tuple[str | None, dict[str, Any]]:
         return self._read_since(state, timeout, block=True)

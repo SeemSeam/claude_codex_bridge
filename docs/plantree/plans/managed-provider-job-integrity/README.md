@@ -134,3 +134,7 @@ The 2026-11-02 follow-up is tracked independently of the completed R slices in
 The next execute-ready slice is [OpenCode v2 native task support](topics/opencode-v2-native.md).
 
 OpenCode v2 local qualification: [evidence](evidence/opencode-v2-installed-20261102.md).
+
+Issue #402 follow-up analysis: [snapshot growth and observation starvation](topics/opencode-snapshot-growth.md).
+
+Snapshot-growth repair qualification: [evidence](evidence/opencode-snapshot-growth-20261107.md).

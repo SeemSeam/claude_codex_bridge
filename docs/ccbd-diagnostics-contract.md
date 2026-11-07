@@ -630,6 +630,8 @@ lease, completion snapshot, agent, and current provider identity joins. A
 correlated reply record and reply-delivery job determine the reply phases.
 Terminal job/completion authority wins over lagging mailbox or lease cleanup;
 missing, stale, contradictory, or mismatched evidence produces `unknown`.
+Missing provider identity evidence uses `provider_identity_unavailable`;
+evidence that the identity is not current uses `provider_identity_mismatch`.
 `execution_evidence` contains only the compact identity and state facts used by
 the resolver and is diagnostics evidence, not scheduling authority.
 

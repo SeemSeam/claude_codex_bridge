@@ -500,8 +500,8 @@ def _write_active_unload_drain(layout: PathLayout, agent_name: str):
     ('activity_pane', 'activity_updated_at', 'expected_phase', 'expected_reason'),
     (
         ('%2', NOW, 'executing', 'provider_active'),
-        ('%99', NOW, 'unknown', 'provider_identity_mismatch'),
-        ('%2', '2026-05-20T11:58:00Z', 'unknown', 'provider_identity_mismatch'),
+        ('%99', NOW, 'unknown', 'provider_identity_unavailable'),
+        ('%2', '2026-05-20T11:58:00Z', 'unknown', 'provider_identity_unavailable'),
     ),
 )
 def test_project_view_correlates_anchored_provider_activity_by_exact_pane(
