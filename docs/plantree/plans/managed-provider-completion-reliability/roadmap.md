@@ -4,6 +4,11 @@ Date: 2026-06-12
 
 ## Status Summary
 
+2026-11-09: Reverted PR #403's duplicate parser to restore the shared Claude
+polling/Stop-hook envelope rules. Existing tests retained; 759 passed, 1 skipped.
+See [revert evidence](evidence/pr403-revert-20261109.md). No installed-runtime
+switch or release is included; older deployment status below is historical.
+
 2026-10-05: Issue #354 isolated candidate fixes both Claude pasted-envelope
 anchor consumers. Real native short/long turns, actual Stop hooks and polling
 replays pass; automated regressions: 735 passed, 1 skipped. Not deployed. See [evidence](evidence/issue-354-live-20261005.md); full mounted

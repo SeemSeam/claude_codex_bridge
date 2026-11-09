@@ -48,3 +48,14 @@ validation must use a newly launched test daemon to avoid stale loaded code.
 three accepted native PTY/remote-model cases, dual actual Stop hooks, unmodified
 native-log replays, 735 passing automated tests and one opt-in skip. New 61-case
 regression: baseline 33 failures; candidate all pass. Candidate not deployed. Full mounted ask/mailbox/callback smoke remains a pre-deployment gate.
+
+## PR #403 follow-up (2026-11-09)
+
+Mode: status-update. The user authorized reverting PR #403's replacement of
+the already implemented shared parser from `0eebd8fea`. The revert restores
+`unwrap_claude_pasted_prompt` in polling, keeping it consistent with Stop-hook
+attribution. Existing compatibility and ambiguity tests are retained. The six
+ID-format failures and one malformed-tag failure were regression fixtures;
+they do not establish failures in current native four-hex client output.
+See [revert verification](../evidence/pr403-revert-20261109.md). Historical
+candidate/deployment status above describes the original 2026-10-05 probe.

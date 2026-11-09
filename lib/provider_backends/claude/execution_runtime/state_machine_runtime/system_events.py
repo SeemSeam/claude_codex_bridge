@@ -72,18 +72,8 @@ def has_outer_request_anchor(text: str, *, request_anchor: str) -> bool:
         return False
     from ...protocol import REQ_ID_PREFIX
 
-    # Unwrap a single complete pasted_content wrapper with matching IDs
-    text = str(text or "")
-    wrapped = re.fullmatch(
-        r'\s*<pasted_content id="([A-Za-z0-9]+)">((?:(?!</?pasted_content\b).)*)'
-        r'</pasted_content id="\1">\s*',
-        text,
-        flags=re.DOTALL,
-    )
-    if wrapped is not None:
-        text = wrapped.group(2)
     pattern = rf"^\s*{re.escape(REQ_ID_PREFIX)}\s*{re.escape(request_anchor)}(?=\s|$)"
-    return re.search(pattern, text, flags=re.IGNORECASE) is not None
+    return re.search(pattern, unwrap_claude_pasted_prompt(text), flags=re.IGNORECASE) is not None
 
 
 def is_top_level_user_prompt(event: dict[str, object] | None) -> bool:
