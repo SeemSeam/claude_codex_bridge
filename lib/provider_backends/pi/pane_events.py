@@ -161,6 +161,8 @@ def inspect_pi_runtime(
         event_type = normalized_event_type(event)
         event_instance = _text(event.get("runtime_instance_id"))
         if event_type == "extension_ready":
+            if not event_instance:
+                continue
             ready = True
             busy = False
             active_req_id = ""
@@ -171,7 +173,11 @@ def inspect_pi_runtime(
             continue
         if not ready or event_instance != runtime_instance_id:
             continue
-        if event_type == "agent_start":
+        if event_type == "native_session":
+            native_session_id = _text(event.get("pi_session_id"))
+            native_session_path = _text(event.get("pi_session_path"))
+            native_session_observed_at = _text(event.get("timestamp"))
+        elif event_type == "agent_start":
             busy = True
             active_req_id = _text(event.get("req_id"))
         elif event_type == "request_superseded" and _text(event.get("req_id")) == active_req_id:

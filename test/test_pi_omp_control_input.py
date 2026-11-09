@@ -117,7 +117,15 @@ if (human?.req_id !== "job_human" || human?.superseded_by !== "unmanaged_agent_t
 }
 
 await start("job_switch");
-await emit("session_switch", { reason: "new", previousSessionFile: "/tmp/old.jsonl" });
+const replacementContext = {
+  sessionManager: {
+    getSessionId: () => "replacement-session",
+    getSessionFile: () => "/tmp/replacement-session.jsonl",
+  },
+};
+await emit("session_switch", {
+  reason: "new", previousSessionFile: "/tmp/native-session.jsonl",
+}, replacementContext);
 const switched = rows().findLast((row) => row.type === "request_superseded");
 if (switched?.req_id !== "job_switch" || switched?.superseded_by !== "session_switch:new") {
   throw new Error("session switch did not supersede the request");

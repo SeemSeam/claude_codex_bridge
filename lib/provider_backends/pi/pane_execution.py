@@ -324,6 +324,7 @@ class PiPaneExecutionAdapter:
         terminal_snapshot: PiAssistantSnapshot | None = None
         binding_error = ""
         superseded_by = ""
+        native_observation: tuple[str, str, str] | None = None
 
         for event in batch.events:
             if not event_matches_runtime(
@@ -349,18 +350,18 @@ class PiPaneExecutionAdapter:
                             "observed_runtime_instance_id": event_instance,
                         },
                     )
-                _persist_native_session_fields(
-                    state,
-                    native_session_id=_text(
+            if event_instance != runtime_instance_id:
+                continue
+            if event_type in {"extension_ready", "native_session"}:
+                native_observation = (
+                    _text(
                         event.get(f"{self.session_field_prefix}_session_id")
                     ),
-                    native_session_path=_text(
+                    _text(
                         event.get(f"{self.session_field_prefix}_session_path")
                     ),
-                    observed_at=_text(event.get("timestamp")),
+                    _text(event.get("timestamp")),
                 )
-                continue
-            if event_instance != runtime_instance_id:
                 continue
 
             event_req_id = _text(event.get("req_id"))
@@ -454,6 +455,15 @@ class PiPaneExecutionAdapter:
                 terminal_snapshot = candidate
                 break
 
+        if native_observation is not None:
+            _persist_native_session_fields(
+                state,
+                native_session_id=native_observation[0],
+                native_session_path=native_observation[1],
+                observed_at=native_observation[2],
+            )
+        else:
+            _retry_native_session_binding(state)
         state["event_offset"] = batch.next_offset
         state["event_trailing_partial"] = batch.trailing_partial
         updated = replace(submission, runtime_state=state)
@@ -610,7 +620,6 @@ class PiPaneExecutionAdapter:
             or observation.trailing_partial
         ):
             return None
-        _persist_observed_native_session(state, observation, observed_at=now)
         prompt_sent = bool(state.get("prompt_sent"))
         if (
             prompt_sent
@@ -618,6 +627,7 @@ class PiPaneExecutionAdapter:
             != _text(state.get("runtime_instance_id"))
         ):
             return None
+        _persist_observed_native_session(state, observation, observed_at=now)
         if not prompt_sent:
             state["runtime_instance_id"] = observation.runtime_instance_id
             state["event_offset"] = observation.next_offset
@@ -768,14 +778,37 @@ def _persist_native_session_fields(
 ) -> None:
     if not bool(state.get("persist_native_session")):
         return
-    session_file = _text(state.get("session_file"))
-    session_dir = _text(state.get("session_dir"))
-    if not native_session_id or not native_session_path or not session_file or not session_dir:
+    # Keep only the latest main-session observation. A new session may not
+    # create its transcript until the first message is written, after the
+    # incremental event reader has already advanced past this observation.
+    state.pop("pending_native_session", None)
+    state.pop("native_session_binding_error", None)
+    if not native_session_id or not native_session_path:
         return
     if (
         native_session_id == _text(state.get("native_session_id"))
         and native_session_path == _text(state.get("native_session_path"))
     ):
+        return
+    state["pending_native_session"] = {
+        "id": native_session_id,
+        "path": native_session_path,
+        "observed_at": observed_at,
+    }
+    _retry_native_session_binding(state)
+
+
+def _retry_native_session_binding(state: dict[str, object]) -> None:
+    if not bool(state.get("persist_native_session")):
+        return
+    pending = state.get("pending_native_session")
+    if not isinstance(pending, dict):
+        return
+    native_session_id = _text(pending.get("id"))
+    native_session_path = _text(pending.get("path"))
+    session_file = _text(state.get("session_file"))
+    session_dir = _text(state.get("session_dir"))
+    if not native_session_id or not native_session_path or not session_file or not session_dir:
         return
     ok, error = persist_native_session_binding(
         Path(session_file),
@@ -786,11 +819,12 @@ def _persist_native_session_fields(
         session_dir=Path(session_dir),
         native_session_id=native_session_id,
         native_session_path=Path(native_session_path),
-        observed_at=observed_at,
+        observed_at=_text(pending.get("observed_at")),
     )
     if ok:
         state["native_session_id"] = native_session_id
         state["native_session_path"] = native_session_path
+        state.pop("pending_native_session", None)
         state.pop("native_session_binding_error", None)
     else:
         state["native_session_binding_error"] = error or "binding_persist_failed"
