@@ -57,7 +57,7 @@ class OpenCodeTimelineMixin:
         if now < getattr(self, '_observation_retry_at', 0):
             return None, state
         try:
-            signature = self._storage.database_signature() if self._native is None else None
+            signature = self._storage.database_signature() if getattr(self, '_native', None) is None else None
             if (not block and signature is not None and not state.get('observation_error')
                     and signature == getattr(self, '_last_database_signature', None)
                     and now - getattr(self, '_last_observation_at', float('-inf')) < self._force_read_interval):

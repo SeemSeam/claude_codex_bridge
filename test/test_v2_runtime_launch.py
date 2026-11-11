@@ -2447,7 +2447,16 @@ def test_native_cli_launcher_builds_provider_state_payload(
             f'CCB_OMP_DISPATCH_EVENTS={shlex.quote(str(dispatch_event_log))}'
             in start_cmd
         )
-        assert visible_parts == [
+        from provider_backends.omp import launcher as omp_launcher
+        from provider_backends.omp.platform import collab_enabled
+        if collab_enabled():
+            assert visible_parts[:6] == [
+                'bun', str(Path(omp_launcher.__file__).with_name('collab_runtime.mjs').resolve()),
+                prepared['omp_collab_binding'], '--', '/bin/sh', '-c',
+            ]
+            assert len(visible_parts) == 7
+            visible_parts = shlex.split(visible_parts[6])
+        expected_omp_parts = [
             default_executable,
             '--session-dir',
             str(state_dir / 'sessions'),
@@ -2455,8 +2464,10 @@ def test_native_cli_launcher_builds_provider_state_payload(
             str(extension_path),
             '--approval-mode',
             'yolo',
-            '--demo',
         ]
+        if collab_enabled():
+            expected_omp_parts += ['--config', prepared['omp_collab_overlay']]
+        assert visible_parts == [*expected_omp_parts, '--demo']
         assert payload['omp_completion_schema_version'] == 1
         assert extension_path.is_file()
         assert completion_event_log.is_file()

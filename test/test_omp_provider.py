@@ -85,16 +85,18 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         launch_session_id="ccb-omp-launch",
     )
 
-    assert _omp_visible_args(prepared) == (
+    from provider_backends.omp.platform import collab_enabled
+    expected_args = (
         "--session-dir",
         str(tmp_path / "provider-state" / "sessions"),
         "--extension",
         str(runtime_dir / "completion" / "ccb-omp-completion.ts"),
         "--approval-mode",
         "yolo",
-        "--config",
-        str(runtime_dir / "collab" / "omp-launch.json"),
     )
+    if collab_enabled():
+        expected_args += ("--config", str(runtime_dir / "collab" / "omp-launch.json"))
+    assert _omp_visible_args(prepared) == expected_args
     assert _omp_visible_env(prepared) == {
         "PI_CODING_AGENT_DIR": str(
             tmp_path / "provider-state" / "home" / ".omp" / "agent"

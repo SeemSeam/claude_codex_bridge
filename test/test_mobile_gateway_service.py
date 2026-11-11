@@ -2726,7 +2726,9 @@ def test_agent_conversation_prefers_pi_native_transcript_and_refreshes_cache(
 
 
 
-def test_agent_conversation_reads_omp_collab_snapshot(tmp_path: Path) -> None:
+@pytest.mark.parametrize('collab', [True, False])
+def test_agent_conversation_reads_omp_collab_snapshot(tmp_path: Path, monkeypatch, collab: bool) -> None:
+    monkeypatch.setattr(service_module, 'collab_enabled', lambda: collab)
     project_root = tmp_path / 'repo'
     transcript = _write_pi_family_transcript(
         project_root,
@@ -2782,6 +2784,17 @@ def test_agent_conversation_reads_omp_collab_snapshot(tmp_path: Path) -> None:
                 'entries': [json.loads(line) for line in transcript.read_text().splitlines()],
             }
 
+        def get_history_page(self, root, agent, *, cursor=None, limit=128, max_bytes=262144,
+                             expected_session_id=None, expected_generation=None):
+            snapshot = self.get_snapshot(root, agent)
+            records = snapshot['entries']
+            assert cursor is None
+            assert expected_session_id == snapshot['session_id']
+            assert expected_generation == snapshot['generation']
+            return {**snapshot, 'entries': list(reversed(records)), 'entry_chunks': [],
+                    'start_cursor': 'initial', 'next_cursor': None,
+                    'anchor_leaf_id': records[-1]['id']}
+
     service._omp_collab = FakeCollab()
     pairing = service.create_pairing_payload(
         gateway_url='http://127.0.0.1:8787',
@@ -2802,13 +2815,17 @@ def test_agent_conversation_reads_omp_collab_snapshot(tmp_path: Path) -> None:
     assert {item['session_id'] for item in items} == {'omp-session-native'}
     assert [(item['kind'], item['body']) for item in items] == [
         ('user_message', 'omp native question'),
-        ('agent_reply', 'part two'),
+        ('agent_reply', 'part two' if collab else 'omp native answer part one\n\npart two'),
     ]
-    assert items[1]['native_turn']['entries'][0]['blocks'][0] == {
-        'type': 'reasoning', 'text': 'hidden omp thinking',
-    }
-    assert items[1]['native_turn']['status'] == 'unknown'
-    assert 'completed_at' not in items[1]
+    if collab:
+        assert items[1]['native_turn']['entries'][0]['blocks'][0] == {
+            'type': 'reasoning', 'text': 'hidden omp thinking',
+        }
+        assert items[1]['native_turn']['status'] == 'unknown'
+        assert 'completed_at' not in items[1]
+    else:
+        assert 'native_turn' not in items[1]
+        assert items[1]['completed_at'] == '2026-09-06T12:00:03.000Z'
 
 def test_agent_conversation_does_not_fallback_for_pi_without_native_transcript(
     tmp_path: Path,
