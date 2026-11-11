@@ -5,13 +5,13 @@ Last updated: 2026-11-11
 
 ## Status Summary
 
-- PR #404 release candidate (2026-11-11): integrated Pi 1.2 cached-extension
-  main-session rotation; #403 rollback is on main. MiMo observation and OMP
-  platform/history fixtures are corrected in `08a1910ab`. Real Pi 1.2.0
-  RPC/local-model smoke completed four exact replies across three session
-  transitions. Release v8.7.22 is gated on cross-platform CI, clean package
-  installation, immutable source identity, and public artifact/npm checks.
-  [Evidence and remaining qualification](evidence/pr404-v8.7.22-20261111.md).
+- PR #404 published (2026-11-11): stable v8.7.22 at `910b25fdc` includes Pi
+  1.2 cached-extension main-session rotation, #403 rollback, and MiMo/OMP
+  compatibility corrections. Source and installed real Pi RPC/local-model
+  smokes complete four exact replies across three session transitions;
+  installed real OpenCode v1/v2 smokes pass. Public assets and npm latest
+  resolve to 8.7.22. Full mounted Pi cloud-model acceptance remains open.
+  [Verification and publication receipt](evidence/pr404-v8.7.22-20261111.md).
 
 - PR #385 merged-source verification (2026-10-13): Pi transformed-input
   binding and exact-active cancellation are merged and verified locally,

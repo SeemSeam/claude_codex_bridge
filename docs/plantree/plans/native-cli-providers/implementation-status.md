@@ -5,13 +5,14 @@ Last updated: 2026-11-11
 
 ## Current Phase
 
-2026-11-11 release preparation: PR #404 is integrated in the isolated
-candidate after reverting #403. Compatibility corrections are committed in
-`08a1910ab`. Real Pi 1.2.0 RPC/local-model smoke passes four exact completions
-across three native session rotations with one cached extension instance.
-Cross-platform CI, clean installation, and public v8.7.22 verification remain
-release gates. Full mounted cloud-model qualification remains open.
-[Candidate evidence](evidence/pr404-v8.7.22-20261111.md).
+2026-11-11 publication: PR #404 is merged in `949023851`; stable v8.7.22 is
+tagged at `910b25fdc`, including #403 rollback and compatibility corrections
+from `08a1910ab`. Source and installed real Pi 1.2.0 RPC/local-model smokes
+pass four exact completions across three native session rotations with one
+cached extension instance; installed real OpenCode v1/v2 smokes also pass.
+Public artifacts and npm latest are 8.7.22. Full mounted Pi cloud-model
+qualification remains open.
+[Verification and publication receipt](evidence/pr404-v8.7.22-20261111.md).
 
 2026-10-13 local integration: PR #385 is merged in `55d3303bf` and passed
 Pi/OMP extension, binding, cancellation, restore, launch, execution-service
