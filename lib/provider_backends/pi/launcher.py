@@ -355,6 +355,9 @@ const launchSessionId = process.env.CCB_SESSION_ID || "";
 const runtimeInstanceId = randomUUID();
 const consumedDispatches = new Set<string>();
 let mainSessionId = "";
+let mainSessionFile = "";
+let mainExtensionInstance: object | null = null;
+const retiredExtensionInstances = new WeakSet<object>();
 let activeReqId = "";
 let latestAssistant: Record<string, unknown> | null = null;
 let activePromptSha256 = "";
@@ -533,26 +536,65 @@ function bindDispatchedInput(prompt: string, source: string): boolean {
 }
 
 export default function ccbPiCompletion(pi: any): void {
-  pi.on("session_start", async (_event: any, ctx: any) => {
-    const manager = ctx?.sessionManager;
-    const sessionId = String(manager?.getSessionId?.() || "");
-    // The first session in this managed launch is the parent. In-process
-    // subagents share process.env, so their extension instances write here
-    // too; only the parent's own session may own or supersede CCB requests.
-    if (!mainSessionId) mainSessionId = sessionId;
-    appendEvent("extension_ready", {
-      pi_session_id: sessionId,
-      pi_session_path: String(manager?.getSessionFile?.() || ""),
-    });
-  });
+  const extensionInstance = {};
+  let foreignSession = false;
 
   const isParentSession = (ctx: any): boolean => {
-    if (!mainSessionId) return true;
-    const sessionId = String(ctx?.sessionManager?.getSessionId?.() || "");
-    return !sessionId || sessionId === mainSessionId;
+    if (mainExtensionInstance !== extensionInstance || !mainSessionId) return false;
+    const manager = ctx?.sessionManager;
+    return (
+      String(manager?.getSessionId?.() || "") === mainSessionId &&
+      String(manager?.getSessionFile?.() || "") === mainSessionFile
+    );
   };
 
+  const acceptMainSession = (
+    event: any, ctx: any, initial: boolean,
+  ): "initial" | "current" | "replacement" | null => {
+    if (foreignSession || retiredExtensionInstances.has(extensionInstance)) return null;
+    const manager = ctx?.sessionManager;
+    const sessionId = String(manager?.getSessionId?.() || "");
+    const sessionFile = String(manager?.getSessionFile?.() || "");
+    if (!sessionId) return null;
+    const firstSession = !mainSessionId;
+    const sameSession = sessionId === mainSessionId && sessionFile === mainSessionFile;
+    const reason = String(event?.reason || "");
+    const previousFile = String(event?.previousSessionFile || "");
+    // Pi 1.2 reuses the cached module factory when it replaces a runtime.
+    // Successful lifecycle events carry the outgoing session file. Child
+    // startup and the child's own switches do not continue that main lineage.
+    const replacement =
+      ["new", "resume", "fork"].includes(reason) &&
+      Boolean(mainSessionFile) && previousFile === mainSessionFile;
+    if ((firstSession && !initial) || (!firstSession && !sameSession && !replacement)) {
+      if (mainExtensionInstance !== extensionInstance) foreignSession = true;
+      return null;
+    }
+    if (mainSessionId && !sameSession) {
+      supersedeActiveRequest("session_switch:" + reason, "session_switch");
+    }
+    if (mainExtensionInstance && mainExtensionInstance !== extensionInstance) {
+      retiredExtensionInstances.add(mainExtensionInstance);
+    }
+    mainExtensionInstance = extensionInstance;
+    mainSessionId = sessionId;
+    mainSessionFile = sessionFile;
+    return firstSession ? "initial" : sameSession ? "current" : "replacement";
+  };
+
+  const announceMainSession = () => {
+    appendEvent("extension_ready", {
+      pi_session_id: mainSessionId,
+      pi_session_path: mainSessionFile,
+    });
+  };
+  pi.on("session_start", async (event: any, ctx: any) => {
+    const transition = acceptMainSession(event, ctx, true);
+    if (transition && transition !== "current") announceMainSession();
+  });
+
   const observeNativeSession = (ctx: any) => {
+    if (!isParentSession(ctx)) return;
     const manager = ctx?.sessionManager;
     appendEvent("native_session", {
       pi_session_id: String(manager?.getSessionId?.() || ""),
@@ -560,12 +602,13 @@ export default function ccbPiCompletion(pi: any): void {
     });
   };
   pi.on("session_switch", async (event: any, ctx: any) => {
+    const transition = acceptMainSession(event, ctx, false);
+    if (!transition) return;
+    if (transition !== "current") announceMainSession();
     observeNativeSession(ctx);
-    if (!isParentSession(ctx)) return;
-    const reason = String(event?.reason || "unknown");
-    supersedeActiveRequest("session_switch:" + reason, "session_switch");
   });
   pi.on("input", async (event: any, ctx: any) => {
+    if (!isParentSession(ctx)) return { action: "continue" };
     observeNativeSession(ctx);
     const prompt = String(event?.text || "");
     const source = String(event?.source || "unknown");
