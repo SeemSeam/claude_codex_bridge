@@ -1,9 +1,17 @@
 # Native CLI Providers Roadmap
 
 Date: 2026-06-13
-Last updated: 2026-10-13
+Last updated: 2026-11-11
 
 ## Status Summary
+
+- PR #404 release candidate (2026-11-11): integrated Pi 1.2 cached-extension
+  main-session rotation; #403 rollback is on main. MiMo observation and OMP
+  platform/history fixtures are corrected in `08a1910ab`. Real Pi 1.2.0
+  RPC/local-model smoke completed four exact replies across three session
+  transitions. Release v8.7.22 is gated on cross-platform CI, clean package
+  installation, immutable source identity, and public artifact/npm checks.
+  [Evidence and remaining qualification](evidence/pr404-v8.7.22-20261111.md).
 
 - PR #385 merged-source verification (2026-10-13): Pi transformed-input
   binding and exact-active cancellation are merged and verified locally,

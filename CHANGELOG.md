@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v8.7.22 (2026-11-11)
+
+- Preserve Pi completion across main-session rotation (#404), restore the shared Claude envelope parser by reverting #403, and prevent OpenCode runtime snapshot growth and missed-reply starvation (#402). Restore MiMo compatibility with shared observation. See [bilingual release notes](docs/releases/v8.7.22.md).
+- 修复 Pi 主会话切换后的完成追踪（#404），撤销 #403 并恢复 Claude 共享解析，防止 OpenCode 运行快照膨胀与漏回复（#402），恢复 MiMo 共享读取兼容性。详见[中英双语版本说明](docs/releases/v8.7.22.md)。
+
 ## v8.7.21 (2026-11-02)
 
 - OpenCode 2.2.x native task support, safe legacy WAL snapshots, and OMP native task ingress. See [bilingual release notes](docs/releases/v8.7.21.md).

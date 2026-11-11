@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.21-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.22-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -324,7 +324,7 @@ ccb update mobile
 
 CCB 8.7.16 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.21 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.21/ccb-mobile-v8.7.21.apk)
+- [下载 CCB Mobile v8.7.22 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.22/ccb-mobile-v8.7.22.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -411,6 +411,13 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <a id="release-notes"></a>
 
 ## 新版本记录
+
+<details>
+<summary><b>v8.7.22</b> - Pi session rotation and OpenCode recovery / Pi 会话切换与 OpenCode 恢复</summary>
+
+Pi completion follows validated main-session replacements; OpenCode excludes volatile runtime snapshots and recovers missed reads. Claude polling and hooks share one envelope parser. Pi 主会话切换后保持完成追踪，OpenCode 防止运行数据递归快照并恢复漏读，Claude 轮询与 hook 统一解析。[Release notes / 版本说明](../docs/releases/v8.7.22.md).
+
+</details>
 
 <details>
 <summary><b>v8.7.21</b> - OpenCode v2 native support / OpenCode v2 原生适配</summary>

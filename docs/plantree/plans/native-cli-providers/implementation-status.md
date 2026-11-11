@@ -1,9 +1,17 @@
 # Native CLI Providers Implementation Status
 
 Date: 2026-07-21
-Last updated: 2026-10-13
+Last updated: 2026-11-11
 
 ## Current Phase
+
+2026-11-11 release preparation: PR #404 is integrated in the isolated
+candidate after reverting #403. Compatibility corrections are committed in
+`08a1910ab`. Real Pi 1.2.0 RPC/local-model smoke passes four exact completions
+across three native session rotations with one cached extension instance.
+Cross-platform CI, clean installation, and public v8.7.22 verification remain
+release gates. Full mounted cloud-model qualification remains open.
+[Candidate evidence](evidence/pr404-v8.7.22-20261111.md).
 
 2026-10-13 local integration: PR #385 is merged in `55d3303bf` and passed
 Pi/OMP extension, binding, cancellation, restore, launch, execution-service

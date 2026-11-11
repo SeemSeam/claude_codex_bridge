@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.21-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.22-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,6 +51,12 @@
 - The background daemon keeps project state alive even when the foreground UI is closed.
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
+
+## New in 8.7.22: Pi session continuity and OpenCode recovery / Pi 会话连续性与 OpenCode 恢复
+
+Pi asks retain completion tracking after main-session clear/new/resume/fork. OpenCode avoids recursive runtime snapshots and recovers failed observations. Claude polling and finish hooks use the same parser. [Bilingual release notes](docs/releases/v8.7.22.md).
+
+Pi 主会话清空或切换后继续正确追踪回复；OpenCode 防止运行数据递归快照并恢复读取失败；Claude 轮询与完成 hook 恢复统一解析。
 
 ## New in 8.7.21: OpenCode v2 and native Provider reliability / OpenCode v2 与原生通信修复
 
@@ -376,9 +382,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.21 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.22 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.21 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.21/ccb-mobile-v8.7.21.apk)
+- [Download CCB Mobile v8.7.22 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.22/ccb-mobile-v8.7.22.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -465,6 +471,13 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 <a id="release-notes"></a>
 
 ## Release Notes
+
+<details>
+<summary><b>v8.7.22</b> - Pi session rotation and OpenCode recovery / Pi 会话切换与 OpenCode 恢复</summary>
+
+Pi completion follows validated main-session replacements; OpenCode excludes volatile runtime snapshots and recovers missed reads. Claude polling and hooks share one envelope parser. Pi 主会话切换后保持完成追踪，OpenCode 防止运行数据递归快照并恢复漏读，Claude 轮询与 hook 统一解析。[Release notes / 版本说明](docs/releases/v8.7.22.md).
+
+</details>
 
 <details>
 <summary><b>v8.7.21</b> - OpenCode v2 native support / OpenCode v2 原生适配</summary>

@@ -47,6 +47,10 @@ override the shipped contracts.
 
 ## File Map
 
+- [PR #404 / v8.7.22 qualification](evidence/pr404-v8.7.22-20261111.md):
+  Pi 1.2 cached-extension session rotation, #403 rollback, compatibility
+  checks, and release verification boundaries.
+
 - [PR #385 merged-source verification](evidence/pr385-merged-source-20261013.md):
   Pi transformed-input binding and scoped cancellation pass local regressions;
   queued for the next release.
