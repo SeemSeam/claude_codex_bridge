@@ -18,6 +18,8 @@ resilience.
 
 ## File Map
 
+- [v8.7.23 qualification](evidence/v8.7.23-release-20261119.md): local Bun/OMP
+  update and terminal-display changes, package checks and publication receipt.
 - [roadmap.md](roadmap.md): implementation sequence and open release gates.
 - [topics/install-update-flow.md](topics/install-update-flow.md): end-to-end
   flow from fresh install through tarball update and post-update provisioning.

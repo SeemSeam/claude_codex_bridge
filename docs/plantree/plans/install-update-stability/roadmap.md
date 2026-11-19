@@ -110,7 +110,9 @@ Last verified: 2026-07-23
   Validation: 120 provider/update/startup-update tests passed, including
   runtime ordering, broken OMP discovery, check-only behavior, ownership,
   install-home isolation, and failed post-upgrade verification. Release and
-  installed-update deployment remain pending.
+  installed-update deployment remain pending. The 2026-11-19 v8.7.23 candidate
+  passes 311 focused regressions with 2 opt-in skips; see
+  [release qualification](evidence/v8.7.23-release-20261119.md).
 
 - Define no-repeat provisioning contracts for dependencies and Role Packs.
 - Define Chinese/English prompt coverage for shell installer and Python update

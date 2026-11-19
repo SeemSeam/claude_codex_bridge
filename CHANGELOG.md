@@ -4,6 +4,8 @@
 
 ## v8.7.23 (2026-11-19)
 
+- Include the Bun runtime in explicit OMP update checks, preserve installation ownership and consent controls, and reject dependency-error version probes.
+- 显式 OMP 更新检查纳入 Bun 运行时，保留安装归属和确认机制，避免从依赖报错中误读版本。
 - Disable inline images by default in CCB-managed OMP panes to prevent graphics from crossing pane boundaries, and rebuild terminal scrollback on resize to avoid duplicate history. Existing panes pick up the setting on their next launch. Standalone OMP and tmux graphics passthrough are unchanged.
 - CCB 托管的 OMP 窗格默认关闭内联图片，防止图层越过分屏边界；缩放时重建终端回滚历史，避免重复追加。已有窗格在下次启动时生效；不影响独立 OMP 或 tmux 图形透传。
 - Streamline README introductions across all languages. See [bilingual release notes](docs/releases/v8.7.23.md).
