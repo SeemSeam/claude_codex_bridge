@@ -54,6 +54,10 @@ Relevant implementation anchors in `/home/bfly/yunwei/ccb_source`:
 
 ## Planning Files
 
+- [OMP Mobile VM diagnosis, 2026-10-29](history/omp-mobile-vm-diagnosis-20261029.md)
+  records live-project observations and the OMP 18.13.3 Android encrypted Relay
+  regression; the reported production incident remains unqualified.
+
 - [Settings background presets](topics/settings-background-presets.md) tracks
   the authorized offline wallpaper choices and conservative settings cleanup.
 
