@@ -6,7 +6,7 @@
 **Coordonne Codex, Claude, Gemini et d'autres agents CLI dans des workflows visibles, contrôlables et reprenables directement**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.23-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.24-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -184,7 +184,7 @@ Cette commande guide l'installation et la configuration.
 
 CCB 8.6.6 inclut le code source Flutter de CCB Mobile dans [`mobile/`](../mobile/) et publie l'APK Android via GitHub Releases :
 
-- [Télécharger l'APK CCB Mobile v8.7.23](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.23/ccb-mobile-v8.7.23.apk)
+- [Télécharger l'APK CCB Mobile v8.7.24](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.24/ccb-mobile-v8.7.24.apk)
 - Source de l'app : [`mobile/app`](../mobile/app)
 - Source du gateway serveur : [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -261,6 +261,13 @@ Merci à [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) pou
 <a id="release-notes"></a>
 
 ## Notes de version
+
+<details>
+<summary><b>v8.7.24</b></summary>
+
+[English / 中文](../docs/releases/v8.7.24.md)
+
+</details>
 
 <details>
 <summary><b>v8.7.23</b></summary>

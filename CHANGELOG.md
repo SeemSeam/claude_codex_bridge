@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v8.7.24 (2026-11-19)
+
 - Forward terminal resize signals to Linux OMP Collab panes so they redraw when the tmux pane changes size.
 - 向 Linux OMP Collab 窗格转发终端缩放信号，使其随 tmux 窗格尺寸变化及时重绘。
 
