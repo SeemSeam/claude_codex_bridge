@@ -2464,6 +2464,8 @@ def test_native_cli_launcher_builds_provider_state_payload(
             str(extension_path),
             '--approval-mode',
             'yolo',
+            '--config',
+            prepared['omp_terminal_overlay'],
         ]
         if collab_enabled():
             expected_omp_parts += ['--config', prepared['omp_collab_overlay']]

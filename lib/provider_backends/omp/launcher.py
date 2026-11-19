@@ -145,6 +145,7 @@ def _build_start_cmd(
         runtime_dir=runtime_dir,
         launch_session_id=launch_session_id,
     )
+    _materialize_terminal_overlay(prepared_state, runtime_dir)
     if collab_enabled():
         _prepare_collab_binding(prepared_state, runtime_dir, launch_session_id, spec)
     template = build_native_start_cmd(
@@ -262,6 +263,19 @@ def _wrap_collab_command(command: str, prepared_state: dict[str, object]) -> str
     return f"bun {shlex.quote(str(supervisor))} {shlex.quote(str(binding))} -- /bin/sh -c {shlex.quote(command)}"
 
 
+def _materialize_terminal_overlay(prepared_state: dict[str, object], runtime_dir: Path) -> None:
+    config_dir = runtime_dir / "terminal"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    overlay = config_dir / "omp-display.json"
+    # Passthrough images can escape the pane on resize; rebuilding scrollback
+    # keeps reflowed history without appending a second copy of the transcript.
+    _write_owner_only(overlay, json.dumps({
+        "terminal": {"showImages": False},
+        "tui": {"resizeScrollback": "rebuild"},
+    }) + "\n")
+    prepared_state["omp_terminal_overlay"] = str(overlay)
+
+
 def _omp_visible_args(prepared_state: dict[str, object]) -> tuple[str, ...]:
     session_dir = _omp_session_dir(prepared_state)
     extension_path = _path_from_prepared(
@@ -276,6 +290,8 @@ def _omp_visible_args(prepared_state: dict[str, object]) -> tuple[str, ...]:
         str(extension_path),
         "--approval-mode",
         "yolo",
+        "--config",
+        str(_path_from_prepared(prepared_state, "omp_terminal_overlay")),
     )
     if collab_enabled():
         args = (*args, "--config", str(_path_from_prepared(prepared_state, "omp_collab_overlay")))

@@ -12,6 +12,7 @@ from provider_backends.native_cli_support import NativeCliExecutionRequest
 from provider_backends.native_cli_support.home import materialize_native_login_state
 from provider_backends.omp.launcher import (
     _materialize_completion_extension,
+    _materialize_terminal_overlay,
     _omp_completion_extension_source,
     _omp_visible_args,
     _omp_visible_env,
@@ -84,6 +85,7 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         runtime_dir=runtime_dir,
         launch_session_id="ccb-omp-launch",
     )
+    _materialize_terminal_overlay(prepared, runtime_dir)
 
     from provider_backends.omp.platform import collab_enabled
     expected_args = (
@@ -93,6 +95,8 @@ def test_omp_visible_launch_uses_provider_state_session_dir(tmp_path: Path) -> N
         str(runtime_dir / "completion" / "ccb-omp-completion.ts"),
         "--approval-mode",
         "yolo",
+        "--config",
+        prepared["omp_terminal_overlay"],
     )
     if collab_enabled():
         expected_args += ("--config", str(runtime_dir / "collab" / "omp-launch.json"))

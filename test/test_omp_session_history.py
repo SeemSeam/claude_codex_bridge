@@ -151,7 +151,11 @@ def test_darwin_launcher_keeps_native_command_without_collab(monkeypatch, tmp_pa
         assert config.command_wrapper is None
         visible = launcher._omp_visible_args(kwargs['prepared_state'])
         assert '--extension' in visible
-        assert '--config' not in visible
+        assert visible.count('--config') == 1
+        overlay = Path(visible[visible.index('--config') + 1])
+        assert json.loads(overlay.read_text()) == {
+            'terminal': {'showImages': False}, 'tui': {'resizeScrollback': 'rebuild'},
+        }
         return f'omp {launcher.OMP_RESTART_SESSION_MARKER}'
     monkeypatch.setattr(launcher, 'build_native_start_cmd', native)
     command = launcher._build_start_cmd(launcher._launch_config(), SimpleNamespace(restore=False),
