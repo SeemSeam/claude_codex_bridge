@@ -1,9 +1,17 @@
 # Native CLI Providers Roadmap
 
 Date: 2026-06-13
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 ## Status Summary
+
+- OMP display and Bun updates published (2026-11-19): stable v8.7.23 at
+  `3f5857cee` disables inline images and rebuilds resize scrollback only in
+  CCB-managed visible OMP panes. Explicit updates discover Bun before OMP,
+  retain conservative installation ownership, and verify upgraded versions.
+  Public artifacts and npm are available. Original scroll-lock reproduction,
+  production Mobile qualification and Windows beta limits remain explicit.
+  [Release qualification and receipt](../install-update-stability/evidence/v8.7.23-release-20261119.md).
 
 - PR #404 published (2026-11-11): stable v8.7.22 at `910b25fdc` includes Pi
   1.2 cached-extension main-session rotation, #403 rollback, and MiMo/OMP

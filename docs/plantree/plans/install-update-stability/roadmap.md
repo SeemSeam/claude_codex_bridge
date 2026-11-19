@@ -1,9 +1,20 @@
 # Install Update Stability Roadmap
 
 Date: 2026-06-04
-Last verified: 2026-07-23
+Last verified: 2026-11-19
 
 ## Done
+
+- 2026-11-19, released in v8.7.23: explicit Provider update discovery includes
+  Bun before OMP when OMP is installed. Recognized native `.bun/bin/bun`
+  installations use the existing confirmation/check/selection/mute controls,
+  bind the selected installation home and verify the resulting version;
+  unknown owners remain report-only. Failed OMP probes can fall back to the
+  installed package manifest without mistaking dependency errors for versions.
+  Focused source regression: 311 passed / 2 skipped; isolated installed
+  regression: 235 passed / 2 skipped. Main and release gates pass at
+  `3f5857cee`; timing-test failures and acceptance limits remain recorded in
+  the [release qualification](evidence/v8.7.23-release-20261119.md).
 
 - 2026-09-28, released in v8.7.3: install/update catalog followups suppress
   the six workflow preview roles (`ccb_checker`, `ccb_clarification_broker`,
@@ -99,20 +110,6 @@ Last verified: 2026-07-23
   zero failures.
 
 ## In Progress
-
-- 2026-10-29, implemented locally: explicit `ccb update` provider discovery
-  now includes Bun when OMP is installed, ahead of the OMP candidate. Native
-  user `.bun/bin/bun` installations use `bun upgrade` through existing
-  prompt/check/all/none and version-mute controls; unknown package-manager
-  owners remain report-only. Successful updates must pass a version probe.
-  Failed CLI probes no longer parse dependency-error versions; OMP can fall
-  back to its installed package manifest when old Bun prevents startup.
-  Validation: 120 provider/update/startup-update tests passed, including
-  runtime ordering, broken OMP discovery, check-only behavior, ownership,
-  install-home isolation, and failed post-upgrade verification. Release and
-  installed-update deployment remain pending. The 2026-11-19 v8.7.23 candidate
-  passes 311 focused regressions with 2 opt-in skips; see
-  [release qualification](evidence/v8.7.23-release-20261119.md).
 
 - Define no-repeat provisioning contracts for dependencies and Role Packs.
 - Define Chinese/English prompt coverage for shell installer and Python update

@@ -1,9 +1,16 @@
 # Native CLI Providers Implementation Status
 
 Date: 2026-07-21
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 ## Current Phase
+
+2026-11-19 publication: stable v8.7.23 at `3f5857cee` ships the CCB-owned OMP
+display overlay and explicit Bun-before-OMP update discovery. External Provider
+configuration remains an inheritance source; publication does not upgrade
+Provider binaries or restart working agents. The original complete scroll lock
+and production Mobile incident remain unqualified.
+[Release qualification and receipt](../install-update-stability/evidence/v8.7.23-release-20261119.md).
 
 2026-11-11 publication: PR #404 is merged in `949023851`; stable v8.7.22 is
 tagged at `910b25fdc`, including #403 rollback and compatibility corrections
@@ -154,6 +161,12 @@ rollback. Interrupted in-flight Cursor jobs remain resubmit-required.
 
 ## Last Landed
 
+- Stable v8.7.23 publishes the OMP display and Bun update changes from
+  `3f5857cee`, with public platform artifacts and npm. Focused source regression
+  passes 311 tests with 2 skips; installed regression passes 235 with 2 skips.
+  The separate candidate macOS stale-socket timeout remains recorded; main's
+  identical source passes the full suite and required gate.
+  [Receipt and retained limits](../install-update-stability/evidence/v8.7.23-release-20261119.md).
 - Stable `v8.7.5` was published from commit `8f63ff63e` with annotated tag
   `v8.7.5`, a bilingual GitHub Release, ten platform/helper assets, and
   `@seemseam/ccb@8.7.5` on npm `latest`. All seven release/test workflows
