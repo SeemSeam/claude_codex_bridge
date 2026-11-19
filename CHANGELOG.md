@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Forward terminal resize signals to Linux OMP Collab panes so they redraw when the tmux pane changes size.
+- 向 Linux OMP Collab 窗格转发终端缩放信号，使其随 tmux 窗格尺寸变化及时重绘。
+
 ## v8.7.23 (2026-11-19)
 
 - Include the Bun runtime in explicit OMP update checks, preserve installation ownership and consent controls, and reject dependency-error version probes.
