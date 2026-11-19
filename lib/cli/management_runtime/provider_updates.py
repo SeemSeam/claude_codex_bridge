@@ -58,6 +58,7 @@ _BREW_PACKAGES = {
     "opencode": ("opencode", False),
 }
 _PROVIDER_LABELS = {
+    "bun": "Bun (OMP runtime)",
     "codex": "Codex",
     "claude": "Claude",
     "gemini": "Gemini",
@@ -216,6 +217,22 @@ def discover_provider_updates(
             continue
         seen_executables.add(identity)
         current_version = _read_installed_version(executable, run_fn=run_fn)
+        if normalized == "omp" and current_version is None:
+            # OMP can reject its runtime before --version is handled. Read only
+            # the installed package manifest, never provider configuration.
+            for parent in resolved.parents:
+                manifest = parent / "package.json"
+                if not manifest.is_file():
+                    continue
+                try:
+                    metadata = json.loads(manifest.read_text(encoding="utf-8"))
+                    if metadata.get("name") == "@oh-my-pi/pi-coding-agent":
+                        version = str(metadata.get("version") or "")
+                        if _VERSION_RE.fullmatch(version):
+                            current_version = version
+                except (OSError, ValueError, AttributeError):
+                    pass
+                break
         owner, package, owner_issue = _detect_install_owner(
             normalized,
             executable=executable,
@@ -332,6 +349,32 @@ def discover_provider_updates(
                 issue="; ".join(item for item in issues if item) or None,
             )
         )
+    # Runtime updates participate in the same explicit consent/check/mute flow.
+    # Put Bun first so an accepted OMP update runs on the refreshed runtime.
+    if any(candidate.provider == "omp" for candidate in candidates):
+        bun = _resolve_executable("bun", which_fn=which_fn)
+        if bun is not None:
+            release = _fetch_latest_versions(["bun"], fetch_latest_fn=fetch_latest)["bun"]
+            resolved_bun = bun.resolve()
+            native_home = resolved_bun.parent.parent
+            native_install = (
+                resolved_bun.parent.name == "bin"
+                and native_home.name == ".bun"
+            )
+            issue = (
+                _bun_home_write_issue(native_home)
+                if native_install
+                else "Bun runtime owner is unknown; update with its package manager"
+            )
+            candidates.insert(0, ProviderUpdateCandidate(
+                provider="bun",
+                executable=bun,
+                current_version=_read_installed_version(bun, run_fn=run_fn),
+                latest_version=release.version,
+                owner="native",
+                update_command=(str(bun), "upgrade") if native_install and not issue else None,
+                issue=issue,
+            ))
     return tuple(candidates)
 
 
@@ -350,6 +393,10 @@ def execute_provider_update(
             detail="no supported update command",
         )
     env = _explicit_update_env()
+    if candidate.provider == "bun":
+        # Match the selected executable, not an inherited BUN_INSTALL pointing
+        # at another user's/custom installation.
+        env["BUN_INSTALL"] = str(candidate.executable.resolve().parent.parent)
     if candidate.owner == "bun":
         try:
             bun_home = _bun_install_home_from_path(candidate.executable.resolve())
@@ -582,6 +629,10 @@ def _read_installed_version(
             timeout=PROBE_TIMEOUT_SECONDS,
         )
     except Exception:
+        return None
+    # A startup error may contain dependency versions rather than this CLI's
+    # version (e.g. OMP rejecting an old Bun). Never parse a failed probe.
+    if completed.returncode != 0:
         return None
     output = "\n".join(
         part for part in (str(getattr(completed, "stdout", "") or ""), str(getattr(completed, "stderr", "") or "")) if part

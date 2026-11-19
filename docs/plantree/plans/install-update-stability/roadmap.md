@@ -100,6 +100,18 @@ Last verified: 2026-07-23
 
 ## In Progress
 
+- 2026-10-29, implemented locally: explicit `ccb update` provider discovery
+  now includes Bun when OMP is installed, ahead of the OMP candidate. Native
+  user `.bun/bin/bun` installations use `bun upgrade` through existing
+  prompt/check/all/none and version-mute controls; unknown package-manager
+  owners remain report-only. Successful updates must pass a version probe.
+  Failed CLI probes no longer parse dependency-error versions; OMP can fall
+  back to its installed package manifest when old Bun prevents startup.
+  Validation: 120 provider/update/startup-update tests passed, including
+  runtime ordering, broken OMP discovery, check-only behavior, ownership,
+  install-home isolation, and failed post-upgrade verification. Release and
+  installed-update deployment remain pending.
+
 - Define no-repeat provisioning contracts for dependencies and Role Packs.
 - Define Chinese/English prompt coverage for shell installer and Python update
   paths.

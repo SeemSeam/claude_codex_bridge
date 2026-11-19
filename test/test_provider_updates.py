@@ -1101,3 +1101,110 @@ def test_dead_provider_update_lock_is_stale_even_when_recent(
     monkeypatch.setattr(provider_updates.os, "kill", _dead_process)
 
     assert provider_updates._lock_is_stale(lock_path) is True
+
+
+def test_omp_broken_runtime_offers_bun_before_provider(tmp_path: Path) -> None:
+    bun = tmp_path / '.bun' / 'bin' / 'bun'
+    bun.parent.mkdir(parents=True)
+    bun.write_text('#!/bin/sh\n')
+    package = tmp_path / '.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent'
+    entry = package / 'dist/cli.js'
+    entry.parent.mkdir(parents=True)
+    entry.write_text('#!/usr/bin/env bun\n')
+    (package / 'package.json').write_text(
+        '{"name":"@oh-my-pi/pi-coding-agent","version":"18.13.2"}'
+    )
+
+    def run(command, **kwargs):
+        if command[0] == str(bun):
+            return subprocess.CompletedProcess(command, 0, stdout='1.3.14', stderr='')
+        return subprocess.CompletedProcess(
+            command, 1, stdout='',
+            stderr='Bun runtime must be >= 1.4.4 (found v1.3.14)',
+        )
+
+    candidates = provider_updates.discover_provider_updates(
+        providers=('omp',),
+        which_fn=lambda name: {'omp': str(entry), 'bun': str(bun)}.get(name),
+        run_fn=run,
+        fetch_latest_fn=lambda name: {
+            'bun': '1.4.4', '@oh-my-pi/pi-coding-agent': '18.13.3',
+        }.get(name),
+    )
+    assert [candidate.provider for candidate in candidates] == ['bun', 'omp']
+    runtime, omp = candidates
+    assert runtime.current_version == '1.3.14'
+    assert runtime.update_command == (str(bun), 'upgrade')
+    assert runtime.actionable
+    assert omp.current_version == '18.13.2'
+    assert omp.actionable
+
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout='1.4.4', stderr='')
+
+    result = provider_updates.execute_provider_update(runtime, run_fn=execute)
+    assert result.success
+    assert calls == [[str(bun), 'upgrade'], [str(bun), '--version']]
+
+
+def test_omp_unknown_bun_owner_is_report_only(tmp_path: Path) -> None:
+    omp = tmp_path / 'omp'
+    bun = tmp_path / 'system/bin/bun'
+    candidates = provider_updates.discover_provider_updates(
+        providers=('omp',),
+        which_fn=lambda name: {'omp': str(omp), 'bun': str(bun)}.get(name),
+        run_fn=lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, stdout='1.3.14', stderr='',
+        ),
+        fetch_latest_fn=lambda name: '1.4.4',
+    )
+    runtime = candidates[0]
+    assert runtime.provider == 'bun'
+    assert runtime.update_available
+    assert runtime.update_command is None
+    assert 'package manager' in runtime.issue
+
+
+def test_failed_version_probe_does_not_parse_dependency_error() -> None:
+    assert provider_updates._read_installed_version(
+        Path('/tools/omp'),
+        run_fn=lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 1, stdout='', stderr='Bun runtime must be >= 1.4.4',
+        ),
+    ) is None
+
+
+def test_bun_check_flow_never_executes_upgrade(tmp_path: Path) -> None:
+    runtime = _candidate('bun', current='1.3.14', latest='1.4.4',
+                         command=('/tools/bun', 'upgrade'))
+    output = StringIO()
+    executions = []
+    assert provider_updates.run_provider_update_flow(
+        mode='check', stdout=output, state_path=tmp_path / 'state.json',
+        discover_fn=lambda: (runtime,),
+        execute_fn=lambda candidate: executions.append(candidate),
+    ) == 0
+    assert executions == []
+    assert 'Bun (OMP runtime)' in output.getvalue()
+
+
+def test_bun_upgrade_verifies_version_and_pins_install_home(monkeypatch, tmp_path: Path) -> None:
+    bun = tmp_path / '.bun/bin/bun'
+    monkeypatch.setenv('BUN_INSTALL', '/unrelated/install')
+    runtime = provider_updates.ProviderUpdateCandidate(
+        provider='bun', executable=bun, current_version='1.3.14',
+        latest_version='1.4.4', owner='native',
+        update_command=(str(bun), 'upgrade'),
+    )
+
+    def run(command, **kwargs):
+        if command[-1] == 'upgrade':
+            assert kwargs['env']['BUN_INSTALL'] == str(tmp_path / '.bun')
+        return subprocess.CompletedProcess(command, 0, stdout='1.3.14', stderr='')
+
+    result = provider_updates.execute_provider_update(runtime, run_fn=run)
+    assert not result.success
+    assert 'not verified' in result.detail
