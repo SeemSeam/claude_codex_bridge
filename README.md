@@ -6,7 +6,7 @@
 **Coordinate Codex, Claude, Gemini, and other CLI agents in visible, controllable workflows you can take over**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.22-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.23-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL%20%7C%20Windows%20beta-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -32,7 +32,7 @@
 
 [中文](README/zh.md) | **English** | [日本語](README/ja.md) | [Français](README/fr.md) | [Deutsch](README/de.md) | [العربية](README/ar.md) | [Español](README/es.md) | [Português](README/pt.md) | [한국어](README/ko.md) | [Русский](README/ru.md)
 
-[Quick Start](#quick-start) · [Message Queues](#message-queues) · [Mobile App](#mobile-app) · [Rich Mode](#rich-mode) · [Configure Agents](#configure-agents) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+[Quick Start](#quick-start) · [Message Queues](#message-queues) · [Mobile App](#mobile-app) · [Rich Mode](#rich-mode) · [Configure Agents](#configure-agents) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/) · [Changelog](CHANGELOG.md)
 
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-en-light.png" alt="CCB visible multi-agent CLI workspace" width="960">
@@ -52,145 +52,7 @@
 - Hub capability: run multiple CLI providers concurrently from one command.
 - Mobile remote controller: cross-provider voice control, file transfer, and remote terminal access.
 
-## New in 8.7.22: Pi session continuity and OpenCode recovery / Pi 会话连续性与 OpenCode 恢复
-
-Pi asks retain completion tracking after main-session clear/new/resume/fork. OpenCode avoids recursive runtime snapshots and recovers failed observations. Claude polling and finish hooks use the same parser. [Bilingual release notes](docs/releases/v8.7.22.md).
-
-Pi 主会话清空或切换后继续正确追踪回复；OpenCode 防止运行数据递归快照并恢复读取失败；Claude 轮询与完成 hook 恢复统一解析。
-
-## New in 8.7.21: OpenCode v2 and native Provider reliability / OpenCode v2 与原生通信修复
-
-OpenCode 2.2.x gains opt-in native task submission and idle completion. Legacy OpenCode reads use private snapshots to avoid touching Provider WAL indexes; OMP tasks use native ingress. See [bilingual release notes](docs/releases/v8.7.21.md) and the [OpenCode configuration contract](docs/opencode-completion-contract.md).
-
-OpenCode 2.2.x 新增显式启用的原生任务提交与完成判定；旧版 OpenCode 使用私有快照读取，OMP 使用原生任务入口。启用方式与限制见版本说明。
-
-## New in 8.7.20: Mobile Markdown rendering / 手机 Markdown 渲染升级
-
-Chat and content readers share a selectable `gpt_markdown` renderer with syntax-highlighted code, copy controls, task checkboxes and LaTeX. Existing artifact routing and external-link confirmation are preserved. [Bilingual notes](docs/releases/v8.7.20.md).
-
-
-## New in 8.7.19: OMP Mobile native questions and runtime status / OMP 原生交互与运行状态
-
-OMP Mobile now renders native OMP Collab select/editor questions as interactive cards and returns answers through the fenced native `ui-response` channel over HTTP or encrypted Relay. The workspace also shows bounded native runtime status such as the current step, elapsed time, queue depth, model/thinking/context usage, task progress and Todo counts. Upgrade the server and app together; idle existing OMP processes must be restarted normally to load the bridge, and busy agents must not be interrupted.
-
-[Full bilingual notes](docs/releases/v8.7.19.md).
-
-## New in 8.7.18: Stable OMP Mobile History / 稳定长历史
-
-OMP Mobile now paginates stable long history through bounded native parent-chain pages. History-query errors preserve a healthy WebSocket and already-loaded content. Oversized replies keep a structured latest-content bubble capped at 24 KiB, 8 entries and 24 blocks; complete originals remain available as a secondary reader. Upgrade both the server and app, then restart existing OMP processes normally when idle; do not interrupt busy agents or discard history.
-
-[Full bilingual notes](docs/releases/v8.7.18.md).
-
-## New in 8.7.17: OMP Reply Receipts, Not Business Completion
-
-OMP replies use bounded, owner-bound native `reply_deliver` / `reply_status` delivery. A `ccb-reply` is received as an aside at a safe step boundary; only a persisted native `custom_message` counts as a receipt and releases the mailbox. Receipt does not mean subsequent business processing is finished. Drafts and active ask anchors remain intact, no concurrent turn is started, and ambiguous sends are queried rather than replayed. [Notes](docs/releases/v8.7.17.md).
-
-## New in 8.7.16: OMP Python Ask Sender Identity Recovery
-
-When CCB environment variables are filtered, OMP Python `ask` now recovers the sender identity from the exact configured managed `PI_CODING_AGENT_DIR`. Existing identity precedence is preserved, and historical jobs are not replayed. The WeChat group 2 QR code has also been refreshed and is valid until October 29. [Notes](docs/releases/v8.7.16.md).
-
-## New in 8.7.15: Reliable OMP Mobile Turns
-
-Linux OMP Mobile now preserves earlier reply text while appending same-session updates, with tool reasoning folded in place. Runtime sends use a persisted FIFO and run serially; queued sends remain visible but cannot steer an active turn, and disconnects with an unknown outcome are held instead of blindly replayed. This release also includes the 8.7.14 Relay and large-history fixes. The legacy macOS route is unchanged. [Notes](docs/releases/v8.7.15.md).
-
-## New in 8.7.13: OMP Mobile Collab on Linux
-
-Linux OMP agents now connect Mobile to the existing native TUI through a private loopback Collab relay, with live output, reasoning, tool calls, and results grouped into user-anchored reply bubbles. Mobile can select the current native model and supported thinking level in the same host session. The new route is Linux-only: macOS keeps the original OMP terminal-input and native-history route, and other providers are unchanged. [Notes](docs/releases/v8.7.13.md).
-
-## New in 8.7.12: Reply Queue Recovery and Composer Compatibility
-
-Recover proven stale delivery leases without duplicating pending jobs, correct silent/callback completion status, and recognize newer Claude/Codex input layouts. [Notes](docs/releases/v8.7.12.md).
-
-## New in 8.7.10: Faster Pi Plugin Startup
-
-Reuse verified plugin snapshots, share resolved dependencies, recover interrupted builds and honor startup timeout overrides. Verified with real Pi plugin loading and two-agent cold/warm startup. [Notes](docs/releases/v8.7.10.md).
-
-## New in 8.7.7: Codex Fullscreen Delivery Fixes
-
-Fix accepted jobs waiting behind native Codex fullscreen status/shortcut rows and ordinary replies mentioning `esc to interrupt`, while preserving human drafts, busy/menu guards and FIFO. [Notes](docs/releases/v8.7.7.md).
-
-## New in 8.7.6: Claude/Codex Delivery Reliability
-
-Recognize native Claude pasted envelopes and empty Codex composers with newer status bars; preserve draft protection. [Notes](docs/releases/v8.7.6.md).
-
-## New in 8.7.5: Safe OMP/Pi Model Selection
-
-Opening `/model` or another control-only selector no longer supersedes an
-active OMP/Pi ask. CCB now waits for a real provider turn boundary before
-classifying different user input as replacement work. See the
-[verification and upgrade guidance](docs/releases/v8.7.5.md).
-
-## New in 8.7.4: Conversation Continuity First
-
-Claude and Codex preserve usable local history across account/key/gateway
-changes. Pi follows manual session switches; OMP accepts its newer history
-header format. See [verified scope and upgrade guidance](docs/releases/v8.7.4.md).
-
-## New in 8.7.3: Model-Independent Input Protection
-
-Codex composer detection no longer matches model names. Claude suggestion,
-accepted-draft and ordered return-delivery regressions accompany real continuous
-communication verification. Experimental Claude native plugins remain disabled.
-Install/update onboarding no longer recommends the six V3 preview roles;
-explicit installation and updates for installed roles remain available.
-See [upgrade guidance and layout limitations](docs/releases/v8.7.3.md).
-
-## New in 8.7.2: Recovery and Queued Delivery Fixes
-
-Fix Codex recovery commands with duplicate resume arguments, abandoned OMP editor
-sockets, and padded Codex empty-input detection. Queue details now show input-guard
-waiting reasons. See [upgrade guidance and remaining limitations](docs/releases/v8.7.2.md).
-
-## New in 8.7.1: Open Rich Files with Your Default App
-
-Click a file or press Enter to open it with the system default application;
-folders stay inside the file browser. Both safe and rich profiles use the same
-behavior. macOS uses `open`; Linux prefers `gio open`, then `xdg-open` when GIO
-is absent; WSL uses `wslview` from `wslu` to open with the Windows default app.
-WSL requires enabled Windows interop and reports a missing bridge explicitly.
-After upgrading CCB, run `ccb update rich` and reopen the file-browser pane.
-See the [8.7.1 notes](docs/releases/v8.7.1.md) for validation and limitations.
-
-<a id="message-queues"></a>
-
-## New in 8.7.0: Humans and Agents Share the Queue
-
-### Human / agent queue mode
-
-Incoming agent messages wait while you compose a draft, avoiding interruption
-or accidental submission of your text together with a returned result. CCB first
-waits for the target agent's current turn to end, then checks the input box for
-the message at the front of the queue.
-
-- Empty input: deliver the next eligible message in queue order.
-- Nonempty input: wait up to **180 seconds**. Clearing or submitting your draft
-  releases the message once the agent is idle again.
-- Still nonempty after 180 seconds: clear the draft once, confirm the box is
-  empty, then deliver. Continuing to type does **not** reset this timer; this
-  mode does not preserve a draft indefinitely.
-- Busy, modal or unrecognized input state: keep waiting without clearing or
-  sending. Closing the modal or restoring the normal input surface allows
-  checks to continue.
-
-### Agent / agent queue mode
-
-Requests (`ask`) and returned results (`back`) share one chronological FIFO
-queue per target agent. Each message waits until the target finishes processing
-the previous one, including returned results. Later replies cannot interrupt
-an earlier reply's processing turn; different agents can still work in parallel.
-
-**We recommend testing these queue modes with Claude, Codex and OMP in managed
-tmux panes.** Input protection for other providers will follow; their existing
-delivery behavior is unchanged and should not be assumed to protect drafts.
-OMP currently requires its default Status Band input layout and the new managed
-extension. After upgrading, restart the project when idle to load the new daemon
-and provider extensions.
-
-This is a first version for testing. Codex/Claude deadline clearing uses `Ctrl-C`;
-a simultaneous user action can still cause interruption. The final screen-check,
-paste and Enter sequence is not atomic against typing at that exact instant.
-See the [8.7.0 notes](docs/releases/v8.7.0.md) for tested
-scope, upgrade guidance and the Codex remote-session recovery limitation.
+<!-- Keep per-version updates in CHANGELOG.md and docs/releases/, not in the README introduction. -->
 
 <a id="how-to-install"></a>
 
@@ -360,6 +222,47 @@ You can type directly in any agent pane, or let agents collaborate:
 
 Agents can also call `/ask` during workflow orchestration to delegate and hand off work. Use agent memory or the project-wide shared memory file `.ccb/ccb_memory.md` for durable coordination.
 
+<a id="message-queues"></a>
+
+## Message Queues
+
+### Human / agent queue mode
+
+Incoming agent messages wait while you compose a draft, avoiding interruption
+or accidental submission of your text together with a returned result. CCB first
+waits for the target agent's current turn to end, then checks the input box for
+the message at the front of the queue.
+
+- Empty input: deliver the next eligible message in queue order.
+- Nonempty input: wait up to **180 seconds**. Clearing or submitting your draft
+  releases the message once the agent is idle again.
+- Still nonempty after 180 seconds: clear the draft once, confirm the box is
+  empty, then deliver. Continuing to type does **not** reset this timer; this
+  mode does not preserve a draft indefinitely.
+- Busy, modal or unrecognized input state: keep waiting without clearing or
+  sending. Closing the modal or restoring the normal input surface allows
+  checks to continue.
+
+### Agent / agent queue mode
+
+Requests (`ask`) and returned results (`back`) share one chronological FIFO
+queue per target agent. Each message waits until the target finishes processing
+the previous one, including returned results. Later replies cannot interrupt
+an earlier reply's processing turn; different agents can still work in parallel.
+
+**We recommend testing these queue modes with Claude, Codex and OMP in managed
+tmux panes.** Input protection for other providers will follow; their existing
+delivery behavior is unchanged and should not be assumed to protect drafts.
+OMP currently requires its default Status Band input layout and the new managed
+extension. After upgrading, restart the project when idle to load the new daemon
+and provider extensions.
+
+This is a first version for testing. Codex/Claude deadline clearing uses `Ctrl-C`;
+a simultaneous user action can still cause interruption. The final screen-check,
+paste and Enter sequence is not atomic against typing at that exact instant.
+See the [8.7.0 notes](docs/releases/v8.7.0.md) for tested
+scope, upgrade guidance and the Codex remote-session recovery limitation.
+
 <a id="mobile-app"></a>
 
 ## Mobile Remote Control (Android)
@@ -382,9 +285,9 @@ This command guides installation and configuration.
 <details>
 <summary><b>Mobile App details, safety boundary, and source</b></summary>
 
-CCB 8.7.22 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
+CCB 8.7.23 includes the Flutter CCB Mobile source in [`mobile/`](mobile/) and publishes the Android APK through GitHub Releases:
 
-- [Download CCB Mobile v8.7.22 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.22/ccb-mobile-v8.7.22.apk)
+- [Download CCB Mobile v8.7.23 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.23/ccb-mobile-v8.7.23.apk)
 - App source: [`mobile/app`](mobile/app)
 - Server gateway source: [`lib/mobile_gateway`](lib/mobile_gateway)
 
@@ -471,6 +374,13 @@ Thanks to [tmux-agent-sidebar](https://github.com/hiroppy/tmux-agent-sidebar) fo
 <a id="release-notes"></a>
 
 ## Release Notes
+
+<details>
+<summary><b>v8.7.23</b></summary>
+
+[English / 中文](docs/releases/v8.7.23.md)
+
+</details>
 
 <details>
 <summary><b>v8.7.22</b> - Pi session rotation and OpenCode recovery / Pi 会话切换与 OpenCode 恢复</summary>

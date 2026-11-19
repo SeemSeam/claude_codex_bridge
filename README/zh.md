@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.22-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.23-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -32,7 +32,7 @@
 
 **中文** | [English](../README.md) | [日本語](ja.md) | [Français](fr.md) | [Deutsch](de.md) | [العربية](ar.md) | [Español](es.md) | [Português](pt.md) | [한국어](ko.md) | [Русский](ru.md)
 
-[快速开始](#quick-start) · [消息排队](#message-queues) · [Mobile App](#mobile-app) · [Rich 模式](#rich-mode) · [配置团队](#configure-agents) · [使用文档](../docs/manuals/user-guide/) · [开发文档](../docs/manuals/developer-guide/)
+[快速开始](#quick-start) · [消息排队](#message-queues) · [Mobile App](#mobile-app) · [Rich 模式](#rich-mode) · [配置团队](#configure-agents) · [使用文档](../docs/manuals/user-guide/) · [开发文档](../docs/manuals/developer-guide/) · [更新日志](../CHANGELOG.md)
 
 <p align="center">
   <img src="../assets/readme_v7/ccb-hero-zh-light.png" alt="CCB 可见多 Agent CLI 工作台" width="960">
@@ -50,116 +50,6 @@
 - 后台 daemon 持续运行，可以脱离前台界面保持项目状态。
 - Hub 能力：一个命令同时并发运行多家 CLI provider。
 - 手机远程控制器：跨 provider 语音操控、文件传输和远程终端访问。
-
-## New in 8.7.19: OMP native questions and runtime status / OMP 原生交互与运行状态
-
-Native select/editor cards use fenced replies over HTTP or encrypted Relay. Mobile shows native elapsed time, current step and Todo progress. Update gateway and app together; restart only idle OMP agents.
-
-[Full bilingual notes](../docs/releases/v8.7.19.md).
-
-## 8.7.18 新功能：OMP Mobile 稳定长历史与有界最新气泡
-
-OMP Mobile 通过有界原生父链分页稳定读取长历史；历史查询失败不再重置健康的 WebSocket 或清除已加载内容。超长回复在气泡中保留结构化最新内容，最多 24 KiB、8 条记录、24 个块；完整原文仍可通过次级阅读入口查看。请同时升级服务端与 App，已有 OMP 进程在空闲时正常重启加载；不要中断忙碌 Agent 或清空历史。
-
-[Full bilingual notes](../docs/releases/v8.7.18.md).
-
-## 8.7.17 新功能：OMP 回复收据与业务处理分离
-
-OMP 回复通过有界、绑定归属的原生 `reply_deliver` / `reply_status` 投递；`ccb-reply` 在安全步骤边界作为 aside 接收。只有已持久化的原生 `custom_message` 才算收据并释放邮箱，不代表后续业务处理完成。保留草稿与活跃 ask 锚点，不启动并发回合；发送结果不明时查询状态，不重放。 [Notes](../docs/releases/v8.7.17.md).
-
-## 8.7.16 新功能：恢复 OMP Python ask 发送者身份
-
-当 CCB 环境变量被过滤时，OMP Python `ask` 现在会从精确匹配已配置托管目录的 `PI_CODING_AGENT_DIR` 恢复发送者身份，保留现有身份优先级，且不会重放历史任务。微信技术群 2 二维码也已更新，有效期至 10 月 29 日。[版本说明](../docs/releases/v8.7.16.md)。
-
-## 8.7.15 新功能：可靠的 OMP Mobile 回合
-
-Linux OMP Mobile 现在会在同一会话的增量更新中保留此前回复正文，并就地折叠工具推理。运行中发送通过持久化 FIFO 串行处理；排队消息保持可见，但不会 steer 活跃回合；断线结果未知时会先 held，不再盲目重放。本版同时包含 8.7.14 的 Relay 与大型历史修复，Mac legacy 路由保持不变。[版本说明](../docs/releases/v8.7.15.md)。
-
-## 8.7.13 新功能：Linux OMP Mobile Collab
-
-Linux OMP 现在通过私有本机 Collab Relay 将 Mobile 接入现有原生 TUI，实时正文、推理、工具调用和结果按用户回合聚合为对话气泡；手机端还可在同一宿主、同一会话中选择当前原生模型及支持的思考等级。新路由仅在 Linux 启用：Mac 保留原 OMP 终端输入和原生历史路由，其他 Provider 不变。[版本说明](../docs/releases/v8.7.13.md)。
-
-## 8.7.12 修复：回复队列恢复与输入框兼容
-
-安全恢复失效投递租约，避免重复排队任务；修正静默与 callback 完成状态，并兼容新版 Claude/Codex 输入框。[版本说明](../docs/releases/v8.7.12.md)。
-
-## 8.7.10 修复：Pi 插件启动与快照复用
-
-复用已验证的插件快照、共享依赖、回收中断残留，并使启动超时设置生效。已通过真实 Pi 插件加载及双 Agent 冷启动、缓存复用启动测试。[版本说明](../docs/releases/v8.7.10.md)。
-
-## 8.7.7 修复：Codex 双行底栏与队列投递
-
-修复 Codex 原生双行底栏与回复正文中的 `esc to interrupt` 导致消息持续排队的问题，保留人工草稿、忙碌/菜单保护和 FIFO 顺序。 [Notes](../docs/releases/v8.7.7.md).
-
-## 8.7.6 修复：Claude/Codex 投递稳定性
-
-Claude 原生粘贴包装识别与 Codex 空输入状态栏兼容修复；保留草稿保护。 [Notes](../docs/releases/v8.7.6.md).
-
-## 8.7.5 修复：OMP/Pi 切换模型不再导致 ask 空返回
-
-打开 `/model` 或其他仅控制界面的选择器时，不再把当前 OMP/Pi ask
-误判为已被新任务替换。CCB 只在真正进入新的 provider 回合时才执行
-supersede。见 [验证结果与升级说明](../docs/releases/v8.7.5.md)。
-
-## 8.7.4 修复：优先恢复对话上下文
-
-Claude、Codex 在账号、key 或中转变化后优先保留可用本地历史；Pi 跟随手动
-会话切换，OMP 兼容新版历史文件头。见 [验证范围与升级说明](../docs/releases/v8.7.4.md)。
-
-## 8.7.3 修复：不依赖模型名称的输入保护
-
-Codex 输入框识别不再匹配模型名称，补充 Claude 建议文字、接受后的草稿和
-有序返回投递回归测试，并完成真实连续通信验证。Claude 原生插件仍只用于实验。
-安装/更新引导不再推荐那六个 V3 预览角色，仍保留显式安装和已安装角色更新。
-见 [升级说明与布局限制](../docs/releases/v8.7.3.md)。
-
-## 8.7.2 修复：会话恢复与排队投递
-
-修复 Codex 恢复命令重复追加参数、OMP 废弃编辑器 socket 无法恢复、Codex
-空输入提示填充空格误判，并显示输入保护的具体等待原因。
-见 [升级说明与剩余限制](../docs/releases/v8.7.2.md)。
-
-## 8.7.1 新功能：Rich 文件使用系统默认应用打开
-
-点击文件或按 Enter，使用系统默认应用打开；目录仍在文件面板内进入。
-safe 和 rich 两套配置行为一致。macOS 使用 `open`；Linux 优先使用
-`gio open`，没有 GIO 时使用 `xdg-open`；WSL 通过 `wslu` 提供的
-`wslview` 调用 Windows 默认应用，需要开启 Windows 互操作，缺少桥接工具
-时会明确报错。升级 CCB 后运行 `ccb update rich`，再重新打开文件面板。
-验证范围和限制见 [8.7.1 说明](../docs/releases/v8.7.1.md)。
-
-<a id="message-queues"></a>
-
-## 8.7.0 新功能：人与 Agent 有序排队
-
-### 人 / Agent 排队模式
-
-当你正在编辑草稿时，Agent 消息会先等待，避免直接打断输入，或把你的草稿
-和返回消息一起发送。CCB 先等待目标 Agent 的当前回合结束，再为队首消息
-检查输入框。
-
-- 输入框为空：按原有队列顺序投递下一条可执行消息。
-- 输入框非空：最多等待 **180 秒**。期间你清空或提交草稿后，待 Agent 空闲
-  即可继续投递。
-- 满 180 秒仍非空：清空草稿一次，确认输入框为空后再投递。继续键入**不会
-  重置计时**，这个模式不会无限期保留草稿。
-- 正在执行、弹窗打开或无法判断输入状态：继续等待，不清空、不发送。
-  关闭弹窗或恢复正常输入界面后，会继续检查。
-
-### Agent / Agent 排队模式
-
-任务请求（`ask`）与结果返回（`back`）在每个目标 Agent 上共用按时间先后
-排列的 FIFO 队列。前一条消息处理完整个回合后，才投递下一条，包括返回
-消息的处理回合；后到的结果不会打断正在处理的结果。不同 Agent 仍可并行工作。
-
-**推荐大家先在受管 tmux 环境下的 Claude、Codex 和 OMP 上测试使用。**
-其他 provider 的输入保护将在后续更新中适配；目前保留原有投递行为，不能
-视为已经具备草稿保护。OMP 当前需要默认 Status Band 输入布局和新版受管
-扩展。升级后请在空闲时重启项目，加载新 daemon 和 provider 扩展。
-
-这是首版测试功能。Codex/Claude 到期清空使用 `Ctrl-C`，与人工操作同时发生时
-仍可能造成中断；最终抓屏、粘贴、Enter 与人工输入还不能做到原子互斥。
-已测范围、升级方法和 Codex 远程会话恢复限制见 [8.7.0 说明](../docs/releases/v8.7.0.md)。
 
 <a id="how-to-install"></a>
 
@@ -300,6 +190,39 @@ ccb
 
 也可以在工作编排中让 agent 自动调用 `/ask` 完成委派和交接。建议通过修改 agent 记忆或项目共享记忆 `.ccb/ccb_memory.md` 进行编排。
 
+<a id="message-queues"></a>
+
+## 消息排队
+
+### 人 / Agent 排队模式
+
+当你正在编辑草稿时，Agent 消息会先等待，避免直接打断输入，或把你的草稿
+和返回消息一起发送。CCB 先等待目标 Agent 的当前回合结束，再为队首消息
+检查输入框。
+
+- 输入框为空：按原有队列顺序投递下一条可执行消息。
+- 输入框非空：最多等待 **180 秒**。期间你清空或提交草稿后，待 Agent 空闲
+  即可继续投递。
+- 满 180 秒仍非空：清空草稿一次，确认输入框为空后再投递。继续键入**不会
+  重置计时**，这个模式不会无限期保留草稿。
+- 正在执行、弹窗打开或无法判断输入状态：继续等待，不清空、不发送。
+  关闭弹窗或恢复正常输入界面后，会继续检查。
+
+### Agent / Agent 排队模式
+
+任务请求（`ask`）与结果返回（`back`）在每个目标 Agent 上共用按时间先后
+排列的 FIFO 队列。前一条消息处理完整个回合后，才投递下一条，包括返回
+消息的处理回合；后到的结果不会打断正在处理的结果。不同 Agent 仍可并行工作。
+
+**推荐大家先在受管 tmux 环境下的 Claude、Codex 和 OMP 上测试使用。**
+其他 provider 的输入保护将在后续更新中适配；目前保留原有投递行为，不能
+视为已经具备草稿保护。OMP 当前需要默认 Status Band 输入布局和新版受管
+扩展。升级后请在空闲时重启项目，加载新 daemon 和 provider 扩展。
+
+这是首版测试功能。Codex/Claude 到期清空使用 `Ctrl-C`，与人工操作同时发生时
+仍可能造成中断；最终抓屏、粘贴、Enter 与人工输入还不能做到原子互斥。
+已测范围、升级方法和 Codex 远程会话恢复限制见 [8.7.0 说明](../docs/releases/v8.7.0.md)。
+
 <a id="mobile-app"></a>
 
 ## 手机远程控制（Android）
@@ -324,7 +247,7 @@ ccb update mobile
 
 CCB 8.7.16 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.22 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.22/ccb-mobile-v8.7.22.apk)
+- [下载 CCB Mobile v8.7.23 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.23/ccb-mobile-v8.7.23.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -411,6 +334,13 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <a id="release-notes"></a>
 
 ## 新版本记录
+
+<details>
+<summary><b>v8.7.23</b></summary>
+
+[English / 中文](../docs/releases/v8.7.23.md)
+
+</details>
 
 <details>
 <summary><b>v8.7.22</b> - Pi session rotation and OpenCode recovery / Pi 会话切换与 OpenCode 恢复</summary>

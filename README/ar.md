@@ -6,7 +6,7 @@
 **نسّق Codex وClaude وGemini وغيرهم من وكلاء CLI ضمن سير عمل مرئي وقابل للتحكم والتدخل المباشر**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.22-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.23-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -51,28 +51,6 @@
 - متحكم هاتف بعيد: تحكم صوتي عبر providers، ونقل ملفات، ووصول إلى طرفية بعيدة.
 
 <a id="how-to-install"></a>
-
-## New in 8.7.19: OMP native questions and runtime status / OMP 原生交互与运行状态
-
-Native select/editor cards use fenced replies over HTTP or encrypted Relay. Mobile shows native elapsed time, current step and Todo progress. Update gateway and app together; restart only idle OMP agents.
-
-[Full bilingual notes](../docs/releases/v8.7.19.md).
-
-## New in 8.7.18: Stable OMP Mobile History / 稳定长历史
-
-OMP Mobile now paginates stable long history through bounded native parent-chain pages. History-query errors preserve a healthy WebSocket and already-loaded content. Oversized replies keep a structured latest-content bubble capped at 24 KiB, 8 entries and 24 blocks; complete originals remain available as a secondary reader. Upgrade both the server and app, then restart existing OMP processes normally when idle; do not interrupt busy agents or discard history.
-
-OMP Mobile 通过有界原生父链分页稳定读取长历史；历史查询失败不再重置健康的 WebSocket 或清除已加载内容。超长回复在气泡中保留结构化最新内容，最多 24 KiB、8 条记录、24 个块；完整原文仍可通过次级阅读入口查看。请同时升级服务端与 App，已有 OMP 进程在空闲时正常重启加载；不要中断忙碌 Agent 或清空历史。
-
-[Full bilingual notes](../docs/releases/v8.7.18.md).
-
-## New in 8.7.17: OMP Reply Receipts / OMP 回复收据
-
-OMP replies use bounded, owner-bound native `reply_deliver` / `reply_status` delivery. A `ccb-reply` is received as an aside at a safe step boundary; only a persisted native `custom_message` counts as a receipt and releases the mailbox. Receipt does not mean subsequent business processing is finished. Drafts and active ask anchors remain intact, no concurrent turn is started, and ambiguous sends are queried rather than replayed.
-
-OMP 回复通过有界、绑定归属的原生 `reply_deliver` / `reply_status` 投递；`ccb-reply` 在安全步骤边界作为 aside 接收。只有已持久化的原生 `custom_message` 才算收据并释放邮箱，不代表后续业务处理完成。保留草稿与活跃 ask 锚点，不启动并发回合；发送结果不明时查询状态，不重放。
-
-[Full bilingual notes](../docs/releases/v8.7.17.md).
 
 ## طريقة التثبيت
 
@@ -206,7 +184,7 @@ ccb update mobile
 
 يتضمن CCB 8.6.6 مصدر Flutter الخاص بـ CCB Mobile داخل [`mobile/`](../mobile/) وينشر Android APK عبر GitHub Releases:
 
-- [تنزيل CCB Mobile v8.7.22 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.22/ccb-mobile-v8.7.22.apk)
+- [تنزيل CCB Mobile v8.7.23 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.23/ccb-mobile-v8.7.23.apk)
 - مصدر التطبيق: [`mobile/app`](../mobile/app)
 - مصدر gateway الخادم: [`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -283,6 +261,13 @@ ccb update rich
 <a id="release-notes"></a>
 
 ## ملاحظات الإصدار
+
+<details>
+<summary><b>v8.7.23</b></summary>
+
+[English / 中文](../docs/releases/v8.7.23.md)
+
+</details>
 
 <details>
 <summary><b>v8.7.22</b> - Pi session rotation and OpenCode recovery / Pi 会话切换与 OpenCode 恢复</summary>
