@@ -157,7 +157,7 @@ def _codex_footer(lines, styled, cursor_x: int, cursor_y: int) -> int | None:
         footer -= 1
     if footer <= cursor_y+1 or lines[footer-1].strip():
         return None
-    if any(not re.match(r'^  \? for shortcuts\b', row)
+    if any(not re.match(r'^  (?:← for agents · )?\? for shortcuts\b', row)
            for row in lines[footer+1:bottom+1]):
         return None
     row = lines[footer]
