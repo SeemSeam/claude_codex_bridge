@@ -1218,6 +1218,8 @@ url = "https://api.example.test/v1"
         ('gemini', 'gemini-2.5-pro', ('-m', 'gemini-2.5-pro')),
         ('opencode', 'openai/gpt-5', ('-m', 'openai/gpt-5')),
         ('pi', 'pay/gpt-5.6-terra', ('--model', 'pay/gpt-5.6-terra')),
+        ('pi', 'pay/GPT-6-Astra', ('--model', 'pay/GPT-6-Astra')),
+        ('codex', 'GPT-5-Codex', ('-m', 'GPT-5-Codex')),
         ('dsh', 'deepseek-v4-flash', ()),
     ],
 )
@@ -1243,6 +1245,26 @@ model = "{model_name}"
 
     assert spec.model == model_name
     assert spec.startup_args == expected_startup_args
+
+
+def test_load_project_config_keeps_model_case_while_canonicalizing_role(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-model-case-role'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """cmd; agent1:pi
+
+[agents.agent1]
+role = "CCB.Archi"
+model = "pay/GPT-6-Astra"
+""",
+    )
+
+    spec = load_project_config(project_root).config.agents['agent1']
+
+    assert spec.role == 'agentroles.archi'
+    assert spec.model == 'pay/GPT-6-Astra'
+    assert spec.startup_args == ('--model', 'pay/GPT-6-Astra')
 
 
 def test_load_project_config_supports_agent_model_shortcut_with_extra_startup_args(tmp_path: Path) -> None:
