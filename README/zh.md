@@ -6,7 +6,7 @@
 **让 Codex、Claude、Gemini 等 CLI Agent 可见、可控、可接管地协同工作**
 
 <p>
-  <img src="https://img.shields.io/badge/version-8.7.24-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-8.7.25-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-16%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -247,7 +247,7 @@ ccb update mobile
 
 CCB 8.7.16 已把 Flutter 版 CCB Mobile 源码放入 [`mobile/`](../mobile/)，并在 GitHub Release 中发布 Android APK：
 
-- [下载 CCB Mobile v8.7.24 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.24/ccb-mobile-v8.7.24.apk)
+- [下载 CCB Mobile v8.7.25 APK](https://github.com/SeemSeam/claude_codex_bridge/releases/download/v8.7.25/ccb-mobile-v8.7.25.apk)
 - App 源码：[`mobile/app`](../mobile/app)
 - 服务端 gateway 源码：[`lib/mobile_gateway`](../lib/mobile_gateway)
 
@@ -334,6 +334,13 @@ CCB 支持 [Agent Roles Spec](https://github.com/SeemSeam/agent-roles-spec)：�
 <a id="release-notes"></a>
 
 ## 新版本记录
+
+<details>
+<summary><b>v8.7.25</b></summary>
+
+[English / 中文](../docs/releases/v8.7.25.md)
+
+</details>
 
 <details>
 <summary><b>v8.7.24</b></summary>

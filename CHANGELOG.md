@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v8.7.25 (2026-11-23)
+
+- Recognize the Codex footer with the agent navigation hint so automatic messages can reach an empty composer again (#405). See the [bilingual release notes](docs/releases/v8.7.25.md).
+- 识别带 Agent 导航提示的 Codex 底栏，恢复向空输入框自动投递消息（#405）。详见[中英双语版本说明](docs/releases/v8.7.25.md)。
+
 ## v8.7.24 (2026-11-19)
 
 - Forward terminal resize signals to Linux OMP Collab panes so they redraw when the tmux pane changes size.
