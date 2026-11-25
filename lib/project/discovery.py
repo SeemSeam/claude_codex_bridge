@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import tempfile
 from typing import Any
 
 CCB_DIRNAME = '.ccb'
 WORKSPACE_BINDING_FILENAME = '.ccb-workspace.json'
+CCB_PROJECT_DIR_ENV = 'CCB_PROJECT_DIR'
 
 
 class ProjectDiscoveryError(ValueError):
@@ -22,6 +24,9 @@ def global_ccb_dir() -> Path:
 
 
 def find_current_project_anchor(start_dir: Path) -> Path | None:
+    env_anchor = _env_project_anchor()
+    if env_anchor is not None:
+        return env_anchor
     current = _resolved_dir(start_dir)
     if _project_anchor_dir(current) is None:
         return None
@@ -29,6 +34,9 @@ def find_current_project_anchor(start_dir: Path) -> Path | None:
 
 
 def find_nearest_project_anchor(start_dir: Path) -> Path | None:
+    env_anchor = _env_project_anchor()
+    if env_anchor is not None:
+        return env_anchor
     current = _resolved_dir(start_dir)
     for root in _search_roots(current):
         if _project_anchor_dir(root) is None:
@@ -38,6 +46,19 @@ def find_nearest_project_anchor(start_dir: Path) -> Path | None:
             continue
         return root
     return None
+
+
+def _env_project_anchor() -> Path | None:
+    raw = os.environ.get(CCB_PROJECT_DIR_ENV)
+    if not raw:
+        return None
+    try:
+        candidate = _resolved_dir(Path(raw))
+    except Exception:
+        return None
+    if _project_anchor_dir(candidate) is None:
+        return None
+    return candidate
 
 
 def find_parent_project_anchor_dir(start_dir: Path) -> Path | None:
