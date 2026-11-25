@@ -136,7 +136,7 @@ class AgentSpec:
         normalized = str(self.model).strip()
         if not normalized:
             raise AgentValidationError('model cannot be empty')
-        return canonical_role_id(normalized)
+        return normalized
 
     def _normalize_role(self) -> str | None:
         if self.role is None:
